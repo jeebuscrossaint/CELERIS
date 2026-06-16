@@ -46,4 +46,23 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
                            int n_harmonics,
                            Pol pol);
 
+// A multilayer stack: a shared period and an ordered list of layers, top
+// (incident side) to bottom (substrate side).
+struct Rcwa1DStack {
+    double period_um;
+    std::vector<GratingLayer1D> layers;
+};
+
+// Multilayer RCWA via stable scattering-matrix (Redheffer) recursion. Unlike a
+// naive transfer-matrix product, the S-matrix stays bounded for thick or
+// strongly evanescent layers. Reduces exactly to the single-layer solver above
+// when the stack has one layer.
+Rcwa1DResult solve_rcwa_1d(const Material& incident,
+                           const Rcwa1DStack& stack,
+                           const Material& substrate,
+                           double wavelength_um,
+                           double theta0_rad,
+                           int n_harmonics,
+                           Pol pol);
+
 } // namespace celeris

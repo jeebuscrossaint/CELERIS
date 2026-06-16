@@ -24,4 +24,14 @@ cdouble BinaryGrating1D::eps_inv_fourier(int h, double wavelength_um) const {
                           1.0 / groove.permittivity(wavelength_um), fill, h);
 }
 
+cdouble GratingLayer1D::eps_fourier(int h, double wavelength_um) const {
+    return binary_fourier(ridge.permittivity(wavelength_um),
+                          groove.permittivity(wavelength_um), fill, h);
+}
+
+cdouble GratingLayer1D::eps_inv_fourier(int h, double wavelength_um) const {
+    return binary_fourier(1.0 / ridge.permittivity(wavelength_um),
+                          1.0 / groove.permittivity(wavelength_um), fill, h);
+}
+
 } // namespace celeris

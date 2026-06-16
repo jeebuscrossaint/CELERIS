@@ -30,4 +30,23 @@ struct BinaryGrating1D {
     cdouble eps_inv_fourier(int h, double wavelength_um) const;
 };
 
+// One layer of a multilayer stack: the same binary cross-section as
+// BinaryGrating1D but WITHOUT a period — every layer in a 1D RCWA stack must
+// share a single period (set on the stack) so their Fourier orders align.
+// A homogeneous (unpatterned) layer is just ridge == groove.
+struct GratingLayer1D {
+    Material ridge;
+    Material groove;
+    double fill;          // ridge width fraction, 0..1
+    double thickness_um;
+
+    cdouble eps_fourier(int h, double wavelength_um) const;
+    cdouble eps_inv_fourier(int h, double wavelength_um) const;
+
+    // Convenience: a uniform layer of a single material.
+    static GratingLayer1D homogeneous(Material m, double thickness_um) {
+        return GratingLayer1D{m, m, 1.0, thickness_um};
+    }
+};
+
 } // namespace celeris

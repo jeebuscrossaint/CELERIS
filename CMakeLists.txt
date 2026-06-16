@@ -31,6 +31,7 @@ add_library(celeris_core
     src/celeris/optics/tmm.cpp
     src/celeris/rcwa/grating1d.cpp
     src/celeris/rcwa/rcwa1d.cpp
+    src/celeris/rcwa/rcwa_stack1d.cpp
 )
 target_include_directories(celeris_core PUBLIC src)
 target_link_libraries(celeris_core PUBLIC Eigen3::Eigen)

@@ -144,4 +144,56 @@ int main() {
         std::println("        TM: DE_t(+1)={:.5f}  Σ DE={:.6f}  (TE != TM ✓)",
                      tm.de_t[zt + 1], tm.sum_de);
     }
+
+    // ---- Validation 7: multilayer S-matrix solver -------------------------
+    // (a) A one-layer STACK must reproduce the single-layer solver exactly.
+    // (b) Splitting one layer into N identical sublayers must give the same
+    //     answer (the S-matrix recursion is self-consistent and stable).
+    // (c) A genuinely layered device (grating + homogeneous cap) conserves
+    //     energy.
+    {
+        const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
+        const int M = 20;
+        const double oblique = 15.0 * pi / 180.0;
+
+        BinaryGrating1D single{n15, materials::air(), 1.0, 0.5, 0.5};
+        auto ref = solve_rcwa_1d(materials::air(), single, materials::air(), 0.5,
+                                 oblique, M, Pol::TM);
+
+        Rcwa1DStack one{1.0, {GratingLayer1D{n15, materials::air(), 0.5, 0.5}}};
+        auto st1 = solve_rcwa_1d(materials::air(), one, materials::air(), 0.5,
+                                 oblique, M, Pol::TM);
+
+        Rcwa1DStack split{1.0, {}};
+        for (int i = 0; i < 5; ++i)  // 5 slices of 0.1 µm == one 0.5 µm layer
+            split.layers.push_back({n15, materials::air(), 0.5, 0.1});
+        auto stN = solve_rcwa_1d(materials::air(), split, materials::air(), 0.5,
+                                 oblique, M, Pol::TM);
+
+        std::size_t z = ref.orders.size() / 2;
+        std::println("[7] Multilayer S-matrix (TM, 15deg incidence):");
+        std::println("    (a) single-layer solver  DE_t(0) = {:.8f}", ref.de_t[z]);
+        std::println("    (b) 1-layer stack        DE_t(0) = {:.8f}", st1.de_t[z]);
+        std::println("    (c) 5-sublayer stack     DE_t(0) = {:.8f}", stN.de_t[z]);
+        std::println("        max|stack-ref| over all orders = {:.2e}",
+                     [&] {
+                         double e = 0.0;
+                         for (std::size_t i = 0; i < ref.de_t.size(); ++i) {
+                             e = std::max(e, std::abs(st1.de_t[i] - ref.de_t[i]));
+                             e = std::max(e, std::abs(stN.de_t[i] - ref.de_t[i]));
+                         }
+                         return e;
+                     }());
+        std::println("        Σ DE: single={:.6f} stack={:.6f} split={:.6f}",
+                     ref.sum_de, st1.sum_de, stN.sum_de);
+
+        // A real layered device: glass grating with a homogeneous AR-like cap.
+        Rcwa1DStack device{1.0,
+                           {GratingLayer1D::homogeneous(
+                                Material::constant(cdouble{1.2, 0.0}, "cap"), 0.1),
+                            GratingLayer1D{n15, materials::air(), 0.5, 0.5}}};
+        auto dev = solve_rcwa_1d(materials::air(), device, materials::bk7(), 0.5,
+                                 oblique, M, Pol::TM);
+        std::println("    (d) grating + cap on glass:  Σ DE = {:.6f}", dev.sum_de);
+    }
 }
