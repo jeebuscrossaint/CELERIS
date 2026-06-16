@@ -1,8 +1,10 @@
+#include <cmath>
 #include <print>
 #include <vector>
 
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
+#include "celeris/rcwa/rcwa1d.hpp"
 
 using namespace celeris;
 
@@ -63,6 +65,50 @@ int main() {
             auto res = solve_stack(materials::air(), stack, materials::bk7(),
                                    lambda, normal, Pol::TE);
             std::println("    {} pairs:  R = {:.5f}", pairs, res.R);
+        }
+    }
+
+    // ---- Validation 4: RCWA degenerate grating == TMM slab ----------------
+    // If a grating's ridge and groove are the SAME material, it's just a
+    // uniform slab. RCWA must then reproduce the TMM single-slab result in its
+    // zeroth order — a cross-check between two completely independent solvers.
+    {
+        const auto& glass = materials::bk7();
+        const double d = 0.5;  // slab thickness, µm
+
+        auto tmm = solve_stack(materials::air(), {{glass, d}}, materials::air(),
+                               lambda, normal, Pol::TE);
+
+        BinaryGrating1D degenerate{glass, glass, 1.0 /*period*/, 0.5, d};
+        auto rcwa = solve_rcwa_1d(materials::air(), degenerate, materials::air(),
+                                  lambda, normal, /*M=*/8, Pol::TE);
+        // order 0 sits at the middle of the orders vector
+        std::size_t zero = rcwa.orders.size() / 2;
+
+        std::println("[4] RCWA (degenerate grating) vs TMM (uniform slab):");
+        std::println("    TMM : R = {:.6f}  T = {:.6f}", tmm.R, tmm.T);
+        std::println("    RCWA: R = {:.6f}  T = {:.6f}  (order 0)",
+                     rcwa.de_r[zero], rcwa.de_t[zero]);
+        std::println("    Σ DE = {:.6f}  (expect 1.000000)", rcwa.sum_de);
+    }
+
+    // ---- Validation 5: real grating, energy conservation + convergence ----
+    // A freestanding glass binary grating in air. At Λ=1.0 µm, λ=0.5 µm,
+    // orders m = -1,0,+1 propagate. Lossless ⇒ Σ DE must equal 1, and the
+    // split between orders must converge as we keep more harmonics M.
+    {
+        const auto glass = Material::constant(cdouble{1.5, 0.0}, "n1.5");
+        BinaryGrating1D g{glass, materials::air(), 1.0 /*Λ*/, 0.5 /*fill*/, 0.5};
+
+        std::println("[5] Freestanding grating (Λ=1.0µm, λ=0.5µm, normal):");
+        std::println("    {:>3}   {:>10}  {:>10}  {:>10}", "M", "DE_t(0)",
+                     "DE_t(+1)", "Σ DE");
+        for (int M : {2, 5, 10, 20}) {
+            auto r = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
+                                   0.0, M, Pol::TE);
+            std::size_t z = r.orders.size() / 2;
+            std::println("    {:>3}   {:>10.5f}  {:>10.5f}  {:>10.6f}", M,
+                         r.de_t[z], r.de_t[z + 1], r.sum_de);
         }
     }
 }
