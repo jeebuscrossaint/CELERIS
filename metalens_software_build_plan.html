@@ -1,0 +1,450 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.container { padding: 1rem 0; }
+.phase-header { display: flex; align-items: center; gap: 12px; padding: 1rem 1.25rem; border-radius: var(--border-radius-lg); margin-bottom: 8px; cursor: pointer; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); }
+.phase-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.phase-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+.phase-meta { font-size: 13px; color: var(--color-text-secondary); }
+.phase-chevron { font-size: 16px; color: var(--color-text-secondary); transition: transform 0.2s; }
+.phase-chevron.open { transform: rotate(180deg); }
+.phase-body { display: none; margin-bottom: 16px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+.phase-body.open { display: block; }
+.section-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); padding: 12px 16px 6px; border-top: 0.5px solid var(--color-border-tertiary); margin-top: 4px; }
+.section-label:first-child { border-top: none; margin-top: 0; }
+.week-row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 16px; border-top: 0.5px solid var(--color-border-tertiary); }
+.week-row:first-of-type { border-top: none; }
+.week-label { font-size: 12px; color: var(--color-text-secondary); min-width: 48px; padding-top: 2px; }
+.tasks { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.task { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.task input[type=checkbox] { margin-top: 3px; flex-shrink: 0; cursor: pointer; width: 14px; height: 14px; }
+.task label { font-size: 14px; color: var(--color-text-primary); cursor: pointer; line-height: 1.4; }
+.task.done label { color: var(--color-text-secondary); text-decoration: line-through; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
+.tag-math { background: #EEEDFE; color: #3C3489; }
+.tag-code { background: #E1F5EE; color: #085041; }
+.tag-build { background: #FAEEDA; color: #633806; }
+.tag-biz { background: #FAECE7; color: #4A1B0C; }
+.progress-bar { height: 4px; background: var(--color-background-secondary); border-radius: 2px; margin: 4px 0 0; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.phase-progress { font-size: 12px; color: var(--color-text-secondary); min-width: 36px; text-align: right; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 0 1rem; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
+</style>
+
+<h2 class="sr-only">Metalens software build plan — interactive weekly checklist across 4 phases</h2>
+
+<div class="container">
+<div class="legend">
+  <div class="legend-item"><span class="tag tag-math">math/physics</span></div>
+  <div class="legend-item"><span class="tag tag-code">coding</span></div>
+  <div class="legend-item"><span class="tag tag-build">building</span></div>
+  <div class="legend-item"><span class="tag tag-biz">business</span></div>
+</div>
+
+<div id="phases"></div>
+</div>
+
+<script>
+const phases = [
+  {
+    id: 'p1',
+    title: 'Phase 1 — foundations',
+    duration: 'months 1–6',
+    color: '#7F77DD',
+    fillColor: '#534AB7',
+    sections: [
+      {
+        label: 'Month 1 — Maxwell & linear algebra',
+        weeks: [
+          { w: 'Wk 1', tasks: [
+            { t: 'Read Griffiths EM ch 1–2 (vector calculus review)', tag: 'math' },
+            { t: 'Implement 3×3 matrix multiply + eigenvalue solver in C++', tag: 'code' }
+          ]},
+          { w: 'Wk 2', tasks: [
+            { t: 'Griffiths ch 7–8: Maxwell equations, boundary conditions', tag: 'math' },
+            { t: 'Learn complex number handling in C++ (std::complex)', tag: 'code' }
+          ]},
+          { w: 'Wk 3', tasks: [
+            { t: 'Plane wave solutions, polarization, Poynting vector', tag: 'math' },
+            { t: 'Set up your C++ project structure + CMake build system', tag: 'code' }
+          ]},
+          { w: 'Wk 4', tasks: [
+            { t: 'Fresnel equations — derive from boundary conditions by hand', tag: 'math' },
+            { t: 'Code Fresnel reflection/transmission for flat interface, verify vs analytic', tag: 'code' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 2 — Fourier optics & diffraction',
+        weeks: [
+          { w: 'Wk 5', tasks: [
+            { t: 'Goodman "Fourier Optics" ch 1–3: Fourier transforms of fields', tag: 'math' },
+            { t: 'Implement 1D & 2D FFT wrapper using FFTW library', tag: 'code' }
+          ]},
+          { w: 'Wk 6', tasks: [
+            { t: 'Fraunhofer & Fresnel diffraction integrals, angular spectrum method', tag: 'math' },
+            { t: 'Code angular spectrum propagator, validate with known aperture results', tag: 'code' }
+          ]},
+          { w: 'Wk 7', tasks: [
+            { t: 'Diffraction gratings: grating equation, diffraction orders', tag: 'math' },
+            { t: 'Simulate single grating in your angular spectrum code', tag: 'code' }
+          ]},
+          { w: 'Wk 8', tasks: [
+            { t: 'Transfer matrix method for multilayer thin films — derive', tag: 'math' },
+            { t: 'Implement TMM in C++, verify vs Essential Macleod textbook examples', tag: 'code' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 3 — RCWA theory (the core engine)',
+        weeks: [
+          { w: 'Wk 9', tasks: [
+            { t: 'Read Moharam & Gaylord 1981 RCWA paper — the original', tag: 'math' },
+            { t: 'Understand S-matrix formulation (more stable than T-matrix)', tag: 'math' }
+          ]},
+          { w: 'Wk 10', tasks: [
+            { t: 'Derive Fourier expansion of periodic permittivity for 1D grating', tag: 'math' },
+            { t: 'Start coding 1D RCWA: build the eigenvalue system', tag: 'code' }
+          ]},
+          { w: 'Wk 11', tasks: [
+            { t: 'Implement S-matrix recursion for layer stacking in 1D RCWA', tag: 'code' },
+            { t: 'Verify diffraction efficiencies vs published results (find benchmarks on arXiv)', tag: 'code' }
+          ]},
+          { w: 'Wk 12', tasks: [
+            { t: 'Extend to 2D periodic structures (the real metalens case)', tag: 'math' },
+            { t: 'Debug & validate 2D RCWA against open source S4 library', tag: 'code' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 4 — CUDA & performance',
+        weeks: [
+          { w: 'Wk 13', tasks: [
+            { t: 'NVIDIA CUDA programming guide ch 1–4 (free online)', tag: 'code' },
+            { t: 'Profile your RCWA — find the bottleneck (usually eigenvalue solve)', tag: 'code' }
+          ]},
+          { w: 'Wk 14', tasks: [
+            { t: 'Port matrix operations to cuBLAS (CUDA linear algebra library)', tag: 'code' },
+            { t: 'Benchmark GPU vs CPU for same RCWA problem', tag: 'code' }
+          ]},
+          { w: 'Wk 15', tasks: [
+            { t: 'Parallelize over wavelengths and incident angles (embarrassingly parallel)', tag: 'code' },
+            { t: 'Learn cuSOLVER for batched eigenvalue solves', tag: 'code' }
+          ]},
+          { w: 'Wk 16', tasks: [
+            { t: 'Wrap your C++ engine with pybind11 — make it callable from Python', tag: 'code' },
+            { t: 'Write 10 unit tests in Python to validate the C++/CUDA core', tag: 'code' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 5 — adjoint optimization',
+        weeks: [
+          { w: 'Wk 17', tasks: [
+            { t: 'Read adjoint method paper: "Inverse design in photonics by topology optimization" Molesky 2018', tag: 'math' },
+            { t: 'Understand how gradient of a loss w.r.t. geometry is computed efficiently', tag: 'math' }
+          ]},
+          { w: 'Wk 18', tasks: [
+            { t: 'Implement analytic gradient of RCWA output w.r.t. pillar geometry params', tag: 'code' },
+            { t: 'Verify gradients with finite-difference check', tag: 'code' }
+          ]},
+          { w: 'Wk 19', tasks: [
+            { t: 'Hook up Adam optimizer (simple, implement from scratch in C++)', tag: 'code' },
+            { t: 'First inverse design test: optimize a single metalens unit cell for target phase', tag: 'build' }
+          ]},
+          { w: 'Wk 20', tasks: [
+            { t: 'Multi-objective optimization: phase + amplitude + polarization simultaneously', tag: 'math' },
+            { t: 'Run a full metalens focusing design, visualize the resulting phase map', tag: 'build' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 6 — Python API & first users',
+        weeks: [
+          { w: 'Wk 21', tasks: [
+            { t: 'Design clean Python API: rcwa.Solver(), rcwa.Layer(), rcwa.Stack()', tag: 'code' },
+            { t: 'Write docs with examples (mkdocs or sphinx)', tag: 'build' }
+          ]},
+          { w: 'Wk 22', tasks: [
+            { t: 'Put on GitHub, write a good README with benchmarks vs S4/grcwa', tag: 'build' },
+            { t: 'Post on r/photonics and optics Discord — get first feedback', tag: 'biz' }
+          ]},
+          { w: 'Wk 23', tasks: [
+            { t: 'Find 3 PhD students doing metalens work, offer free access for feedback', tag: 'biz' },
+            { t: 'Fix the top 5 bugs/pain points they find', tag: 'build' }
+          ]},
+          { w: 'Wk 24', tasks: [
+            { t: 'Submit abstract to SPIE Photonics West (deadline usually Sept for Jan conf)', tag: 'biz' },
+            { t: 'Write a benchmark paper draft: "Fast GPU-accelerated RCWA for metalens design"', tag: 'biz' }
+          ]}
+        ]
+      }
+    ]
+  },
+  {
+    id: 'p2',
+    title: 'Phase 2 — product',
+    duration: 'months 7–14',
+    color: '#1D9E75',
+    fillColor: '#0F6E56',
+    sections: [
+      {
+        label: 'Month 7–8 — materials database & PDK',
+        weeks: [
+          { w: 'Wk 25', tasks: [
+            { t: 'Build material library: TiO2, Si, SiN, GaN optical constants vs wavelength', tag: 'build' },
+            { t: 'Load/save in standard formats (CSV, JSON) from RefractiveIndex.info', tag: 'code' }
+          ]},
+          { w: 'Wk 26', tasks: [
+            { t: 'Design PDK format: specify allowed pillar shapes, sizes, min feature size for a foundry', tag: 'build' },
+            { t: 'Contact IMEC or Metalenz about research access / PDK info', tag: 'biz' }
+          ]},
+          { w: 'Wk 27', tasks: [
+            { t: 'Build a unit cell library: precompute phase/amplitude vs geometry for common materials', tag: 'build' },
+            { t: 'Phase library lookup speeds up full-lens design 100x — implement interpolation', tag: 'code' }
+          ]},
+          { w: 'Wk 28', tasks: [
+            { t: 'Full metalens design pipeline: target focal length → phase map → unit cell lookup → GDS export', tag: 'build' },
+            { t: 'Output GDSII file format (use gdspy Python library)', tag: 'code' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 9–10 — GUI (web-based)',
+        weeks: [
+          { w: 'Wk 29', tasks: [
+            { t: 'Learn enough React + TypeScript to build a simple UI (1 week of tutorials)', tag: 'code' },
+            { t: 'Design the UI wireframe: lens params input → run simulation → visualize phase map', tag: 'build' }
+          ]},
+          { w: 'Wk 30', tasks: [
+            { t: 'Build FastAPI backend in Python that calls your C++ engine', tag: 'code' },
+            { t: 'Connect React frontend to backend, show progress bar during sim', tag: 'code' }
+          ]},
+          { w: 'Wk 31', tasks: [
+            { t: 'Visualization: 2D phase map, far-field PSF, efficiency plot', tag: 'build' },
+            { t: 'Use Plotly.js for interactive charts in the browser', tag: 'code' }
+          ]},
+          { w: 'Wk 32', tasks: [
+            { t: 'Add wavelength sweep: simulate lens at multiple wavelengths, show chromatic aberration', tag: 'build' },
+            { t: 'Export results as CSV + plots as PNG', tag: 'build' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 11–12 — alpha release & pricing',
+        weeks: [
+          { w: 'Wk 33', tasks: [
+            { t: 'Auth system: user accounts, login, license keys', tag: 'code' },
+            { t: 'Set up Stripe for payments', tag: 'biz' }
+          ]},
+          { w: 'Wk 34', tasks: [
+            { t: 'Pricing: free tier (limited orders), $99/mo academic, $499/mo commercial', tag: 'biz' },
+            { t: 'Launch landing page — explain what it does, show a demo video', tag: 'biz' }
+          ]},
+          { w: 'Wk 35', tasks: [
+            { t: 'Cold email 20 metalens research groups — offer 3 months free', tag: 'biz' },
+            { t: 'Present at a university optics seminar if possible', tag: 'biz' }
+          ]},
+          { w: 'Wk 36', tasks: [
+            { t: 'Get first paying customer — even $1 validates the model', tag: 'biz' },
+            { t: 'Interview 5 users: what features do they want most?', tag: 'biz' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 13–14 — advanced features',
+        weeks: [
+          { w: 'Wk 37', tasks: [
+            { t: 'Polarization-multiplexed metalens design (big research topic)', tag: 'build' },
+            { t: 'Broadband / achromatic metalens optimization', tag: 'build' }
+          ]},
+          { w: 'Wk 38', tasks: [
+            { t: 'Add machine learning unit cell predictor (train on your precomputed library)', tag: 'code' },
+            { t: 'This replaces RCWA for fast screening, 1000x speedup', tag: 'code' }
+          ]},
+          { w: 'Wk 39', tasks: [
+            { t: 'Cloud compute: let users run big jobs on GPU servers (charge per job)', tag: 'build' },
+            { t: 'Integrate AWS or Modal for serverless GPU runs', tag: 'code' }
+          ]},
+          { w: 'Wk 40', tasks: [
+            { t: 'Holographic metasurface design mode', tag: 'build' },
+            { t: 'Beam steering / LiDAR metasurface design mode', tag: 'build' }
+          ]}
+        ]
+      }
+    ]
+  },
+  {
+    id: 'p3',
+    title: 'Phase 3 — growth',
+    duration: 'months 15–24',
+    color: '#BA7517',
+    fillColor: '#854F0B',
+    sections: [
+      {
+        label: 'Month 15–18 — revenue & reputation',
+        weeks: [
+          { w: 'Mo 15', tasks: [
+            { t: 'Publish your benchmark paper on arXiv — this is free marketing to every researcher', tag: 'biz' },
+            { t: 'Target $2k MRR by end of month', tag: 'biz' }
+          ]},
+          { w: 'Mo 16', tasks: [
+            { t: 'Present at SPIE Photonics West — hand out business cards, collect emails', tag: 'biz' },
+            { t: 'Follow up with every company person you meet within 48 hours', tag: 'biz' }
+          ]},
+          { w: 'Mo 17', tasks: [
+            { t: 'Enterprise outreach: email optical engineers at Meta Reality Labs, Apple, Samsung', tag: 'biz' },
+            { t: 'Offer pilot deals: $5k for 3-month company license', tag: 'biz' }
+          ]},
+          { w: 'Mo 18', tasks: [
+            { t: 'Target $10k MRR — at this point you can raise a small pre-seed if you want', tag: 'biz' },
+            { t: 'Decide: stay bootstrapped or raise $500k–1M to hire one person', tag: 'biz' }
+          ]}
+        ]
+      },
+      {
+        label: 'Month 19–24 — scale to acquisition-ready',
+        weeks: [
+          { w: 'Mo 19', tasks: [
+            { t: 'Add defense/aerospace module — stray light for metalens systems (big $ contracts)', tag: 'build' },
+            { t: 'Get a SBIR grant application in — NASA/DoD fund optical software R&D', tag: 'biz' }
+          ]},
+          { w: 'Mo 20', tasks: [
+            { t: 'If you have revenue, talk to a startup lawyer about IP assignment, clean cap table', tag: 'biz' },
+            { t: 'File a provisional patent on your adjoint optimization method', tag: 'biz' }
+          ]},
+          { w: 'Mo 21', tasks: [
+            { t: 'Target $30k MRR ($360k ARR) — this is where strategic acquirers start paying attention', tag: 'biz' },
+            { t: 'Hire one contractor to help with customer support / onboarding', tag: 'biz' }
+          ]},
+          { w: 'Mo 22', tasks: [
+            { t: 'Build relationships at Ansys/Keysight by engaging with their teams at conferences', tag: 'biz' },
+            { t: 'Get referenced in 3+ papers by other research groups', tag: 'biz' }
+          ]},
+          { w: 'Mo 23', tasks: [
+            { t: 'If inbound acquisition interest: hire an M&A advisor (they take 3–5% but worth it)', tag: 'biz' },
+            { t: 'At $500k ARR + 10x multiple = $5M. At $3M ARR = $30–60M range', tag: 'biz' }
+          ]},
+          { w: 'Mo 24', tasks: [
+            { t: 'Full audit of codebase, documentation, customer contracts — make it acquirable', tag: 'biz' },
+            { t: 'Know your number: what does $50M feel like vs holding out for more?', tag: 'biz' }
+          ]}
+        ]
+      }
+    ]
+  }
+];
+
+const tagClass = { math: 'tag-math', code: 'tag-code', build: 'tag-build', biz: 'tag-biz' };
+const tagLabel = { math: 'math/physics', code: 'coding', build: 'building', biz: 'business' };
+
+const container = document.getElementById('phases');
+const state = JSON.parse(localStorage.getItem('metalens_plan') || '{}');
+
+function saveState() {
+  try { localStorage.setItem('metalens_plan', JSON.stringify(state)); } catch(e) {}
+}
+
+function getPhaseProgress(phase) {
+  let total = 0, done = 0;
+  phase.sections.forEach(s => s.weeks.forEach(w => w.tasks.forEach(t => {
+    const key = phase.id + '_' + s.label + '_' + w.w + '_' + t.t.slice(0,20);
+    total++;
+    if (state[key]) done++;
+  })));
+  return { total, done };
+}
+
+phases.forEach(phase => {
+  const phaseDiv = document.createElement('div');
+  phaseDiv.style.marginBottom = '10px';
+
+  const { total, done } = getPhaseProgress(phase);
+  const pct = total ? Math.round(done / total * 100) : 0;
+
+  const header = document.createElement('div');
+  header.className = 'phase-header';
+  header.innerHTML = `
+    <div class="phase-dot" style="background:${phase.color}"></div>
+    <span class="phase-title">${phase.title}</span>
+    <span class="phase-meta">${phase.duration}</span>
+    <span class="phase-progress" id="pct-${phase.id}">${pct}%</span>
+    <i class="ti ti-chevron-down phase-chevron" aria-hidden="true"></i>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'phase-body';
+
+  phase.sections.forEach(section => {
+    const secLabel = document.createElement('div');
+    secLabel.className = 'section-label';
+    secLabel.textContent = section.label;
+    body.appendChild(secLabel);
+
+    section.weeks.forEach(week => {
+      const row = document.createElement('div');
+      row.className = 'week-row';
+
+      const wl = document.createElement('div');
+      wl.className = 'week-label';
+      wl.textContent = week.w;
+      row.appendChild(wl);
+
+      const tasks = document.createElement('div');
+      tasks.className = 'tasks';
+
+      week.tasks.forEach(task => {
+        const key = phase.id + '_' + section.label + '_' + week.w + '_' + task.t.slice(0,20);
+        const taskDiv = document.createElement('div');
+        taskDiv.className = 'task' + (state[key] ? ' done' : '');
+
+        const id = 'cb_' + Math.random().toString(36).slice(2);
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.checked = !!state[key];
+
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.innerHTML = task.t + ` <span class="tag ${tagClass[task.tag]}">${tagLabel[task.tag]}</span>`;
+
+        cb.addEventListener('change', () => {
+          state[key] = cb.checked;
+          taskDiv.classList.toggle('done', cb.checked);
+          saveState();
+          const { total, done } = getPhaseProgress(phase);
+          const p = total ? Math.round(done / total * 100) : 0;
+          document.getElementById('pct-' + phase.id).textContent = p + '%';
+          const fill = phaseDiv.querySelector('.progress-fill');
+          if (fill) fill.style.width = p + '%';
+        });
+
+        taskDiv.appendChild(cb);
+        taskDiv.appendChild(label);
+        tasks.appendChild(taskDiv);
+      });
+
+      row.appendChild(tasks);
+      body.appendChild(row);
+    });
+  });
+
+  const progressBar = document.createElement('div');
+  progressBar.style.padding = '12px 16px';
+  progressBar.style.borderTop = '0.5px solid var(--color-border-tertiary)';
+  progressBar.innerHTML = `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${phase.fillColor}"></div></div>`;
+  body.appendChild(progressBar);
+
+  header.addEventListener('click', () => {
+    const isOpen = body.classList.toggle('open');
+    header.querySelector('.phase-chevron').classList.toggle('open', isOpen);
+  });
+
+  phaseDiv.appendChild(header);
+  phaseDiv.appendChild(body);
+  container.appendChild(phaseDiv);
+});
+</script>
