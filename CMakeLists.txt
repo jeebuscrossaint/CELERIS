@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Optimization matters enormously here: Eigen is 10-100x slower without -O2 and
+# with assertions enabled, and dense eigensolves dominate RCWA runtime. Default
+# to Release (-O3 -DNDEBUG) unless the user asks otherwise.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
 # --- External libraries -----------------------------------------------------
 include(FetchContent)
 
@@ -32,6 +39,7 @@ add_library(celeris_core
     src/celeris/rcwa/grating1d.cpp
     src/celeris/rcwa/rcwa1d.cpp
     src/celeris/rcwa/rcwa_stack1d.cpp
+    src/celeris/rcwa/rcwa2d.cpp
 )
 target_include_directories(celeris_core PUBLIC src)
 target_link_libraries(celeris_core PUBLIC Eigen3::Eigen)

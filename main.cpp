@@ -5,6 +5,7 @@
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
 #include "celeris/rcwa/rcwa1d.hpp"
+#include "celeris/rcwa/rcwa2d.hpp"
 
 using namespace celeris;
 
@@ -195,5 +196,49 @@ int main() {
         auto dev = solve_rcwa_1d(materials::air(), device, materials::bk7(), 0.5,
                                  oblique, M, Pol::TM);
         std::println("    (d) grating + cap on glass:  Σ DE = {:.6f}", dev.sum_de);
+    }
+
+    // ---- Validation 8: 2D RCWA — reduce to 1D + energy + metalens cell ----
+    // (a) A y-invariant 2D cell (fill_y=1, My=0) excited with E along y is
+    //     exactly the 1D TE grating. Must match the validated 1D solver.
+    // (b) Energy conservation for a real square pillar.
+    // (c) A metalens unit cell: report transmission phase (the design output).
+    {
+        const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
+        const int M = 12;
+
+        // Λ=1.3 µm avoids the Rayleigh anomaly (no order exactly at grazing).
+        BinaryGrating1D g1d{n15, materials::air(), 1.3, 0.5, 0.5};
+        auto te1d = solve_rcwa_1d(materials::air(), g1d, materials::air(), 0.5,
+                                  0.0, M, Pol::TE);
+        std::size_t z = te1d.orders.size() / 2;
+
+        Rcwa2DStack ginv{1.3, 1.0, {RectCell2D{n15, materials::air(), 0.5, 1.0, 0.5}}};
+        auto te2d = solve_rcwa_2d(materials::air(), ginv, materials::air(), 0.5,
+                                  0.0, 0.0, /*Ex0=*/0.0, /*Ey0=*/1.0, M, 0);
+
+        std::println("[8] 2D RCWA:");
+        std::println("    (a) y-invariant cell vs 1D TE:  1D DE_t0={:.6f}  "
+                     "2D DE_t0={:.6f}  |Δ|={:.2e}",
+                     te1d.de_t[z], te2d.de_t0,
+                     std::abs(te1d.de_t[z] - te2d.de_t0));
+        std::println("        Σ DE: 1D={:.6f}  2D={:.6f}", te1d.sum_de,
+                     te2d.sum_de);
+
+        // (b)+(c) a real square TiO2-like pillar metalens unit cell on glass.
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        std::println("    (b) square pillar metalens cell (TiO2 n=2.4 on glass,"
+                     " Λ=0.35µm, λ=0.532µm):");
+        std::println("        {:>6}  {:>8}  {:>10}  {:>8}", "fill", "Σ DE",
+                     "phase(deg)", "|t|^2");
+        for (double f : {0.3, 0.5, 0.7}) {
+            Rcwa2DStack cell{0.35, 0.35,
+                             {RectCell2D{tio2, materials::air(), f, f, 0.6}}};
+            auto r = solve_rcwa_2d(materials::air(), cell, materials::bk7(),
+                                   0.532, 0.0, 0.0, 1.0, 0.0, 8, 8);
+            double phase_deg = std::arg(r.tx0) * 180.0 / pi;
+            std::println("        {:>6.2f}  {:>8.6f}  {:>10.1f}  {:>8.4f}", f,
+                         r.sum_de, phase_deg, std::norm(r.tx0));
+        }
     }
 }

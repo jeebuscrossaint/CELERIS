@@ -12,6 +12,7 @@
 // algorithms for modeling layered diffraction gratings," JOSA A 13 (1996).
 
 #include "celeris/rcwa/rcwa1d.hpp"
+#include "celeris/rcwa/smatrix.hpp"
 
 #include <Eigen/Dense>
 #include <cmath>
@@ -22,6 +23,11 @@ namespace {
 
 using Eigen::MatrixXcd;
 using Eigen::VectorXcd;
+using detail::SMatrix;
+using detail::identity_smatrix;
+using detail::interface_smatrix;
+using detail::propagation_smatrix;
+using detail::star;
 
 // Eigenmodes of one layer: field modes W, companion modes V, and the stable
 // propagation factor X = exp(-k0·q·d).
@@ -67,74 +73,6 @@ LayerModes compute_layer_modes(const GratingLayer1D& layer,
                                        q.asDiagonal());
     m.X = (-k0 * layer.thickness_um * q.array()).exp().matrix().asDiagonal();
     return m;
-}
-
-// A 2x2-block scattering matrix mapping incoming -> outgoing amplitudes.
-struct SMatrix {
-    MatrixXcd S11, S12, S21, S22;
-};
-
-SMatrix identity_smatrix(int n) {
-    SMatrix s;
-    s.S11 = MatrixXcd::Zero(n, n);
-    s.S12 = MatrixXcd::Identity(n, n);
-    s.S21 = MatrixXcd::Identity(n, n);
-    s.S22 = MatrixXcd::Zero(n, n);
-    return s;
-}
-
-// Redheffer star product  A ⋆ B  (A above, B below).
-SMatrix star(const SMatrix& A, const SMatrix& B) {
-    const int n = A.S11.rows();
-    const MatrixXcd Id = MatrixXcd::Identity(n, n);
-    const MatrixXcd D = (Id - B.S11 * A.S22).inverse();
-    const MatrixXcd F = (Id - A.S22 * B.S11).inverse();
-    SMatrix S;
-    S.S11 = A.S11 + A.S12 * D * B.S11 * A.S21;
-    S.S12 = A.S12 * D * B.S12;
-    S.S21 = B.S21 * F * A.S21;
-    S.S22 = B.S22 + B.S21 * F * A.S22 * B.S12;
-    return S;
-}
-
-// Scattering matrix of the interface between region "a" (above, modes Wa,Va)
-// and region "b" (below, modes Wb,Vb), with all amplitudes referenced at the
-// interface. Derived from continuity of the field (W) and companion (V):
-//   Wa(u_a+ + u_a-) = Wb(u_b+ + u_b-)
-//   Va(u_a+ - u_a-) = Vb(u_b+ - u_b-)
-SMatrix interface_smatrix(const MatrixXcd& Wa, const MatrixXcd& Va,
-                          const MatrixXcd& Wb, const MatrixXcd& Vb) {
-    const int n = Wa.rows();
-    // [ Wa  -Wb ] [u_a-]   [ -Wa   Wb ] [u_a+]
-    // [ Va   Vb ] [u_b+] = [  Va   Vb ] [u_b-]
-    MatrixXcd Mo(2 * n, 2 * n), Mi(2 * n, 2 * n);
-    Mo.block(0, 0, n, n) = Wa;
-    Mo.block(0, n, n, n) = -Wb;
-    Mo.block(n, 0, n, n) = Va;
-    Mo.block(n, n, n, n) = Vb;
-    Mi.block(0, 0, n, n) = -Wa;
-    Mi.block(0, n, n, n) = Wb;
-    Mi.block(n, 0, n, n) = Va;
-    Mi.block(n, n, n, n) = Vb;
-
-    MatrixXcd Sfull = Mo.partialPivLu().solve(Mi);  // outgoing = S * incoming
-    SMatrix s;
-    s.S11 = Sfull.block(0, 0, n, n);
-    s.S12 = Sfull.block(0, n, n, n);
-    s.S21 = Sfull.block(n, 0, n, n);
-    s.S22 = Sfull.block(n, n, n, n);
-    return s;
-}
-
-// Propagation across a layer with modal factor X (decaying both ways).
-SMatrix propagation_smatrix(const MatrixXcd& X) {
-    const int n = X.rows();
-    SMatrix s;
-    s.S11 = MatrixXcd::Zero(n, n);
-    s.S12 = X;
-    s.S21 = X;
-    s.S22 = MatrixXcd::Zero(n, n);
-    return s;
 }
 
 } // namespace
