@@ -40,6 +40,7 @@ add_library(celeris_core
     src/celeris/rcwa/rcwa1d.cpp
     src/celeris/rcwa/rcwa_stack1d.cpp
     src/celeris/rcwa/rcwa2d.cpp
+    src/celeris/design/metalens.cpp
 )
 target_include_directories(celeris_core PUBLIC src)
 target_link_libraries(celeris_core PUBLIC Eigen3::Eigen)

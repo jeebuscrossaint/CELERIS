@@ -2,6 +2,7 @@
 #include <print>
 #include <vector>
 
+#include "celeris/design/metalens.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
 #include "celeris/rcwa/rcwa1d.hpp"
@@ -240,5 +241,30 @@ int main() {
             std::println("        {:>6.2f}  {:>8.6f}  {:>10.1f}  {:>8.4f}", f,
                          r.sum_de, phase_deg, std::norm(r.tx0));
         }
+    }
+
+    // ---- Demo 9: end-to-end metalens design -------------------------------
+    // Build a phase library (sweep pillar size), then design a focusing lens
+    // and report how well the realized phase matches the ideal profile.
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        std::println("[9] Metalens design pipeline (TiO2 pillars, λ=532nm):");
+        std::println("    Building unit-cell library (sweeping pillar size)...");
+        auto lib = build_unit_cell_library(tio2, materials::air(),
+                                           materials::air(), materials::bk7(),
+                                           /*period=*/0.35, /*λ=*/0.532,
+                                           /*thickness=*/0.6, /*fill*/ 0.08, 0.92,
+                                           /*n_samples=*/18, /*M=*/6);
+        std::println("    Library: {} pillars, phase coverage = {:.0f}° "
+                     "(need ~360° for full control)",
+                     lib.fill.size(), lib.phase_span() * 180.0 / pi);
+
+        auto lens = design_metalens(lib, /*focal=*/50.0, /*diameter=*/20.0);
+        std::println("    Designed lens: {0}x{0} pillars, f=50µm, D=20µm",
+                     lens.n_cells);
+        std::println("    RMS phase error vs ideal = {:.1f}°  (lower = sharper "
+                     "focus)",
+                     lens.rms_phase_error_deg);
+        std::println("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
     }
 }
