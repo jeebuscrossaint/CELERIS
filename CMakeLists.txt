@@ -42,8 +42,9 @@ add_library(celeris_core
     src/celeris/rcwa/rcwa2d.cpp
     src/celeris/design/metalens.cpp
 )
+find_package(Threads REQUIRED)
 target_include_directories(celeris_core PUBLIC src)
-target_link_libraries(celeris_core PUBLIC Eigen3::Eigen)
+target_link_libraries(celeris_core PUBLIC Eigen3::Eigen Threads::Threads)
 # ---------------------------------------------------------------------------
 
 # --- celeris: demo / validation app -----------------------------------------

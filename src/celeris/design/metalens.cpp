@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
+#include <thread>
 
 namespace celeris {
 namespace {
@@ -49,17 +51,33 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
     lib.period_um = period_um;
     lib.wavelength_um = wavelength_um;
     lib.thickness_um = thickness_um;
+    lib.fill.resize(n_samples);
+    lib.phase.resize(n_samples);
+    lib.amplitude.resize(n_samples);
 
-    for (int i = 0; i < n_samples; ++i) {
+    // Each pillar size is an independent RCWA solve — embarrassingly parallel.
+    // Spread the samples across the hardware threads. (This same batch-over-
+    // geometries structure is exactly what the GPU port will parallelize next.)
+    auto solve_one = [&](int i) {
         double f = fill_min + (fill_max - fill_min) * i / (n_samples - 1);
         Rcwa2DStack cell{period_um, period_um,
                          {RectCell2D{pillar, background, f, f, thickness_um}}};
         auto r = solve_rcwa_2d(incident, cell, substrate, wavelength_um, 0.0,
                                0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
-        lib.fill.push_back(f);
-        lib.phase.push_back(std::arg(r.tx0));
-        lib.amplitude.push_back(std::abs(r.tx0));
+        lib.fill[i] = f;
+        lib.phase[i] = std::arg(r.tx0);
+        lib.amplitude[i] = std::abs(r.tx0);
+    };
+
+    unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+    int workers = std::min<int>(static_cast<int>(hw), n_samples);
+    std::vector<std::future<void>> jobs;
+    for (int w = 0; w < workers; ++w) {
+        jobs.push_back(std::async(std::launch::async, [&, w] {
+            for (int i = w; i < n_samples; i += workers) solve_one(i);
+        }));
     }
+    for (auto& j : jobs) j.get();
     return lib;
 }
 
