@@ -22,6 +22,12 @@ struct BinaryGrating1D {
     //   ε_0 = fill·ε_r + (1−fill)·ε_g
     //   ε_h = (ε_r − ε_g) · sin(π h fill) / (π h),  h ≠ 0
     cdouble eps_fourier(int h, double wavelength_um) const;
+
+    // h-th Fourier coefficient of the RECIPROCAL permittivity 1/ε(x). TM
+    // polarization needs this (Li's inverse rule): the Toeplitz matrix built
+    // from these coefficients, not the matrix inverse of [ε], is what makes
+    // TM converge. Same binary form as eps_fourier with ε → 1/ε.
+    cdouble eps_inv_fourier(int h, double wavelength_um) const;
 };
 
 } // namespace celeris

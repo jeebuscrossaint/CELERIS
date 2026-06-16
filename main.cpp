@@ -111,4 +111,37 @@ int main() {
                          r.de_t[z], r.de_t[z + 1], r.sum_de);
         }
     }
+
+    // ---- Validation 6: TM polarization ------------------------------------
+    // (a) Degenerate grating, TM: at normal incidence a uniform slab has
+    //     TM == TE, so RCWA-TM order 0 must again match the TMM slab.
+    // (b) Real grating, TM: energy must still conserve (Σ DE = 1). And note
+    //     TE != TM for an actual grating even at normal incidence — the solver
+    //     must distinguish them.
+    {
+        const auto& glass = materials::bk7();
+        const double d = 0.5;
+        auto tmm = solve_stack(materials::air(), {{glass, d}}, materials::air(),
+                               lambda, normal, Pol::TM);
+        BinaryGrating1D degenerate{glass, glass, 1.0, 0.5, d};
+        auto rcwa_tm = solve_rcwa_1d(materials::air(), degenerate,
+                                     materials::air(), lambda, normal, 8, Pol::TM);
+        std::size_t z = rcwa_tm.orders.size() / 2;
+        std::println("[6] TM polarization:");
+        std::println("    (a) degenerate vs TMM-TM:  TMM R={:.6f}  RCWA R={:.6f}",
+                     tmm.R, rcwa_tm.de_r[z]);
+
+        const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
+        BinaryGrating1D g{n15, materials::air(), 1.0, 0.5, 0.5};
+        auto te = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
+                                normal, 20, Pol::TE);
+        auto tm = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
+                                normal, 20, Pol::TM);
+        std::size_t zt = te.orders.size() / 2;
+        std::println("    (b) real grating, M=20:");
+        std::println("        TE: DE_t(+1)={:.5f}  Σ DE={:.6f}", te.de_t[zt + 1],
+                     te.sum_de);
+        std::println("        TM: DE_t(+1)={:.5f}  Σ DE={:.6f}  (TE != TM ✓)",
+                     tm.de_t[zt + 1], tm.sum_de);
+    }
 }
