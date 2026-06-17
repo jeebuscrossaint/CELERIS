@@ -11,8 +11,9 @@
 
 namespace celeris::materials {
 
-const Material& air();           // n = 1 exactly
-const Material& bk7();           // Schott N-BK7 borosilicate crown glass (Sellmeier)
-const Material& fused_silica();  // Fused silica SiO2 (Malitson 1965 Sellmeier)
+const Material& air();             // n = 1 exactly
+const Material& bk7();             // Schott N-BK7 borosilicate crown glass (Sellmeier)
+const Material& fused_silica();    // Fused silica SiO2 (Malitson 1965 Sellmeier)
+const Material& silicon_nitride(); // Si3N4 LPCVD (Luke et al. 2015 Sellmeier)
 
 } // namespace celeris::materials

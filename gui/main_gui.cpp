@@ -50,8 +50,34 @@ struct Params {
     float focal = 50, diameter = 20, wavelength = 0.532f, period = 0.35f;
     float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
     int harmonics = 6, fill_samples = 18;
+    int pillar_mat = 3;     // index into kPillarMats (default: TiO2 approx)
+    int substrate_mat = 0;  // 0 = N-BK7, 1 = air, 2 = fused silica
     std::vector<LayerRow> extra_layers;  // stacked above the pillars (cap/AR…)
 };
+
+const char* kPillarMats[] = {"Custom (constant n)", "Silicon nitride (Si3N4)",
+                             "Fused silica (SiO2)",  "TiO2 (approx n=2.40)",
+                             "a-Si (approx n=3.50)", "GaN (approx n=2.35)"};
+const char* kSubstrates[] = {"N-BK7", "Air", "Fused silica (SiO2)"};
+
+Material make_pillar(const Params& p) {
+    switch (p.pillar_mat) {
+        case 1: return materials::silicon_nitride();
+        case 2: return materials::fused_silica();
+        case 3: return Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        case 4: return Material::constant(cdouble{3.50, 0.0}, "a-Si~");
+        case 5: return Material::constant(cdouble{2.35, 0.0}, "GaN~");
+        default: return Material::constant(cdouble{p.pillar_n, 0.0}, "custom");
+    }
+}
+
+const Material& make_substrate(const Params& p) {
+    switch (p.substrate_mat) {
+        case 1: return materials::air();
+        case 2: return materials::fused_silica();
+        default: return materials::bk7();
+    }
+}
 
 struct Results {
     double strehl = 0, fwhm = 0, dl = 0, encircled = 0, rms = 0, meanT = 0;
@@ -147,11 +173,10 @@ void run_design(Params p) {
             Material::constant(cdouble{L.n, 0.0}, "layer"), materials::air(),
             L.fill, L.fill, L.thickness});
     const int active = static_cast<int>(stack.layers.size());
-    stack.layers.push_back(RectCell2D{
-        Material::constant(cdouble{p.pillar_n, 0.0}, "pillar"), materials::air(),
-        0.5, 0.5, p.thickness});
+    stack.layers.push_back(RectCell2D{make_pillar(p), materials::air(),
+                                      0.5, 0.5, p.thickness});
     auto lib = build_unit_cell_library_stack(stack, active, materials::air(),
-                                             materials::bk7(), p.wavelength, 0.08,
+                                             make_substrate(p), p.wavelength, 0.08,
                                              0.92, p.fill_samples, p.harmonics);
     set_phase("Assembling lens (phase profile -> pillar map)...", 0.45f);
     auto lens = design_metalens(lib, p.focal, p.diameter);
@@ -226,9 +251,8 @@ void run_fov() {
 void run_optimize(Params p) {
     g_running = true;
     set_phase("Optimizing design (period x height search)...", 0.0f);
-    const auto pillar = Material::constant(cdouble{p.pillar_n, 0.0}, "pillar");
     auto res = optimize_system(
-        pillar, materials::air(), materials::air(), materials::bk7(), p.focal,
+        make_pillar(p), materials::air(), materials::air(), make_substrate(p), p.focal,
         p.diameter, p.wavelength, 0.20, 0.45, 0.30, 1.00, /*grid=*/5, /*M=*/5,
         /*fill_samples=*/12, /*efficiency_weight=*/0.3,
         [](float fr) { set_phase("Optimizing design (period x height search)...", fr); });
@@ -458,11 +482,16 @@ int main() {
                     fld("Wavelength (um)");   ImGui::InputFloat("##w", &params.wavelength, 0, 0, "%.3f");
                     fld("Period (um)");       ImGui::InputFloat("##p", &params.period, 0, 0, "%.3f");
                     fld("Pillar height (um)");ImGui::InputFloat("##h", &params.thickness, 0, 0, "%.2f");
-                    fld("Pillar index n");    ImGui::InputFloat("##n", &params.pillar_n, 0, 0, "%.2f");
+                    fld("Pillar material");   ImGui::Combo("##pmat", &params.pillar_mat, kPillarMats, IM_ARRAYSIZE(kPillarMats));
+                    fld("  index n (custom)");ImGui::InputFloat("##n", &params.pillar_n, 0, 0, "%.2f");
+                    fld("Substrate");         ImGui::Combo("##sub", &params.substrate_mat, kSubstrates, IM_ARRAYSIZE(kSubstrates));
                     fld("RCWA harmonics");    ImGui::InputInt("##m", &params.harmonics);
                     fld("Library samples");   ImGui::InputInt("##s", &params.fill_samples);
                     ImGui::EndTable();
                 }
+                ImGui::TextDisabled("pillar n(%.3fum) = %.3f + %.3fi", params.wavelength,
+                                    make_pillar(params).index(params.wavelength).real(),
+                                    make_pillar(params).index(params.wavelength).imag());
                 ImGui::Spacing();
                 if (running) ImGui::BeginDisabled();
                 if (ImGui::Button("Run Design  (F5)", ImVec2(-FLT_MIN, 30))) launch_design();

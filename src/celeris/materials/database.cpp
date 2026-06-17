@@ -17,6 +17,16 @@ const Material& bk7() {
     return m;
 }
 
+const Material& silicon_nitride() {
+    // Si3N4 (stoichiometric LPCVD), Luke et al., Opt. Lett. 40, 4823 (2015).
+    // n^2 = 1 + 3.0249 l^2/(l^2 - 0.1353406^2) + 40314 l^2/(l^2 - 1239.842^2).
+    static const Material m = Material::sellmeier(
+        {{3.0249, 0.1353406 * 0.1353406},
+         {40314.0, 1239.842 * 1239.842}},
+        "Si3N4");
+    return m;
+}
+
 const Material& fused_silica() {
     // Malitson 1965 for fused silica. C_i are the squares of the published
     // resonance wavelengths (µm²): 0.0684043², 0.1162414², 9.896161².
