@@ -12,6 +12,7 @@
 #endif
 
 #include "celeris/design/metalens.hpp"
+#include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
@@ -285,6 +286,27 @@ int main() {
                      "({})",
                      gds, written, read_back,
                      (written == read_back && written > 0) ? "valid ✓" : "MISMATCH");
+    }
+
+    // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
+    // Instead of looking a pillar up from the discrete library, SOLVE for the
+    // geometry hitting a target phase with maximum transmission.
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        const double target_deg = 90.0;
+        PillarTarget tgt{0.532, target_deg * pi / 180.0, /*amplitude_weight=*/1.0};
+        std::println("[11] Inverse design: optimize pillar for {:.0f}° phase "
+                     "@532nm (max transmission):", target_deg);
+        auto opt = optimize_pillar(tio2, materials::air(), materials::air(),
+                                   materials::bk7(), /*period=*/0.35, tgt,
+                                   /*M=*/5, /*fill0=*/0.50, /*thickness0=*/0.50,
+                                   /*max_iters=*/25);
+        std::println("    converged geometry: fill={:.3f}, thickness={:.3f} µm",
+                     opt.fill, opt.thickness_um);
+        std::println("    achieved phase = {:.1f}°  (target {:.0f}°),  |t| = "
+                     "{:.3f},  loss = {:.2e}",
+                     opt.achieved_phase_rad * 180.0 / pi, target_deg,
+                     opt.achieved_amplitude, opt.loss);
     }
 
 #ifdef CELERIS_USE_CUDA

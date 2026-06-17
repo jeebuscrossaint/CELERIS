@@ -41,6 +41,7 @@ add_library(celeris_core
     src/celeris/rcwa/rcwa_stack1d.cpp
     src/celeris/rcwa/rcwa2d.cpp
     src/celeris/design/metalens.cpp
+    src/celeris/design/optimize.cpp
     src/celeris/io/gds.cpp
 )
 find_package(Threads REQUIRED)
