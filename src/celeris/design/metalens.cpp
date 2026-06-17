@@ -53,6 +53,47 @@ int UnitCellLibrary::lookup_weighted(double target_phase_rad,
     return best;
 }
 
+UnitCellLibrary build_unit_cell_library_stack(Rcwa2DStack stack, int active_layer,
+                                              const Material& incident,
+                                              const Material& substrate,
+                                              double wavelength_um, double fill_min,
+                                              double fill_max, int n_samples, int M) {
+    UnitCellLibrary lib;
+    lib.period_um = stack.period_x_um;
+    lib.wavelength_um = wavelength_um;
+    lib.thickness_um =
+        (active_layer >= 0 && active_layer < static_cast<int>(stack.layers.size()))
+            ? stack.layers[active_layer].thickness_um
+            : 0.0;
+    lib.fill.resize(n_samples);
+    lib.phase.resize(n_samples);
+    lib.amplitude.resize(n_samples);
+
+    auto solve_one = [&](int i) {
+        double f = fill_min + (fill_max - fill_min) * i / (n_samples - 1);
+        Rcwa2DStack s = stack;  // private copy, set the active layer's fill
+        if (active_layer >= 0 && active_layer < static_cast<int>(s.layers.size())) {
+            s.layers[active_layer].fill_x = f;
+            s.layers[active_layer].fill_y = f;
+        }
+        auto r = solve_rcwa_2d(incident, s, substrate, wavelength_um, 0.0, 0.0,
+                               1.0, 0.0, M, M);
+        lib.fill[i] = f;
+        lib.phase[i] = std::arg(r.tx0);
+        lib.amplitude[i] = std::abs(r.tx0);
+    };
+
+    unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+    int workers = std::min<int>(static_cast<int>(hw), n_samples);
+    std::vector<std::future<void>> jobs;
+    for (int w = 0; w < workers; ++w)
+        jobs.push_back(std::async(std::launch::async, [&, w] {
+            for (int i = w; i < n_samples; i += workers) solve_one(i);
+        }));
+    for (auto& j : jobs) j.get();
+    return lib;
+}
+
 cdouble UnitCellLibrary::transmission_for_fill(double f) const {
     int best = 0;
     double best_d = std::abs(fill[0] - f);

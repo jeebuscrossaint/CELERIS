@@ -40,10 +40,17 @@ using namespace celeris;
 
 namespace {
 
+struct LayerRow {  // an extra (unpatterned by default) layer above the pillars
+    float n = 1.46f;       // refractive index
+    float fill = 1.0f;     // 1.0 = uniform film; <1 = a square patch
+    float thickness = 0.1f;
+};
+
 struct Params {
     float focal = 50, diameter = 20, wavelength = 0.532f, period = 0.35f;
-    float thickness = 0.6f, pillar_n = 2.4f;
+    float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
     int harmonics = 6, fill_samples = 18;
+    std::vector<LayerRow> extra_layers;  // stacked above the pillars (cap/AR…)
 };
 
 struct Results {
@@ -131,11 +138,21 @@ void set_phase(const char* msg, float progress) {
 void run_design(Params p) {
     g_running = true;
     set_phase("Building unit-cell library (RCWA sweep)...", 0.05f);
-    const auto pillar = Material::constant(cdouble{p.pillar_n, 0.0}, "pillar");
-    auto lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
-                                       materials::bk7(), p.period, p.wavelength,
-                                       p.thickness, 0.08, 0.92, p.fill_samples,
-                                       p.harmonics);
+    // Assemble the unit-cell stack: extra layers (caps/AR coatings) above the
+    // patterned pillar layer, which is the active (fill-swept) layer.
+    Rcwa2DStack stack;
+    stack.period_x_um = stack.period_y_um = p.period;
+    for (const auto& L : p.extra_layers)
+        stack.layers.push_back(RectCell2D{
+            Material::constant(cdouble{L.n, 0.0}, "layer"), materials::air(),
+            L.fill, L.fill, L.thickness});
+    const int active = static_cast<int>(stack.layers.size());
+    stack.layers.push_back(RectCell2D{
+        Material::constant(cdouble{p.pillar_n, 0.0}, "pillar"), materials::air(),
+        0.5, 0.5, p.thickness});
+    auto lib = build_unit_cell_library_stack(stack, active, materials::air(),
+                                             materials::bk7(), p.wavelength, 0.08,
+                                             0.92, p.fill_samples, p.harmonics);
     set_phase("Assembling lens (phase profile -> pillar map)...", 0.45f);
     auto lens = design_metalens(lib, p.focal, p.diameter);
     set_phase("Analyzing focus (Rayleigh-Sommerfeld)...", 0.55f);
@@ -340,7 +357,7 @@ int main() {
         static bool show_about = false;
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
-                    win_wf = true, win_mtf = true, win_tf = true;
+                    win_wf = true, win_mtf = true, win_tf = true, win_stack = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -359,6 +376,7 @@ int main() {
             }
             if (ImGui::BeginMenu("View")) {
                 ImGui::MenuItem("Lens Data", nullptr, &win_lens);
+                ImGui::MenuItem("Layer Stack", nullptr, &win_stack);
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
@@ -405,6 +423,7 @@ int main() {
             ImGuiID ctr;
             ImGuiID ctl = ImGui::DockBuilderSplitNode(ctop, ImGuiDir_Left, 0.5f, nullptr, &ctr);
             ImGui::DockBuilderDockWindow("Lens Data", left);
+            ImGui::DockBuilderDockWindow("Layer Stack", left);
             ImGui::DockBuilderDockWindow("Design Summary", ctl);
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
@@ -474,6 +493,39 @@ int main() {
                 if (ImGui::Button("Run Field of View", ImVec2(-FLT_MIN, 0)))
                     std::thread(run_fov).detach();
                 if (!can_act) ImGui::EndDisabled();
+            }
+            ImGui::End();
+        }
+
+        // ---- Layer Stack (editable system model) ----
+        if (win_stack) {
+            if (ImGui::Begin("Layer Stack", &win_stack)) {
+                ImGui::TextWrapped(
+                    "Unit-cell stack, top to bottom. Extra layers (caps / AR "
+                    "coatings) sit above the patterned pillar layer.");
+                ImGui::Spacing();
+                ImGui::TextUnformatted("  incident: air");
+                int del = -1;
+                for (int i = 0; i < static_cast<int>(params.extra_layers.size()); ++i) {
+                    ImGui::PushID(i);
+                    LayerRow& L = params.extra_layers[i];
+                    ImGui::Text("Layer %d", i + 1); ImGui::SameLine();
+                    ImGui::SetNextItemWidth(70); ImGui::InputFloat("n", &L.n, 0, 0, "%.2f"); ImGui::SameLine();
+                    ImGui::SetNextItemWidth(70); ImGui::InputFloat("fill", &L.fill, 0, 0, "%.2f"); ImGui::SameLine();
+                    ImGui::SetNextItemWidth(80); ImGui::InputFloat("h(um)", &L.thickness, 0, 0, "%.2f"); ImGui::SameLine();
+                    if (ImGui::SmallButton("x")) del = i;
+                    ImGui::PopID();
+                }
+                if (del >= 0) params.extra_layers.erase(params.extra_layers.begin() + del);
+                if (ImGui::Button("Add layer"))
+                    params.extra_layers.push_back(LayerRow{});
+                ImGui::Separator();
+                ImGui::Text("  >> patterned pillars: n=%.2f  h=%.2f um  (fill swept)",
+                            params.pillar_n, params.thickness);
+                ImGui::TextUnformatted("  substrate: N-BK7");
+                ImGui::Spacing();
+                ImGui::TextDisabled("fill = 1.0 -> uniform film; <1 -> square patch. "
+                                    "Press F5 to rebuild.");
             }
             ImGui::End();
         }

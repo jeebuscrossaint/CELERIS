@@ -11,6 +11,7 @@
 //      the residual phase error (design fidelity).
 
 #include "celeris/materials/material.hpp"
+#include "celeris/rcwa/rcwa2d.hpp"
 
 #include <vector>
 
@@ -44,6 +45,16 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
                                         double period_um, double wavelength_um,
                                         double thickness_um, double fill_min,
                                         double fill_max, int n_samples, int M);
+
+// Multi-layer "system" path: the unit cell is a STACK; the phase library is
+// built by sweeping the fill of layer `active_layer` through the whole stack
+// (caps / AR coatings / spacers included). Returns the same UnitCellLibrary
+// the rest of the pipeline consumes.
+UnitCellLibrary build_unit_cell_library_stack(Rcwa2DStack stack, int active_layer,
+                                              const Material& incident,
+                                              const Material& substrate,
+                                              double wavelength_um, double fill_min,
+                                              double fill_max, int n_samples, int M);
 
 struct MetalensDesign {
     int n_cells;             // cells across the (square) aperture
