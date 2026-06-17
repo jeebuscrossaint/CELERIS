@@ -11,6 +11,7 @@
 #include "celeris/cuda/eigensolve.hpp"
 #endif
 
+#include "celeris/analysis/focal.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
@@ -286,6 +287,16 @@ int main() {
                      "({})",
                      gds, written, read_back,
                      (written == read_back && written > 0) ? "valid ✓" : "MISMATCH");
+
+        // Does it actually focus? Propagate to the focal plane and measure.
+        auto foc = analyze_focus(lens, lib, /*f=*/50.0, /*λ=*/0.532, /*D=*/20.0);
+        std::println("    Focal performance:");
+        std::println("      Strehl ratio   = {:.3f}  (1.0 = perfect)", foc.strehl);
+        std::println("      spot FWHM      = {:.2f} µm  (diffraction limit "
+                     "λf/D = {:.2f} µm)",
+                     foc.fwhm_um, foc.diffraction_limit_um);
+        std::println("      encircled E    = {:.1f}% within first Airy null",
+                     foc.encircled_energy * 100.0);
     }
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------

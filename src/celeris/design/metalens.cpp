@@ -40,6 +40,16 @@ int UnitCellLibrary::lookup(double target_phase_rad) const {
     return best;
 }
 
+cdouble UnitCellLibrary::transmission_for_fill(double f) const {
+    int best = 0;
+    double best_d = std::abs(fill[0] - f);
+    for (int i = 1; i < static_cast<int>(fill.size()); ++i) {
+        double d = std::abs(fill[i] - f);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return std::polar(amplitude[best], phase[best]);
+}
+
 UnitCellLibrary build_unit_cell_library(const Material& pillar,
                                         const Material& background,
                                         const Material& incident,

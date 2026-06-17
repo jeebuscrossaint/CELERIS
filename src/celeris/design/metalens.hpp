@@ -28,6 +28,8 @@ struct UnitCellLibrary {
     double phase_span() const;
     // Index of the library entry whose phase best matches target (circularly).
     int lookup(double target_phase_rad) const;
+    // Complex transmission t = |t|·e^{iφ} of the sampled pillar nearest `fill`.
+    cdouble transmission_for_fill(double fill) const;
 };
 
 // Build a library by sweeping square-pillar fill from fill_min..fill_max.
