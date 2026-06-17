@@ -12,6 +12,7 @@
 #endif
 
 #include "celeris/design/metalens.hpp"
+#include "celeris/io/gds.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
 #include "celeris/rcwa/rcwa1d.hpp"
@@ -275,6 +276,15 @@ int main() {
                      "focus)",
                      lens.rms_phase_error_deg);
         std::println("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
+
+        // Export the fabrication file and validate it round-trips.
+        const std::string gds = "metalens.gds";
+        int written = write_metalens_gds(lens, gds, /*layer=*/1, /*min_fill=*/0.05);
+        int read_back = gds_count_boundaries(gds);
+        std::println("    GDSII export -> {}: {} pillars written, {} read back "
+                     "({})",
+                     gds, written, read_back,
+                     (written == read_back && written > 0) ? "valid ✓" : "MISMATCH");
     }
 
 #ifdef CELERIS_USE_CUDA
