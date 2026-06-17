@@ -43,6 +43,7 @@ add_library(celeris_core
     src/celeris/design/metalens.cpp
     src/celeris/design/optimize.cpp
     src/celeris/design/system_opt.cpp
+    src/celeris/design/polar_metalens.cpp
     src/celeris/analysis/focal.cpp
     src/celeris/analysis/chromatic.cpp
     src/celeris/analysis/tolerance.cpp

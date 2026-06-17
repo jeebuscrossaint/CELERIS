@@ -37,6 +37,15 @@ GdsLayout read_gds(const std::string& path);
 int write_metalens_gds(const MetalensDesign& lens, const std::string& path,
                        int layer = 1, double min_fill = 0.05);
 
+// Write a rectangular-pillar layout (independent x/y widths per cell, e.g. a
+// polarization-multiplexed design). fill_x/fill_y are n_cells^2 row-major; each
+// cell with max(fill) >= min_fill becomes a rectangle of size fill_x*period by
+// fill_y*period. Returns the number of pillars written, or -1 on error.
+int write_rect_gds(const std::string& path, int n_cells, double period_um,
+                   const std::vector<double>& fill_x,
+                   const std::vector<double>& fill_y, int layer = 1,
+                   double min_fill = 0.05);
+
 // Re-read a GDSII file and count BOUNDARY (polygon) records. Used to validate
 // that an exported file is well-formed and has the expected element count.
 // Returns -1 on error.

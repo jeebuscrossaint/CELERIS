@@ -208,6 +208,53 @@ GdsLayout read_gds(const std::string& path) {
     return out;
 }
 
+int write_rect_gds(const std::string& path, int n_cells, double period_um,
+                   const std::vector<double>& fill_x,
+                   const std::vector<double>& fill_y, int layer, double min_fill) {
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return -1;
+    record(f, HEADER, INT16, i16(600));
+    record(f, BGNLIB, INT16, timestamps());
+    record(f, LIBNAME, ASCII, ascii("CELERIS"));
+    { std::vector<uint8_t> u; put_real8(u, 1e-3); put_real8(u, 1e-9);
+      record(f, UNITS, REAL8, u); }
+    record(f, BGNSTR, INT16, timestamps());
+    record(f, STRNAME, ASCII, ascii("METALENS"));
+
+    const double center = (n_cells - 1) / 2.0;
+    const double to_db = 1000.0;  // microns -> db units (nm)
+    int count = 0;
+    for (int iy = 0; iy < n_cells; ++iy)
+        for (int ix = 0; ix < n_cells; ++ix) {
+            std::size_t off = static_cast<std::size_t>(iy) * n_cells + ix;
+            double fx = fill_x[off], fy = fill_y[off];
+            if (fx < min_fill && fy < min_fill) continue;
+            const double cx = (ix - center) * period_um;
+            const double cy = (iy - center) * period_um;
+            const double hx = 0.5 * fx * period_um;
+            const double hy = 0.5 * fy * period_um;
+            const int32_t x0 = static_cast<int32_t>(std::lround((cx - hx) * to_db));
+            const int32_t x1 = static_cast<int32_t>(std::lround((cx + hx) * to_db));
+            const int32_t y0 = static_cast<int32_t>(std::lround((cy - hy) * to_db));
+            const int32_t y1 = static_cast<int32_t>(std::lround((cy + hy) * to_db));
+            record(f, BOUNDARY, NODATA, {});
+            record(f, LAYER, INT16, i16(static_cast<int16_t>(layer)));
+            record(f, DATATYPE, INT16, i16(0));
+            std::vector<uint8_t> xy;
+            put32(xy, x0); put32(xy, y0);
+            put32(xy, x1); put32(xy, y0);
+            put32(xy, x1); put32(xy, y1);
+            put32(xy, x0); put32(xy, y1);
+            put32(xy, x0); put32(xy, y0);
+            record(f, XY, INT32, xy);
+            record(f, ENDEL, NODATA, {});
+            ++count;
+        }
+    record(f, ENDSTR, NODATA, {});
+    record(f, ENDLIB, NODATA, {});
+    return f.good() ? count : -1;
+}
+
 int gds_count_boundaries(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return -1;

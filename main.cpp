@@ -29,6 +29,7 @@
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
+#include "celeris/design/polar_metalens.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/io/image.hpp"
 #include "celeris/io/material_csv.hpp"
@@ -639,6 +640,44 @@ int cmd_birefringence(int argc, char** argv) {
     return 0;
 }
 
+// celeris polardesign: a polarization-multiplexed metalens -- x-polarized light
+// focuses at one distance, y-polarized at another -- built on the rectangular-
+// pillar (fill_x, fill_y) library. Writes a rectangular-pillar GDS.
+int cmd_polardesign(int argc, char** argv) {
+    const double focal_x = std::atof(arg_value(argc, argv, "--focal-x", "50"));
+    const double focal_y = std::atof(arg_value(argc, argv, "--focal-y", "80"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "20"));
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--samples", "12"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const std::string out = arg_value(argc, argv, "--out", "polar_metalens.gds");
+    const Material pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    std::println("CELERIS polarization-multiplexed metalens");
+    std::println("  focal_x(X-pol)={}um  focal_y(Y-pol)={}um  D={}um  lambda={}um",
+                 focal_x, focal_y, diameter, lambda);
+    std::println("  building (fill_x, fill_y) library ({0}x{0} = {1} pillars, "
+                 "2 solves each)...", samples, samples * samples);
+
+    auto lib = build_polarization_library(pillar, materials::air(), materials::air(),
+                                          materials::bk7(), period, lambda,
+                                          thickness, 0.10, 0.90, samples, M);
+    auto d = design_polarization_metalens(lib, focal_x, focal_y, diameter);
+    std::println("  designed {0}x{0} rectangular pillars", d.n_cells);
+    std::println("  X-pol: RMS phase error {:.1f} deg, mean |t| {:.3f}",
+                 d.rms_phase_error_x_deg, d.mean_amp_x);
+    std::println("  Y-pol: RMS phase error {:.1f} deg, mean |t| {:.3f}",
+                 d.rms_phase_error_y_deg, d.mean_amp_y);
+
+    int np = write_rect_gds(out, d.n_cells, d.period_um, d.fill_x, d.fill_y);
+    if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
+    std::println("  wrote {} rectangular pillars -> {}", np, out);
+    return 0;
+}
+
 void print_help() {
     std::println(
         "CELERIS — GPU-ready metalens design via rigorous coupled-wave analysis\n"
@@ -669,7 +708,12 @@ void print_help() {
         "celeris birefringence [--fill-y 0.5] [--period --wavelength --thickness\n"
         "                       --pillar-n --samples --harmonics]\n"
         "  sweep a rectangular pillar's x-width; report x/y-polarized phase and\n"
-        "  retardance (the polarization-optics / waveplate building block)");
+        "  retardance (the polarization-optics / waveplate building block)\n"
+        "\n"
+        "celeris polardesign [--focal-x 50] [--focal-y 80] [--diameter --wavelength\n"
+        "                    --period --thickness --pillar-n --samples --out]\n"
+        "  polarization-multiplexed lens: X-pol and Y-pol focus at different\n"
+        "  distances; writes a rectangular-pillar GDS");
 }
 
 } // namespace
@@ -845,6 +889,7 @@ int main(int argc, char** argv) {
     if (cmd == "selftest") return run_selftest();
     if (cmd == "design") return cmd_design(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);
+    if (cmd == "polardesign") return cmd_polardesign(argc, argv);
 #ifdef CELERIS_USE_CUDA
     if (cmd == "gpubench") return run_gpubench(argc, argv);
 #endif
