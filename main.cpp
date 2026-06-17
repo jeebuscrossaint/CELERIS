@@ -1,5 +1,7 @@
 #include <cmath>
 #include <cstdlib>
+#include <format>
+#include <fstream>
 #include <print>
 #include <string>
 #include <vector>
@@ -21,7 +23,9 @@
 #include "celeris/analysis/chromatic.hpp"
 #include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
+#include "celeris/analysis/throughfocus.hpp"
 #include "celeris/analysis/tolerance.hpp"
+#include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
@@ -555,6 +559,47 @@ int cmd_design(int argc, char** argv) {
         else
             std::println("  ERROR: could not write {}", psf_path);
     }
+
+    // --report <prefix>: write a full deliverable bundle (metrics txt + PSF and
+    // caustic images + GDS), the same artifacts the GUI's Save Report produces.
+    const char* report_prefix = arg_value(argc, argv, "--report", nullptr);
+    if (report_prefix) {
+        std::string base = report_prefix;
+        const double dl = lambda * focal / diameter;
+        auto wf = analyze_wavefront(lens, lib, focal, lambda, diameter);
+        auto tf = analyze_through_focus(lens, lib, focal, lambda, diameter);
+        auto psf = compute_psf(lens, lib, focal, lambda, diameter, 201,
+                               std::max(5.0 * dl, 4.0));
+        std::ofstream f(base + "_report.txt");
+        bool okall = static_cast<bool>(f);
+        if (f) {
+            f << "CELERIS metalens design report\n==============================\n\n";
+            f << std::format("focal length      : {} um\n", focal);
+            f << std::format("aperture diameter : {} um\n", diameter);
+            f << std::format("wavelength        : {} um\n", lambda);
+            f << std::format("period            : {} um\n", period);
+            f << std::format("pillar height     : {} um\n\n", thickness);
+            f << std::format("array             : {0} x {0} ({1} pillars)\n",
+                             lens.n_cells, lens.n_cells * lens.n_cells);
+            f << std::format("phase coverage    : {:.0f} deg\n", lib.phase_span() * 180.0 / pi);
+            f << std::format("RMS phase error   : {:.1f} deg\n", lens.rms_phase_error_deg);
+            f << std::format("mean transmission : {:.3f}\n\n", lens.mean_amplitude);
+            f << std::format("Strehl ratio      : {:.3f}\n", foc.strehl);
+            f << std::format("spot FWHM         : {:.3f} um\n", foc.fwhm_um);
+            f << std::format("diffraction limit : {:.3f} um\n", foc.diffraction_limit_um);
+            f << std::format("encircled energy  : {:.1f} %\n", foc.encircled_energy * 100.0);
+            f << std::format("wavefront RMS     : {:.4f} waves\n", wf.rms_waves);
+            f << std::format("depth of focus    : {:.2f} um\n", tf.dof_um);
+        }
+        okall &= write_pgm(base + "_psf.pgm", psf.n, psf.n, psf.intensity, 2.2);
+        if (!tf.caustic.empty()) {
+            std::vector<double> cd(tf.caustic.begin(), tf.caustic.end());
+            okall &= write_pgm(base + "_caustic.pgm", tf.caustic_nx, tf.caustic_nz, cd, 1.6);
+        }
+        okall &= (write_metalens_gds(lens, base + "_layout.gds") >= 0);
+        std::println("  report bundle -> {0}_report.txt (+ _psf.pgm, _caustic.pgm, "
+                     "_layout.gds)  ok={1}", base, okall);
+    }
     return 0;
 }
 
@@ -581,7 +626,9 @@ void print_help() {
         "  --out <metalens.gds>   output GDSII path\n"
         "  --tolerance            Monte-Carlo fabrication-error / yield analysis\n"
         "  --fov                  off-axis field-of-view analysis\n"
-        "  --psf <file.pgm>       write the focal-spot image (PGM)");
+        "  --psf <file.pgm>       write the focal-spot image (PGM)\n"
+        "  --report <prefix>      write a full deliverable bundle (txt metrics +\n"
+        "                         PSF & caustic images + GDS)");
 }
 
 } // namespace

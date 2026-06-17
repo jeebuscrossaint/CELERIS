@@ -1,0 +1,23 @@
+CELERIS metalens design report
+==============================
+
+focal length      : 50 um
+aperture diameter : 20 um
+wavelength        : 0.532 um
+period            : 0.35 um
+pillar height     : 0.6 um
+pillar material   : TiO2 (approx n=2.40)
+substrate         : N-BK7
+
+array             : 57 x 57 (3249 pillars)
+numerical aperture: 0.196
+phase coverage    : 309 deg
+RMS phase error   : 12.3 deg
+mean transmission : 0.762
+
+Strehl ratio      : 0.552
+spot FWHM         : 1.330 um
+diffraction limit : 1.330 um
+encircled energy  : 86.0 %
+wavefront RMS     : 0.0345 waves
+depth of focus    : 21.09 um
