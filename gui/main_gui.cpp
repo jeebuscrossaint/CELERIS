@@ -648,7 +648,7 @@ int main() {
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
                     win_mats = true, win_layout = true, win_spot = true,
-                    win_gds = true, win_polar = true;
+                    win_gds = true, win_polar = true, win_lib = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -675,6 +675,7 @@ int main() {
                 ImGui::MenuItem("Layer Stack", nullptr, &win_stack);
                 ImGui::MenuItem("Materials", nullptr, &win_mats);
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
+                ImGui::MenuItem("Unit-Cell Library", nullptr, &win_lib);
                 ImGui::MenuItem("Lens Layout", nullptr, &win_layout);
                 ImGui::MenuItem("GDS Layout", nullptr, &win_gds);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
@@ -759,6 +760,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Materials", left);
             ImGui::DockBuilderDockWindow("Design Summary", ctl);
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
+            ImGui::DockBuilderDockWindow("Unit-Cell Library", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
             ImGui::DockBuilderDockWindow("Lens Layout", ctr);
             ImGui::DockBuilderDockWindow("GDS Layout", ctr);
@@ -978,6 +980,42 @@ int main() {
                     }
                 }
                 ImGui::Text("Loaded CSV: %s", g_loaded_name.c_str());
+            }
+            ImGui::End();
+        }
+
+        // ---- Unit-Cell Library (meta-atom design space) ----
+        if (win_lib) {
+            if (ImGui::Begin("Unit-Cell Library", &win_lib)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    const auto& lib = g_res.lib;
+                    int ns = static_cast<int>(lib.fill.size());
+                    if (ns < 2) ImGui::TextDisabled("No library data.");
+                    else {
+                        std::vector<float> ph(ns), am(ns);
+                        for (int i = 0; i < ns; ++i) {
+                            ph[i] = static_cast<float>(lib.phase[i] * 180.0 / 3.14159265358979);
+                            am[i] = static_cast<float>(lib.amplitude[i]);
+                        }
+                        ImGui::Text("Phase coverage: %.0f deg  (need ~360 for full 2pi control)",
+                                    g_res.coverage_deg);
+                        if (g_res.coverage_deg < 300.0)
+                            ImGui::TextColored(rgb(190, 40, 40),
+                                "limited coverage -> taller pillars or higher index for full 2pi");
+                        ImGui::PlotLines("##phfill", ph.data(), ns, 0,
+                                         "imparted phase (deg) vs fill", -180.0f, 180.0f,
+                                         ImVec2(-FLT_MIN, 110));
+                        ImGui::PlotLines("##amfill", am.data(), ns, 0,
+                                         "transmission |t| vs fill", 0.0f, 1.0f,
+                                         ImVec2(-FLT_MIN, 90));
+                        ImGui::Text("fill range %.2f..%.2f over %d samples, period %.3f um",
+                                    lib.fill.front(), lib.fill.back(), ns, lib.period_um);
+                        ImGui::TextDisabled("Each point is one RCWA solve. Phase must span "
+                                            "2pi for an ideal lens; |t| sets efficiency.");
+                    }
+                }
             }
             ImGui::End();
         }
