@@ -37,6 +37,16 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
                    double focal_length_um, double wavelength_um,
                    double diameter_um, int n, double half_window_um);
 
+// Low-level focal-plane propagation from an explicit pillar list (position +
+// complex transmission), to an n x n window centered at (cx,cy) at distance z.
+// Uses the GPU kernel when built with CUDA, else parallel CPU. This is the
+// shared core used by polarization designs (independent t per polarization).
+PsfMap propagate_pillars(const std::vector<double>& px,
+                         const std::vector<double>& py,
+                         const std::vector<cdouble>& t, double cx, double cy,
+                         double z, double wavelength_um, int n,
+                         double half_window_um);
+
 // Off-axis PSF: illuminate the aperture with a plane wave tilted by angle_deg
 // (in the x-z plane) and sample the focal plane in a window centered on the
 // expected chief-ray landing point (x ~ f*tan(theta)). This is the per-field

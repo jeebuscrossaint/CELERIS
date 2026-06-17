@@ -228,6 +228,7 @@ std::vector<FieldPsf> g_spot;  // per-field-angle focal spots (spot diagram)
 std::atomic<bool> g_polar_pending{false};
 PolarMetalensDesign g_polar;
 double g_polar_fx = 0, g_polar_fy = 0;  // focal lengths the result was built for
+PsfMap g_polar_psf_x, g_polar_psf_y;    // each polarization's focal-plane PSF
 
 // Design optimizer result (best period/height applied to the UI on completion).
 std::atomic<bool> g_opt_pending{false};
@@ -381,9 +382,32 @@ void run_polardesign(Params p) {
         std::max(6, p.fill_samples), p.harmonics);
     set_phase("Assigning rectangular pillars (dual phase profile)...", 0.7f);
     auto d = design_polarization_metalens(lib, p.focal, p.focal_y, p.diameter);
+
+    // Propagate each polarization to its target focal plane (GPU when available)
+    // to visually confirm the bifocal split.
+    set_phase("Propagating X/Y-pol focal spots...", 0.9f);
+    std::vector<double> px, py;
+    std::vector<cdouble> tx, ty;
+    const double cen = (d.n_cells - 1) / 2.0, R_ap = p.diameter / 2.0;
+    for (int iy = 0; iy < d.n_cells; ++iy)
+        for (int ix = 0; ix < d.n_cells; ++ix) {
+            double x = (ix - cen) * d.period_um, y = (iy - cen) * d.period_um;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            std::size_t off = (std::size_t)iy * d.n_cells + ix;
+            px.push_back(x); py.push_back(y);
+            tx.push_back(d.t_x[off]); ty.push_back(d.t_y[off]);
+        }
+    double dlx = p.wavelength * p.focal / p.diameter;
+    double dly = p.wavelength * p.focal_y / p.diameter;
+    auto psfx = propagate_pillars(px, py, tx, 0, 0, p.focal, p.wavelength, 161,
+                                  std::max(5.0 * dlx, 4.0));
+    auto psfy = propagate_pillars(px, py, ty, 0, 0, p.focal_y, p.wavelength, 161,
+                                  std::max(5.0 * dly, 4.0));
     {
         std::lock_guard<std::mutex> lk(g_mtx);
         g_polar = std::move(d);
+        g_polar_psf_x = std::move(psfx);
+        g_polar_psf_y = std::move(psfy);
         g_polar_fx = p.focal; g_polar_fy = p.focal_y;
         g_status = std::format("Polarization design: X@{:.0f}um RMS {:.1f}deg, "
                                "Y@{:.0f}um RMS {:.1f}deg",
@@ -563,6 +587,7 @@ int main() {
 
     Params params;
     unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0, caustic_tex = 0;
+    unsigned int polar_psf_x_tex = 0, polar_psf_y_tex = 0;
     int layout_mode = 0, layout_built_mode = -1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
@@ -585,7 +610,12 @@ int main() {
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
         if (g_fov_pending.exchange(false)) have_fov = true;
-        if (g_polar_pending.exchange(false)) have_polar = true;
+        if (g_polar_pending.exchange(false)) {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            upload_psf_texture(g_polar_psf_x, polar_psf_x_tex);
+            upload_psf_texture(g_polar_psf_y, polar_psf_y_tex);
+            have_polar = true;
+        }
         if (g_spot_pending.exchange(false)) {
             std::lock_guard<std::mutex> lk(g_mtx);
             spot_texs.resize(g_spot.size(), 0);
@@ -1024,6 +1054,21 @@ int main() {
                                 g_polar_fx, g_polar.rms_phase_error_x_deg, g_polar.mean_amp_x);
                     ImGui::Text("Y-pol  @ %.0f um:  RMS %.1f deg   mean |t| %.3f",
                                 g_polar_fy, g_polar.rms_phase_error_y_deg, g_polar.mean_amp_y);
+                    // Focal-plane PSF of each polarization at its target plane:
+                    // two tight spots = the bifocal split, proven optically.
+                    if (polar_psf_x_tex && polar_psf_y_tex) {
+                        float s = 150.0f;
+                        ImGui::BeginGroup();
+                        ImGui::TextUnformatted("X-pol focus");
+                        ImGui::Image((ImTextureID)(intptr_t)polar_psf_x_tex, ImVec2(s, s));
+                        ImGui::EndGroup();
+                        ImGui::SameLine();
+                        ImGui::BeginGroup();
+                        ImGui::TextUnformatted("Y-pol focus");
+                        ImGui::Image((ImTextureID)(intptr_t)polar_psf_y_tex, ImVec2(s, s));
+                        ImGui::EndGroup();
+                        ImGui::TextDisabled("each polarization imaged at its own focal plane");
+                    }
                     static char ppath[256] = "polar_metalens.gds";
                     ImGui::SetNextItemWidth(-110);
                     ImGui::InputText("##ppath", ppath, sizeof(ppath)); ImGui::SameLine();

@@ -190,6 +190,41 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
     return m;
 }
 
+PsfMap propagate_pillars(const std::vector<double>& px,
+                         const std::vector<double>& py,
+                         const std::vector<cdouble>& t, double cx, double cy,
+                         double z, double wavelength_um, int n,
+                         double half_window_um) {
+    PsfMap m;
+    m.n = n;
+    m.half_window_um = half_window_um;
+    m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
+    const double k = 2.0 * pi / wavelength_um;
+    const int npil = static_cast<int>(px.size());
+    if (npil == 0 || n <= 0) return m;
+
+#ifdef CELERIS_USE_CUDA_KERNELS
+    if (cuda::propagate_psf(px.data(), py.data(), t.data(), npil, cx, cy, z, k, n,
+                            half_window_um, m.intensity.data()))
+        return m;
+#endif
+    const double step = 2.0 * half_window_um / (n - 1);
+    parallel_rows(n, [&](int j) {
+        double fy = cy - half_window_um + j * step;
+        for (int i = 0; i < n; ++i) {
+            double fx = cx - half_window_um + i * step;
+            cdouble E{0.0, 0.0};
+            for (int p = 0; p < npil; ++p) {
+                double R = std::sqrt((fx - px[p]) * (fx - px[p]) +
+                                     (fy - py[p]) * (fy - py[p]) + z * z);
+                E += t[p] * std::polar(1.0 / R, k * R);
+            }
+            m.intensity[static_cast<std::size_t>(j) * n + i] = std::norm(E);
+        }
+    });
+    return m;
+}
+
 FieldPsf compute_psf_field(const MetalensDesign& lens, const UnitCellLibrary& lib,
                            double focal_length_um, double wavelength_um,
                            double diameter_um, double angle_deg, int n,
