@@ -8,7 +8,9 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <chrono>
+#include <future>
 #include <random>
+#include <thread>
 
 #include "celeris/cuda/eigensolve.hpp"
 #endif
@@ -581,10 +583,101 @@ void print_help() {
 
 } // namespace
 
+#ifdef CELERIS_USE_CUDA
+// Honest head-to-head for the batched GPU eigensolve: the metalens library
+// sweep is a batch of independent same-size general-complex eigenproblems, so
+// this times CPU-sequential, CPU-parallel (the path the real builder uses), and
+// GPU-batched over a representative batch. Usage: celeris gpubench [--n N]
+// [--batch B] [--streams S].
+static int run_gpubench(int argc, char** argv) {
+    int n = 242, batch = 32, streams = 4;  // n ~ 2N at M=5 (a real 2D RCWA size)
+    for (int i = 2; i < argc; ++i) {
+        std::string a = argv[i];
+        auto next = [&] { return (i + 1 < argc) ? std::atoi(argv[++i]) : 0; };
+        if (a == "--n") n = next();
+        else if (a == "--batch") batch = next();
+        else if (a == "--streams") streams = next();
+    }
+    if (!cuda::available()) { std::println("gpubench: no CUDA device available"); return 1; }
+
+    const std::size_t nn = static_cast<std::size_t>(n) * n;
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    std::vector<cdouble> As(static_cast<std::size_t>(batch) * nn);
+    for (auto& v : As) v = cdouble{dist(rng), dist(rng)};
+
+    std::println("GPU batched eigensolve benchmark");
+    std::println("  batch = {} matrices, {}x{} general complex, streams = {}",
+                 batch, n, n, streams);
+
+    auto eig_one = [&](int b) {
+        Eigen::Map<const Eigen::MatrixXcd> M(As.data() + static_cast<std::size_t>(b) * nn, n, n);
+        Eigen::ComplexEigenSolver<Eigen::MatrixXcd> ces(M);
+        return ces.eigenvalues()(0);  // touch a result so it isn't optimized away
+    };
+
+    // CPU sequential.
+    auto t0 = std::chrono::steady_clock::now();
+    cdouble sink{0, 0};
+    for (int b = 0; b < batch; ++b) sink += eig_one(b);
+    auto t1 = std::chrono::steady_clock::now();
+    double cpu_seq = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    // CPU parallel (same std::async fan-out the unit-cell library builder uses).
+    auto t2 = std::chrono::steady_clock::now();
+    {
+        unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+        int workers = std::min<int>(static_cast<int>(hw), batch);
+        std::vector<std::future<void>> jobs;
+        for (int w = 0; w < workers; ++w)
+            jobs.push_back(std::async(std::launch::async, [&, w] {
+                for (int b = w; b < batch; b += workers) (void)eig_one(b);
+            }));
+        for (auto& j : jobs) j.get();
+    }
+    auto t3 = std::chrono::steady_clock::now();
+    double cpu_par = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+    // GPU batched (warm up device first so init isn't charged to the timing).
+    std::vector<cdouble> ws(static_cast<std::size_t>(batch) * n);
+    std::vector<cdouble> vrs(static_cast<std::size_t>(batch) * nn);
+    cuda::geev_batched(As.data(), n, 1, ws.data(), vrs.data(), 1);
+    auto t4 = std::chrono::steady_clock::now();
+    bool ok = cuda::geev_batched(As.data(), n, batch, ws.data(), vrs.data(), streams);
+    auto t5 = std::chrono::steady_clock::now();
+    double gpu = std::chrono::duration<double, std::milli>(t5 - t4).count();
+
+    // Correctness: eigenvalues of matrix 0 must match Eigen (order-independent).
+    Eigen::Map<const Eigen::MatrixXcd> M0(As.data(), n, n);
+    Eigen::ComplexEigenSolver<Eigen::MatrixXcd> ces0(M0);
+    std::vector<cdouble> ec(ces0.eigenvalues().data(), ces0.eigenvalues().data() + n);
+    std::vector<cdouble> eg(ws.begin(), ws.begin() + n);
+    auto cmp = [](cdouble a, cdouble b) {
+        return a.real() != b.real() ? a.real() < b.real() : a.imag() < b.imag();
+    };
+    std::sort(ec.begin(), ec.end(), cmp);
+    std::sort(eg.begin(), eg.end(), cmp);
+    double max_diff = 0.0;
+    for (int i = 0; i < n; ++i) max_diff = std::max(max_diff, std::abs(ec[i] - eg[i]));
+
+    std::println("");
+    std::println("  CPU sequential : {:8.1f} ms   ({:.2f} ms / solve)", cpu_seq, cpu_seq / batch);
+    std::println("  CPU parallel   : {:8.1f} ms   ({:.1f}x vs seq)", cpu_par, cpu_seq / cpu_par);
+    std::println("  GPU batched    : {:8.1f} ms   ({:.2f}x vs CPU parallel, {:.2f}x vs seq)",
+                 gpu, cpu_par / gpu, cpu_seq / gpu);
+    std::println("  correctness    : max|d eigenvalue| = {:.2e}  ok={}", max_diff, ok);
+    (void)sink;
+    return ok ? 0 : 1;
+}
+#endif
+
 int main(int argc, char** argv) {
     const std::string cmd = argc > 1 ? argv[1] : "help";
     if (cmd == "selftest") return run_selftest();
     if (cmd == "design") return cmd_design(argc, argv);
+#ifdef CELERIS_USE_CUDA
+    if (cmd == "gpubench") return run_gpubench(argc, argv);
+#endif
     print_help();
     return (cmd == "help" || cmd == "--help" || cmd == "-h") ? 0 : 1;
 }
