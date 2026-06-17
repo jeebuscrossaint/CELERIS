@@ -39,6 +39,9 @@
 #include "celeris/io/gds.hpp"
 #include "celeris/io/material_csv.hpp"
 #include "celeris/materials/database.hpp"
+#ifdef CELERIS_USE_CUDA_KERNELS
+#include "celeris/cuda/eigensolve.hpp"
+#endif
 
 using namespace celeris;
 
@@ -1318,6 +1321,18 @@ int main() {
             if (ImGui::Begin("Log", &win_log)) {
                 std::lock_guard<std::mutex> lk(g_mtx);
                 ImGui::TextWrapped("%s%s", running ? "[BUSY]  " : "", g_status.c_str());
+                ImGui::Separator();
+#ifdef CELERIS_USE_CUDA_KERNELS
+                if (cuda::available())
+                    ImGui::TextColored(rgb(20, 130, 40), "Propagation: GPU  (%s)",
+                                       cuda::device_name());
+                else
+                    ImGui::TextColored(rgb(170, 90, 0),
+                                       "Propagation: CPU  (no CUDA device found)");
+#else
+                ImGui::TextDisabled("Propagation: CPU (multi-core; build with CUDA "
+                                    "for GPU acceleration)");
+#endif
             }
             ImGui::End();
         }

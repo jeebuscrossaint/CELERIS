@@ -22,6 +22,16 @@ bool available() {
     return cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
 }
 
+const char* device_name() {
+    static char name[256] = {0};
+    int count = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) return "";
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, 0) != cudaSuccess) return "";
+    std::strncpy(name, prop.name, sizeof(name) - 1);
+    return name;
+}
+
 // General complex eigendecomposition via cuSOLVER Xgeev (right eigenvectors).
 // std::complex<double> and cuDoubleComplex are layout-compatible (two doubles).
 bool geev(const std::complex<double>* A, int n,

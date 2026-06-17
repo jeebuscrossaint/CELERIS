@@ -31,4 +31,8 @@ bool geev_batched(const std::complex<double>* As, int n, int batch,
 // True if a CUDA device is present and usable.
 bool available();
 
+// Name of CUDA device 0 (e.g. "NVIDIA GeForce RTX 4070 Laptop GPU"), or an
+// empty string if none. For showing the active accelerator in the UI.
+const char* device_name();
+
 } // namespace celeris::cuda
