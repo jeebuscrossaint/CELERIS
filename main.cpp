@@ -370,6 +370,33 @@ static int run_selftest() {
         }
     }
 
+    // ---- Validation 13: RCWA vs Effective-Medium Theory --------------------
+    // A deeply subwavelength grating (period << λ) behaves as a uniform
+    // birefringent film. Rytov's 0th-order EMT: ε∥ = f·ε1+(1-f)·ε2 (TE, E along
+    // grooves), ε⊥ = [f/ε1+(1-f)/ε2]⁻¹ (TM). The grating's RCWA reflectance must
+    // converge to the TMM reflectance of those effective films — an independent
+    // analytic check of the full TE+TM vectorial solver.
+    {
+        const double lam = 0.5, d = 0.10, f = 0.5, e1 = 2.1025, e2 = 1.0;  // ridge n=1.45, groove air
+        const double eTE = f * e1 + (1 - f) * e2;            // arithmetic mean
+        const double eTM = 1.0 / (f / e1 + (1 - f) / e2);    // harmonic mean
+        const auto ridge = Material::constant(cdouble{1.45, 0.0}, "n1.45");
+        const auto nTE = Material::constant(cdouble{std::sqrt(eTE), 0.0}, "nTE");
+        const auto nTM = Material::constant(cdouble{std::sqrt(eTM), 0.0}, "nTM");
+        std::println("[13] RCWA vs effective-medium theory (Λ=λ/20 subwavelength):");
+        std::println("      {:>4}  {:>14}  {:>14}  {:>9}", "pol", "RCWA R", "EMT-film R", "|Δ|");
+        for (int te = 1; te >= 0; --te) {
+            Pol pol = te ? Pol::TE : Pol::TM;
+            BinaryGrating1D g{ridge, materials::air(), 0.025, f, d};  // Λ = λ/20
+            auto rg = solve_rcwa_1d(materials::air(), g, materials::air(), lam, 0.0, 20, pol);
+            double rcwaR = rg.de_r[rg.orders.size() / 2];
+            auto slab = solve_stack(materials::air(), {{te ? nTE : nTM, d}},
+                                    materials::air(), lam, 0.0, pol);
+            std::println("      {:>4}  {:>14.4f}  {:>14.4f}  {:>9.4f}",
+                         te ? "TE" : "TM", rcwaR, slab.R, std::abs(rcwaR - slab.R));
+        }
+    }
+
 #ifdef CELERIS_USE_CUDA
     // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
     // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
