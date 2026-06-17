@@ -99,8 +99,9 @@ if(CELERIS_BUILD_GUI)
     FetchContent_MakeAvailable(glfw)
 
     # Dear ImGui ships no CMakeLists — fetch sources and build them ourselves.
+    # Use the docking branch for a dockable/tabbable multi-window workspace.
     FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG v1.91.5 GIT_SHALLOW ON)
+        GIT_TAG docking GIT_SHALLOW ON)
     FetchContent_MakeAvailable(imgui)
 
     find_package(OpenGL REQUIRED)

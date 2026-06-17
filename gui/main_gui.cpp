@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"  // DockBuilder for the default layout
 
 #include <algorithm>
 #include <atomic>
@@ -228,6 +229,7 @@ int main() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  // dockable/tabbable workspace
     // Use the system Segoe UI font (present on all Windows) for a real-software
     // look instead of the pixelated default. Falls back to the default if absent.
     {
@@ -268,37 +270,48 @@ int main() {
             }
         };
 
-        ImGui::SetNextWindowPos({0, 0});
-        ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("CELERIS", nullptr,
-                     ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                         ImGuiWindowFlags_NoTitleBar |
-                         ImGuiWindowFlags_NoBringToFrontOnFocus);
-
         static bool show_about = false;
-        if (ImGui::BeginMenuBar()) {
+        static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
+                    win_chr = true, win_tol = true, win_fov = true, win_log = true;
+        const bool can_act = have_result && !running;
+
+        if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
                 if (ImGui::MenuItem("Exit")) glfwSetWindowShouldClose(window, 1);
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Run")) {
-                if (ImGui::MenuItem("Design Lens", "F5", false, !running))
-                    launch_design();
+                if (ImGui::MenuItem("Design Lens", "F5", false, !running)) launch_design();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Tolerance Analysis", nullptr, false, can_act))
+                    std::thread(run_tolerance).detach();
+                if (ImGui::MenuItem("Field of View", nullptr, false, can_act))
+                    std::thread(run_fov).detach();
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("View")) {
+                ImGui::MenuItem("Lens Data", nullptr, &win_lens);
+                ImGui::MenuItem("Design Summary", nullptr, &win_sum);
+                ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
+                ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
+                ImGui::MenuItem("Chromatic", nullptr, &win_chr);
+                ImGui::MenuItem("Tolerance", nullptr, &win_tol);
+                ImGui::MenuItem("Field of View", nullptr, &win_fov);
+                ImGui::MenuItem("Log", nullptr, &win_log);
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help")) {
                 if (ImGui::MenuItem("About CELERIS")) show_about = true;
                 ImGui::EndMenu();
             }
-            ImGui::EndMenuBar();
+            ImGui::EndMainMenuBar();
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F5)) launch_design();
         if (show_about) { ImGui::OpenPopup("About CELERIS"); show_about = false; }
         if (ImGui::BeginPopupModal("About CELERIS", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(
-                "CELERIS  —  metalens design via rigorous coupled-wave analysis.");
+                "CELERIS  -  metalens design via rigorous coupled-wave analysis.");
             ImGui::TextUnformatted(
                 "RCWA engine, inverse design, GDSII export, focal/chromatic analysis.");
             ImGui::Separator();
@@ -306,142 +319,172 @@ int main() {
             ImGui::EndPopup();
         }
 
-        const float status_h = ImGui::GetFrameHeight() + 10.0f;
-        const float body_h = ImGui::GetContentRegionAvail().y - status_h;
+        // Dockable workspace, with a sensible default layout on first launch.
+        ImGuiID dockid = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
+        static bool first_layout = true;
+        if (first_layout) {
+            first_layout = false;
+            ImGui::DockBuilderRemoveNode(dockid);
+            ImGui::DockBuilderAddNode(dockid, ImGuiDockNodeFlags_DockSpace);
+            ImGui::DockBuilderSetNodeSize(dockid, ImGui::GetMainViewport()->WorkSize);
+            ImGuiID center;
+            ImGuiID left = ImGui::DockBuilderSplitNode(dockid, ImGuiDir_Left, 0.24f, nullptr, &center);
+            ImGuiID cbottom;
+            ImGuiID ctop = ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.62f, nullptr, &cbottom);
+            ImGuiID ctr;
+            ImGuiID ctl = ImGui::DockBuilderSplitNode(ctop, ImGuiDir_Left, 0.5f, nullptr, &ctr);
+            ImGui::DockBuilderDockWindow("Lens Data", left);
+            ImGui::DockBuilderDockWindow("Design Summary", ctl);
+            ImGui::DockBuilderDockWindow("Focus Performance", ctl);
+            ImGui::DockBuilderDockWindow("Focal PSF", ctr);
+            ImGui::DockBuilderDockWindow("Chromatic", ctr);
+            ImGui::DockBuilderDockWindow("Tolerance", cbottom);
+            ImGui::DockBuilderDockWindow("Field of View", cbottom);
+            ImGui::DockBuilderDockWindow("Log", cbottom);
+            ImGui::DockBuilderFinish(dockid);
+        }
 
-        // ---- Lens Data panel ----
-        ImGui::BeginChild("lensdata", ImVec2(290, body_h), true);
-        ImGui::TextUnformatted("Lens Data");
-        ImGui::Separator();
-        auto field = [](const char* label) {
+        auto kvrow = [](const char* k, const std::string& v) {
             ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(label);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(k);
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(v.c_str());
         };
-        if (ImGui::BeginTable("params", 2,
-                              ImGuiTableFlags_BordersInner |
-                                  ImGuiTableFlags_SizingStretchProp)) {
-            field("Focal length (um)"); ImGui::InputFloat("##f", &params.focal, 0, 0, "%.1f");
-            field("Aperture (um)");     ImGui::InputFloat("##d", &params.diameter, 0, 0, "%.1f");
-            field("Wavelength (um)");   ImGui::InputFloat("##w", &params.wavelength, 0, 0, "%.3f");
-            field("Period (um)");       ImGui::InputFloat("##p", &params.period, 0, 0, "%.3f");
-            field("Pillar height (um)");ImGui::InputFloat("##h", &params.thickness, 0, 0, "%.2f");
-            field("Pillar index n");    ImGui::InputFloat("##n", &params.pillar_n, 0, 0, "%.2f");
-            field("RCWA harmonics");    ImGui::InputInt("##m", &params.harmonics);
-            field("Library samples");   ImGui::InputInt("##s", &params.fill_samples);
-            ImGui::EndTable();
-        }
-        ImGui::Spacing();
-        if (running) ImGui::BeginDisabled();
-        if (ImGui::Button("Run Design  (F5)", ImVec2(-FLT_MIN, 30))) launch_design();
-        if (running) ImGui::EndDisabled();
 
-        if (running) {
-            ImGui::Spacing();
-            char ov[48];
-            std::snprintf(ov, sizeof(ov), "%.0f%%", g_progress.load() * 100.0f);
-            ImGui::ProgressBar(g_progress.load(), ImVec2(-FLT_MIN, 0), ov);
-            ImGui::Text("Elapsed: %.1f s", ImGui::GetTime() - run_start);
-            std::lock_guard<std::mutex> lk(g_mtx);
-            ImGui::TextWrapped("%s", g_status.c_str());
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextUnformatted("Output / Analysis");
-        const bool can_act = have_result && !running;
-        if (!can_act) ImGui::BeginDisabled();
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::InputText("##gds", gds_name, sizeof(gds_name));
-        if (ImGui::Button("Save GDSII", ImVec2(-FLT_MIN, 0))) {
-            MetalensDesign d;
-            { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; }
-            int np = write_metalens_gds(d, gds_name);
-            std::lock_guard<std::mutex> lk(g_mtx);
-            g_status = np >= 0 ? std::format("Wrote {} pillars -> {}", np, gds_name)
-                               : std::string("ERROR: GDSII write failed");
-        }
-        if (ImGui::Button("Run Tolerance", ImVec2(-FLT_MIN, 0)))
-            std::thread(run_tolerance).detach();
-        if (ImGui::Button("Run Field of View", ImVec2(-FLT_MIN, 0)))
-            std::thread(run_fov).detach();
-        if (!can_act) ImGui::EndDisabled();
-        ImGui::EndChild();
-
-        // ---- Results panel ----
-        ImGui::SameLine();
-        ImGui::BeginChild("results", ImVec2(0, body_h), true);
-        if (!have_result) {
-            ImGui::TextDisabled("No results. Enter lens data and Run Design (F5).");
-        } else {
-            std::lock_guard<std::mutex> lk(g_mtx);
-            const auto kv_table = [](const char* id) {
-                return ImGui::BeginTable(
-                    id, 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg);
-            };
-            auto kvrow = [](const char* k, const std::string& v) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::TextUnformatted(k);
-                ImGui::TableNextColumn(); ImGui::TextUnformatted(v.c_str());
-            };
-
-            ImGui::TextUnformatted("Design Summary");
-            if (kv_table("sum")) {
-                kvrow("Array", std::format("{0} x {0} pillars ({1})", g_res.n_cells,
-                                           g_res.pillars));
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::TextUnformatted("Numerical aperture");
-                ImGui::TableNextColumn();
-                if (g_res.na >= 0.7)
-                    ImGui::TextColored(rgb(190, 40, 40),
-                                       "%.2f  (extreme - metrics approximate)", g_res.na);
-                else
-                    ImGui::Text("%.2f", g_res.na);
-                kvrow("Phase coverage", std::format("{:.0f} deg", g_res.coverage_deg));
-                kvrow("RMS phase error", std::format("{:.1f} deg", g_res.rms));
-                kvrow("Mean transmission", std::format("{:.3f}", g_res.meanT));
-                ImGui::EndTable();
-            }
-            ImGui::Spacing();
-            ImGui::TextUnformatted("Focus Performance");
-            if (kv_table("foc")) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::TextUnformatted("Strehl ratio");
-                ImGui::TableNextColumn();
-                ImVec4 sc = g_res.strehl >= 0.8   ? rgb(20, 130, 40)
-                            : g_res.strehl >= 0.5 ? rgb(170, 120, 0)
-                                                  : rgb(190, 40, 40);
-                ImGui::TextColored(sc, "%.3f", g_res.strehl);
-                kvrow("Spot FWHM", std::format("{:.2f} um", g_res.fwhm));
-                kvrow("Diffraction limit", std::format("{:.2f} um", g_res.dl));
-                kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
-                ImGui::EndTable();
-            }
-            ImGui::Spacing();
-            ImGui::Columns(2, "viz", false);
-            ImGui::TextUnformatted("Focal PSF");
-            if (psf_tex)
-                ImGui::Image((ImTextureID)(intptr_t)psf_tex, ImVec2(280, 280));
-            ImGui::NextColumn();
-            ImGui::TextUnformatted("Chromatic focus shift (um vs wavelength)");
-            if (!g_res.chrom_focus.empty())
-                ImGui::PlotLines("##chrom", g_res.chrom_focus.data(),
-                                 static_cast<int>(g_res.chrom_focus.size()), 0,
-                                 nullptr, FLT_MAX, FLT_MAX, ImVec2(-FLT_MIN, 200));
-            ImGui::Columns(1);
-
-            if (have_tol && !g_tol.empty()) {
+        // ---- Lens Data ----
+        if (win_lens) {
+            if (ImGui::Begin("Lens Data", &win_lens)) {
+                auto fld = [](const char* label) {
+                    ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0);
+                    ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted(label);
+                    ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-FLT_MIN);
+                };
+                if (ImGui::BeginTable("params", 2,
+                                      ImGuiTableFlags_BordersInner | ImGuiTableFlags_SizingStretchProp)) {
+                    fld("Focal length (um)"); ImGui::InputFloat("##f", &params.focal, 0, 0, "%.1f");
+                    fld("Aperture (um)");     ImGui::InputFloat("##d", &params.diameter, 0, 0, "%.1f");
+                    fld("Wavelength (um)");   ImGui::InputFloat("##w", &params.wavelength, 0, 0, "%.3f");
+                    fld("Period (um)");       ImGui::InputFloat("##p", &params.period, 0, 0, "%.3f");
+                    fld("Pillar height (um)");ImGui::InputFloat("##h", &params.thickness, 0, 0, "%.2f");
+                    fld("Pillar index n");    ImGui::InputFloat("##n", &params.pillar_n, 0, 0, "%.2f");
+                    fld("RCWA harmonics");    ImGui::InputInt("##m", &params.harmonics);
+                    fld("Library samples");   ImGui::InputInt("##s", &params.fill_samples);
+                    ImGui::EndTable();
+                }
                 ImGui::Spacing();
-                ImGui::TextUnformatted("Fabrication Tolerance (Strehl vs CD error)");
-                if (ImGui::BeginTable("tol", 4,
-                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                    ImGui::TableSetupColumn("sigma (nm)");
-                    ImGui::TableSetupColumn("mean");
-                    ImGui::TableSetupColumn("std");
-                    ImGui::TableSetupColumn("worst");
+                if (running) ImGui::BeginDisabled();
+                if (ImGui::Button("Run Design  (F5)", ImVec2(-FLT_MIN, 30))) launch_design();
+                if (running) ImGui::EndDisabled();
+                if (running) {
+                    char ov[48];
+                    std::snprintf(ov, sizeof(ov), "%.0f%%", g_progress.load() * 100.0f);
+                    ImGui::ProgressBar(g_progress.load(), ImVec2(-FLT_MIN, 0), ov);
+                    ImGui::Text("Elapsed: %.1f s", ImGui::GetTime() - run_start);
+                }
+                ImGui::Spacing();
+                ImGui::SeparatorText("Output / Analysis");
+                if (!can_act) ImGui::BeginDisabled();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                ImGui::InputText("##gds", gds_name, sizeof(gds_name));
+                if (ImGui::Button("Save GDSII", ImVec2(-FLT_MIN, 0))) {
+                    MetalensDesign d;
+                    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; }
+                    int np = write_metalens_gds(d, gds_name);
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    g_status = np >= 0 ? std::format("Wrote {} pillars -> {}", np, gds_name)
+                                       : std::string("ERROR: GDSII write failed");
+                }
+                if (ImGui::Button("Run Tolerance", ImVec2(-FLT_MIN, 0)))
+                    std::thread(run_tolerance).detach();
+                if (ImGui::Button("Run Field of View", ImVec2(-FLT_MIN, 0)))
+                    std::thread(run_fov).detach();
+                if (!can_act) ImGui::EndDisabled();
+            }
+            ImGui::End();
+        }
+
+        // ---- Design Summary ----
+        if (win_sum) {
+            if (ImGui::Begin("Design Summary", &win_sum)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    if (ImGui::BeginTable("sum", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                        kvrow("Array", std::format("{0} x {0} pillars ({1})", g_res.n_cells, g_res.pillars));
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Numerical aperture");
+                        ImGui::TableNextColumn();
+                        if (g_res.na >= 0.7)
+                            ImGui::TextColored(rgb(190, 40, 40), "%.2f  (extreme)", g_res.na);
+                        else ImGui::Text("%.2f", g_res.na);
+                        kvrow("Phase coverage", std::format("{:.0f} deg", g_res.coverage_deg));
+                        kvrow("RMS phase error", std::format("{:.1f} deg", g_res.rms));
+                        kvrow("Mean transmission", std::format("{:.3f}", g_res.meanT));
+                        ImGui::EndTable();
+                    }
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Focus Performance ----
+        if (win_foc) {
+            if (ImGui::Begin("Focus Performance", &win_foc)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    if (ImGui::BeginTable("foc", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Strehl ratio");
+                        ImGui::TableNextColumn();
+                        ImVec4 sc = g_res.strehl >= 0.8 ? rgb(20, 130, 40)
+                                    : g_res.strehl >= 0.5 ? rgb(170, 120, 0) : rgb(190, 40, 40);
+                        ImGui::TextColored(sc, "%.3f", g_res.strehl);
+                        kvrow("Spot FWHM", std::format("{:.2f} um", g_res.fwhm));
+                        kvrow("Diffraction limit", std::format("{:.2f} um", g_res.dl));
+                        kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
+                        ImGui::EndTable();
+                    }
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Focal PSF ----
+        if (win_psf) {
+            if (ImGui::Begin("Focal PSF", &win_psf)) {
+                if (psf_tex) {
+                    ImVec2 a = ImGui::GetContentRegionAvail();
+                    float s = std::max(64.0f, std::min(a.x, a.y));
+                    ImGui::Image((ImTextureID)(intptr_t)psf_tex, ImVec2(s, s));
+                } else ImGui::TextDisabled("Run a design (F5).");
+            }
+            ImGui::End();
+        }
+
+        // ---- Chromatic ----
+        if (win_chr) {
+            if (ImGui::Begin("Chromatic", &win_chr)) {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                if (g_res.chrom_focus.empty()) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    ImGui::TextUnformatted("Focal length (um) vs wavelength");
+                    ImGui::PlotLines("##chrom", g_res.chrom_focus.data(),
+                                     static_cast<int>(g_res.chrom_focus.size()), 0,
+                                     nullptr, FLT_MAX, FLT_MAX, ImGui::GetContentRegionAvail());
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Tolerance ----
+        if (win_tol) {
+            if (ImGui::Begin("Tolerance", &win_tol)) {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                if (!have_tol || g_tol.empty())
+                    ImGui::TextDisabled("Run Tolerance (Run menu or Lens Data panel).");
+                else if (ImGui::BeginTable("tolt", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("sigma (nm)"); ImGui::TableSetupColumn("mean");
+                    ImGui::TableSetupColumn("std"); ImGui::TableSetupColumn("worst");
                     ImGui::TableHeadersRow();
                     for (auto& t : g_tol) {
                         ImGui::TableNextRow();
@@ -453,13 +496,17 @@ int main() {
                     ImGui::EndTable();
                 }
             }
-            if (have_fov && !g_fov.empty()) {
-                ImGui::Spacing();
-                ImGui::TextUnformatted("Field of View (off-axis)");
-                if (ImGui::BeginTable("fov", 3,
-                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                    ImGui::TableSetupColumn("angle (deg)");
-                    ImGui::TableSetupColumn("rel. Strehl");
+            ImGui::End();
+        }
+
+        // ---- Field of View ----
+        if (win_fov) {
+            if (ImGui::Begin("Field of View", &win_fov)) {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                if (!have_fov || g_fov.empty())
+                    ImGui::TextDisabled("Run Field of View (Run menu or Lens Data panel).");
+                else if (ImGui::BeginTable("fovt", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("angle (deg)"); ImGui::TableSetupColumn("rel. Strehl");
                     ImGui::TableSetupColumn("shift (um)");
                     ImGui::TableHeadersRow();
                     for (auto& f : g_fov) {
@@ -471,19 +518,17 @@ int main() {
                     ImGui::EndTable();
                 }
             }
+            ImGui::End();
         }
-        ImGui::EndChild();
 
-        // ---- Status bar ----
-        ImGui::BeginChild("statusbar", ImVec2(0, 0), true);
-        ImGui::AlignTextToFramePadding();
-        {
-            std::lock_guard<std::mutex> lk(g_mtx);
-            ImGui::Text("%s%s", running ? "[BUSY]  " : "", g_status.c_str());
+        // ---- Log ----
+        if (win_log) {
+            if (ImGui::Begin("Log", &win_log)) {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                ImGui::TextWrapped("%s%s", running ? "[BUSY]  " : "", g_status.c_str());
+            }
+            ImGui::End();
         }
-        ImGui::EndChild();
-
-        ImGui::End();
 
         ImGui::Render();
         int w, h;
