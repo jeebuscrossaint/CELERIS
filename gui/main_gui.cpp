@@ -197,9 +197,27 @@ void run_design(Params p) {
     set_phase("Rendering point-spread function...", 0.72f);
     auto psf = compute_psf(lens, lib, p.focal, p.wavelength, p.diameter, 161,
                            std::max(5.0 * dl, 4.0));
-    set_phase("Chromatic sweep...", 0.9f);
-    auto chrom = analyze_chromatic(lens, lib, p.focal, p.wavelength, p.diameter,
-                                   p.wavelength * 0.85, p.wavelength * 1.25, 11);
+    set_phase("Chromatic sweep (re-solving meta-atoms per wavelength)...", 0.9f);
+    // Rigorous chromatic model: rebuild the RCWA meta-atom library at each
+    // wavelength so material + waveguide dispersion enter the focal shift, not
+    // just the propagation phase. Same builder used for the design library.
+    auto build_lib_at = [p](double lam) {
+        Rcwa2DStack s;
+        s.period_x_um = s.period_y_um = p.period;
+        for (const auto& L : p.extra_layers)
+            s.layers.push_back(RectCell2D{
+                Material::constant(cdouble{L.n, 0.0}, "layer"), materials::air(),
+                L.fill, L.fill, L.thickness});
+        const int act = static_cast<int>(s.layers.size());
+        s.layers.push_back(RectCell2D{make_pillar(p), materials::air(),
+                                      0.5, 0.5, p.thickness});
+        return build_unit_cell_library_stack(s, act, materials::air(),
+                                             make_substrate(p), lam, 0.08, 0.92,
+                                             p.fill_samples, p.harmonics);
+    };
+    auto chrom = analyze_chromatic_dispersive(
+        lens, build_lib_at, p.focal, p.wavelength, p.diameter,
+        p.wavelength * 0.85, p.wavelength * 1.25, 11);
 
     Results r;
     r.strehl = foc.strehl;
