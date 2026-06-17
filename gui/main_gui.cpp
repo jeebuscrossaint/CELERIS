@@ -32,6 +32,7 @@
 #include "celeris/analysis/tolerance.hpp"
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
+#include "celeris/design/system_opt.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/materials/database.hpp"
 
@@ -117,6 +118,10 @@ std::atomic<bool> g_fov_pending{false};
 std::vector<ToleranceResult> g_tol;
 std::vector<FieldPoint> g_fov;
 
+// Design optimizer result (best period/height applied to the UI on completion).
+std::atomic<bool> g_opt_pending{false};
+SystemOptResult g_opt;
+
 void set_phase(const char* msg, float progress) {
     std::lock_guard<std::mutex> lk(g_mtx);
     g_status = msg;
@@ -198,6 +203,27 @@ void run_fov() {
     { std::lock_guard<std::mutex> lk(g_mtx); g_fov = std::move(fov);
       g_status = "Field-of-view analysis done."; g_progress = 1.0f; }
     g_fov_pending = true;
+    g_running = false;
+}
+
+void run_optimize(Params p) {
+    g_running = true;
+    set_phase("Optimizing design (period x height search)...", 0.0f);
+    const auto pillar = Material::constant(cdouble{p.pillar_n, 0.0}, "pillar");
+    auto res = optimize_system(
+        pillar, materials::air(), materials::air(), materials::bk7(), p.focal,
+        p.diameter, p.wavelength, 0.20, 0.45, 0.30, 1.00, /*grid=*/5, /*M=*/5,
+        /*fill_samples=*/12, /*efficiency_weight=*/0.3,
+        [](float fr) { set_phase("Optimizing design (period x height search)...", fr); });
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_opt = res;
+        g_status = std::format("Optimized: period {:.3f} um, height {:.3f} um "
+                               "(Strehl~{:.3f}). Applied -- press F5 to run.",
+                               res.period_um, res.thickness_um, res.strehl);
+        g_progress = 1.0f;
+    }
+    g_opt_pending = true;
     g_running = false;
 }
 
@@ -293,6 +319,11 @@ int main() {
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
         if (g_fov_pending.exchange(false)) have_fov = true;
+        if (g_opt_pending.exchange(false)) {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            params.period = static_cast<float>(g_opt.period_um);
+            params.thickness = static_cast<float>(g_opt.thickness_um);
+        }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -416,6 +447,8 @@ int main() {
                 ImGui::Spacing();
                 if (running) ImGui::BeginDisabled();
                 if (ImGui::Button("Run Design  (F5)", ImVec2(-FLT_MIN, 30))) launch_design();
+                if (ImGui::Button("Optimize Design (period x height)", ImVec2(-FLT_MIN, 0)))
+                    std::thread(run_optimize, params).detach();
                 if (running) ImGui::EndDisabled();
                 if (running) {
                     char ov[48];

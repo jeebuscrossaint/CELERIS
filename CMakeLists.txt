@@ -42,6 +42,7 @@ add_library(celeris_core
     src/celeris/rcwa/rcwa2d.cpp
     src/celeris/design/metalens.cpp
     src/celeris/design/optimize.cpp
+    src/celeris/design/system_opt.cpp
     src/celeris/analysis/focal.cpp
     src/celeris/analysis/chromatic.cpp
     src/celeris/analysis/tolerance.cpp
