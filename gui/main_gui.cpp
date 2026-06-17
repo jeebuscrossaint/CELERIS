@@ -21,6 +21,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -88,6 +89,59 @@ const Material& make_substrate(const Params& p) {
         case 2: return materials::fused_silica();
         default: return materials::bk7();
     }
+}
+
+// Project persistence — a plain key/value text file (.celeris). No external
+// dependency; human-readable and diff-friendly.
+bool save_project(const std::string& path, const Params& p) {
+    std::ofstream f(path);
+    if (!f) return false;
+    f << "celeris_project 1\n";
+    f << "focal " << p.focal << "\n";
+    f << "diameter " << p.diameter << "\n";
+    f << "wavelength " << p.wavelength << "\n";
+    f << "period " << p.period << "\n";
+    f << "thickness " << p.thickness << "\n";
+    f << "pillar_n " << p.pillar_n << "\n";
+    f << "harmonics " << p.harmonics << "\n";
+    f << "fill_samples " << p.fill_samples << "\n";
+    f << "pillar_mat " << p.pillar_mat << "\n";
+    f << "substrate_mat " << p.substrate_mat << "\n";
+    for (const auto& L : p.extra_layers)
+        f << "layer " << L.n << " " << L.fill << " " << L.thickness << "\n";
+    return static_cast<bool>(f);
+}
+
+bool load_project(const std::string& path, Params& p) {
+    std::ifstream f(path);
+    if (!f) return false;
+    Params np;
+    np.extra_layers.clear();
+    std::string line;
+    bool header = false;
+    while (std::getline(f, line)) {
+        std::istringstream ss(line);
+        std::string key;
+        if (!(ss >> key)) continue;
+        if (key == "celeris_project") { header = true; }
+        else if (key == "focal") ss >> np.focal;
+        else if (key == "diameter") ss >> np.diameter;
+        else if (key == "wavelength") ss >> np.wavelength;
+        else if (key == "period") ss >> np.period;
+        else if (key == "thickness") ss >> np.thickness;
+        else if (key == "pillar_n") ss >> np.pillar_n;
+        else if (key == "harmonics") ss >> np.harmonics;
+        else if (key == "fill_samples") ss >> np.fill_samples;
+        else if (key == "pillar_mat") ss >> np.pillar_mat;
+        else if (key == "substrate_mat") ss >> np.substrate_mat;
+        else if (key == "layer") {
+            LayerRow L; ss >> L.n >> L.fill >> L.thickness;
+            np.extra_layers.push_back(L);
+        }
+    }
+    if (!header) return false;
+    p = std::move(np);
+    return true;
 }
 
 struct Results {
@@ -456,7 +510,9 @@ int main() {
             }
         };
 
-        static bool show_about = false;
+        static bool show_about = false, show_save = false, show_open = false;
+        static char proj_path[256] = "metalens.celeris";
+        static std::string proj_msg;
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
@@ -465,6 +521,9 @@ int main() {
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("Save Project...")) show_save = true;
+                if (ImGui::MenuItem("Open Project...")) show_open = true;
+                ImGui::Separator();
                 if (ImGui::MenuItem("Exit")) glfwSetWindowShouldClose(window, 1);
                 ImGui::EndMenu();
             }
@@ -510,6 +569,37 @@ int main() {
                 "RCWA engine, inverse design, GDSII export, focal/chromatic analysis.");
             ImGui::Separator();
             if (ImGui::Button("Close", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+
+        if (show_save) { ImGui::OpenPopup("Save Project"); show_save = false; proj_msg.clear(); }
+        if (show_open) { ImGui::OpenPopup("Open Project"); show_open = false; proj_msg.clear(); }
+        if (ImGui::BeginPopupModal("Save Project", nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted("Write current lens parameters to a .celeris file:");
+            ImGui::SetNextItemWidth(360);
+            ImGui::InputText("##savepath", proj_path, sizeof(proj_path));
+            if (!proj_msg.empty()) ImGui::TextColored(rgb(170, 90, 0), "%s", proj_msg.c_str());
+            if (ImGui::Button("Save", ImVec2(120, 0))) {
+                if (save_project(proj_path, params)) ImGui::CloseCurrentPopup();
+                else proj_msg = "Could not write file.";
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        if (ImGui::BeginPopupModal("Open Project", nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted("Load lens parameters from a .celeris file:");
+            ImGui::SetNextItemWidth(360);
+            ImGui::InputText("##openpath", proj_path, sizeof(proj_path));
+            if (!proj_msg.empty()) ImGui::TextColored(rgb(170, 90, 0), "%s", proj_msg.c_str());
+            if (ImGui::Button("Open", ImVec2(120, 0))) {
+                if (load_project(proj_path, params)) ImGui::CloseCurrentPopup();
+                else proj_msg = "Not a valid .celeris file.";
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
