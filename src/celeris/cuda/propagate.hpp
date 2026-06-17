@@ -24,4 +24,12 @@ bool propagate_psf(const double* px, const double* py,
                    double cx, double cy, double z, double k,
                    int n, double half_window, double* out);
 
+// Longitudinal caustic: |E|^2 on an (nz x nx) grid in the y=0 plane, x spanning
+// [xmin,xmax], z (axial) spanning [zmin,zmax]. out is row-major nz*nx (row =
+// z index). Shows the focusing cone / depth of focus. Returns false on failure.
+bool propagate_zx(const double* px, const double* py,
+                  const std::complex<double>* pt, int npil, double xmin,
+                  double xmax, int nx, double zmin, double zmax, int nz, double k,
+                  double* out);
+
 } // namespace celeris::cuda

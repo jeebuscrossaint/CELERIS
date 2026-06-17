@@ -4,6 +4,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
+
+#ifdef CELERIS_USE_CUDA_KERNELS
+#include "celeris/cuda/propagate.hpp"
+#endif
 
 namespace celeris {
 
@@ -67,6 +72,62 @@ ThroughFocus analyze_through_focus(const MetalensDesign& lens,
     for (int i = 0; i < N; ++i)
         if (I[i] >= half_lvl) { if (lo < 0) lo = i; hi = i; }
     tf.dof_um = (hi > lo && lo >= 0) ? (tf.z_um[hi] - tf.z_um[lo]) : 0.0;
+
+    // Longitudinal caustic (x-z intensity slice through the focus). The lateral
+    // window is a few diffraction-limited spot widths; the axial window matches
+    // the on-axis scan. Computed on the GPU when available (this is exactly the
+    // dense propagation it excels at); a coarse CPU grid otherwise.
+    const double dl = wavelength_um * focal_length_um / std::max(diameter_um, 1e-6);
+    const double Wx = std::max(8.0 * dl, 3.0);
+    tf.caustic_xmin = -Wx; tf.caustic_xmax = Wx;
+    tf.caustic_zmin = zlo;  tf.caustic_zmax = zhi;
+
+    std::vector<double> px(cells.size()), py(cells.size());
+    std::vector<cdouble> pt(cells.size());
+    for (std::size_t c = 0; c < cells.size(); ++c) {
+        px[c] = cells[c].x; py[c] = cells[c].y; pt[c] = cells[c].t;
+    }
+
+    int cnx = 0, cnz = 0;
+    std::vector<double> cmap;
+#ifdef CELERIS_USE_CUDA_KERNELS
+    {
+        cnx = 201; cnz = 201;
+        cmap.assign(static_cast<std::size_t>(cnx) * cnz, 0.0);
+        if (!cuda::propagate_zx(px.data(), py.data(), pt.data(),
+                                static_cast<int>(pt.size()), tf.caustic_xmin,
+                                tf.caustic_xmax, cnx, tf.caustic_zmin,
+                                tf.caustic_zmax, cnz, k, cmap.data())) {
+            cnx = cnz = 0; cmap.clear();
+        }
+    }
+#endif
+    if (cnx == 0) {
+        // CPU fallback: keep it small so it stays interactive without a GPU.
+        cnx = 81; cnz = 81;
+        cmap.assign(static_cast<std::size_t>(cnx) * cnz, 0.0);
+        for (int iz = 0; iz < cnz; ++iz) {
+            double z = tf.caustic_zmin + (tf.caustic_zmax - tf.caustic_zmin) * iz / (cnz - 1);
+            for (int ix = 0; ix < cnx; ++ix) {
+                double fx = tf.caustic_xmin + (tf.caustic_xmax - tf.caustic_xmin) * ix / (cnx - 1);
+                cdouble E{0, 0};
+                for (const Cell& c : cells) {
+                    double r = std::sqrt((fx - c.x) * (fx - c.x) + c.y * c.y + z * z);
+                    E += c.t * std::polar(1.0 / r, k * r);
+                }
+                cmap[static_cast<std::size_t>(iz) * cnx + ix] = std::norm(E);
+            }
+        }
+    }
+
+    double cpeak = 0.0;
+    for (double v : cmap) cpeak = std::max(cpeak, v);
+    if (cpeak <= 0) cpeak = 1.0;
+    tf.caustic_nx = cnx; tf.caustic_nz = cnz;
+    tf.caustic.resize(cmap.size());
+    for (std::size_t i = 0; i < cmap.size(); ++i)
+        tf.caustic[i] = static_cast<float>(cmap[i] / cpeak);
+
     return tf;
 }
 

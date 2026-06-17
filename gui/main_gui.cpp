@@ -481,6 +481,30 @@ void upload_layout_texture(const MetalensDesign& d, const UnitCellLibrary& lib,
                  GL_UNSIGNED_BYTE, rgba.data());
 }
 
+// Upload the through-focus caustic (x-z slice) with a "hot" colormap
+// (black -> red -> yellow -> white). Runs on the GL thread.
+void upload_caustic_texture(const ThroughFocus& tf, unsigned int& tex) {
+    if (tf.caustic_nx <= 0 || tf.caustic.empty()) return;
+    const int w = tf.caustic_nx, h = tf.caustic_nz;
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(w) * h * 4);
+    for (std::size_t i = 0; i < tf.caustic.size(); ++i) {
+        double v = std::pow(std::clamp((double)tf.caustic[i], 0.0, 1.0), 1.0 / 1.6);
+        auto ch = [](double t) {
+            return static_cast<std::uint8_t>(std::clamp(t, 0.0, 1.0) * 255.0);
+        };
+        rgba[i * 4 + 0] = ch(v * 3.0);          // red first
+        rgba[i * 4 + 1] = ch(v * 3.0 - 1.0);    // then green
+        rgba[i * 4 + 2] = ch(v * 3.0 - 2.0);    // then blue -> white
+        rgba[i * 4 + 3] = 255;
+    }
+    if (tex == 0) glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 rgba.data());
+}
+
 } // namespace
 
 int main() {
@@ -507,7 +531,7 @@ int main() {
     ImGui_ImplOpenGL3_Init("#version 130");
 
     Params params;
-    unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0;
+    unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0, caustic_tex = 0;
     int layout_mode = 0, layout_built_mode = -1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
@@ -522,6 +546,7 @@ int main() {
             std::lock_guard<std::mutex> lk(g_mtx);
             upload_psf_texture(g_res.psf, psf_tex);
             upload_wavefront_texture(g_res.wf, wf_tex);
+            upload_caustic_texture(g_res.tf, caustic_tex);
             layout_built_mode = -1;  // force layout texture rebuild for new design
             gds_need_fit = true;     // refit the GDS viewer to the new aperture
             have_result = true;
@@ -1227,7 +1252,20 @@ int main() {
                                   g_res.tf.z_um.front(), g_res.tf.z_um.back());
                     ImGui::PlotLines("##tf", g_res.tf.intensity.data(),
                                      static_cast<int>(g_res.tf.intensity.size()), 0,
-                                     ov, 0.0f, 1.0f, ImVec2(-FLT_MIN, 160));
+                                     ov, 0.0f, 1.0f, ImVec2(-FLT_MIN, 110));
+                    if (caustic_tex && g_res.tf.caustic_nx > 0) {
+                        ImGui::SeparatorText("Caustic (x-z focal slice)");
+                        ImVec2 a = ImGui::GetContentRegionAvail();
+                        float ih = std::min(std::max(a.y, 80.0f), 240.0f);
+                        // Draw with z horizontal (axial) x vertical: image is
+                        // nx wide (lateral) x nz tall (axial); show as-is.
+                        ImGui::Image((ImTextureID)(intptr_t)caustic_tex,
+                                     ImVec2(a.x, ih));
+                        ImGui::TextDisabled("horizontal = lateral x (%.1f..%.1f um), "
+                                            "vertical = axial z (%.0f..%.0f um)",
+                                            g_res.tf.caustic_xmin, g_res.tf.caustic_xmax,
+                                            g_res.tf.caustic_zmin, g_res.tf.caustic_zmax);
+                    }
                 }
             }
             ImGui::End();
