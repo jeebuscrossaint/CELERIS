@@ -24,8 +24,11 @@
 #include <vector>
 
 #include "celeris/analysis/chromatic.hpp"
+#include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
+#include "celeris/analysis/tolerance.hpp"
 #include "celeris/design/metalens.hpp"
+#include "celeris/io/gds.hpp"
 #include "celeris/materials/database.hpp"
 
 using namespace celeris;
@@ -44,6 +47,10 @@ struct Results {
     int n_cells = 0, pillars = 0;
     PsfMap psf;
     std::vector<float> chrom_wl, chrom_focus;
+    // Kept so the UI can export GDSII and run further analyses on demand.
+    MetalensDesign design;
+    UnitCellLibrary lib;
+    Params used;
 };
 
 ImVec4 rgb(int r, int g, int b, float a = 1.0f) {
@@ -97,6 +104,12 @@ std::mutex g_mtx;
 std::string g_status = "Ready — set parameters and click Design.";
 Results g_res;
 
+// On-demand analyses (computed from the stored design when requested).
+std::atomic<bool> g_tol_pending{false};
+std::atomic<bool> g_fov_pending{false};
+std::vector<ToleranceResult> g_tol;
+std::vector<FieldPoint> g_fov;
+
 void set_phase(const char* msg, float progress) {
     std::lock_guard<std::mutex> lk(g_mtx);
     g_status = msg;
@@ -139,6 +152,9 @@ void run_design(Params p) {
         r.chrom_wl.push_back(static_cast<float>(c.wavelength_um * 1000.0));
         r.chrom_focus.push_back(static_cast<float>(c.focal_length_um));
     }
+    r.design = lens;
+    r.lib = std::move(lib);
+    r.used = p;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
         g_res = std::move(r);
@@ -146,6 +162,32 @@ void run_design(Params p) {
         g_progress = 1.0f;
     }
     g_pending = true;
+    g_running = false;
+}
+
+void run_tolerance() {
+    g_running = true;
+    set_phase("Monte-Carlo fabrication tolerance...", 0.2f);
+    MetalensDesign d; UnitCellLibrary lib; Params p;
+    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
+    auto tol = analyze_tolerance(d, lib, p.focal, p.wavelength, p.diameter,
+                                 {0.0, 5.0, 10.0, 20.0}, 12, 12345);
+    { std::lock_guard<std::mutex> lk(g_mtx); g_tol = std::move(tol);
+      g_status = "Tolerance analysis done."; g_progress = 1.0f; }
+    g_tol_pending = true;
+    g_running = false;
+}
+
+void run_fov() {
+    g_running = true;
+    set_phase("Field-of-view (off-axis) analysis...", 0.2f);
+    MetalensDesign d; UnitCellLibrary lib; Params p;
+    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
+    auto fov = analyze_field_of_view(d, lib, p.focal, p.wavelength, p.diameter,
+                                     {0.0, 1.0, 2.0, 5.0, 10.0});
+    { std::lock_guard<std::mutex> lk(g_mtx); g_fov = std::move(fov);
+      g_status = "Field-of-view analysis done."; g_progress = 1.0f; }
+    g_fov_pending = true;
     g_running = false;
 }
 
@@ -199,7 +241,8 @@ int main() {
 
     Params params;
     unsigned int psf_tex = 0;
-    bool have_result = false;
+    bool have_result = false, have_tol = false, have_fov = false;
+    char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
 
     while (!glfwWindowShouldClose(window)) {
@@ -210,6 +253,8 @@ int main() {
             upload_psf_texture(g_res.psf, psf_tex);
             have_result = true;
         }
+        if (g_tol_pending.exchange(false)) have_tol = true;
+        if (g_fov_pending.exchange(false)) have_fov = true;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -303,6 +348,27 @@ int main() {
             std::lock_guard<std::mutex> lk(g_mtx);
             ImGui::TextWrapped("%s", g_status.c_str());
         }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextUnformatted("Output / Analysis");
+        const bool can_act = have_result && !running;
+        if (!can_act) ImGui::BeginDisabled();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputText("##gds", gds_name, sizeof(gds_name));
+        if (ImGui::Button("Save GDSII", ImVec2(-FLT_MIN, 0))) {
+            MetalensDesign d;
+            { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; }
+            int np = write_metalens_gds(d, gds_name);
+            std::lock_guard<std::mutex> lk(g_mtx);
+            g_status = np >= 0 ? std::format("Wrote {} pillars -> {}", np, gds_name)
+                               : std::string("ERROR: GDSII write failed");
+        }
+        if (ImGui::Button("Run Tolerance", ImVec2(-FLT_MIN, 0)))
+            std::thread(run_tolerance).detach();
+        if (ImGui::Button("Run Field of View", ImVec2(-FLT_MIN, 0)))
+            std::thread(run_fov).detach();
+        if (!can_act) ImGui::EndDisabled();
         ImGui::EndChild();
 
         // ---- Results panel ----
@@ -366,6 +432,45 @@ int main() {
                                  static_cast<int>(g_res.chrom_focus.size()), 0,
                                  nullptr, FLT_MAX, FLT_MAX, ImVec2(-FLT_MIN, 200));
             ImGui::Columns(1);
+
+            if (have_tol && !g_tol.empty()) {
+                ImGui::Spacing();
+                ImGui::TextUnformatted("Fabrication Tolerance (Strehl vs CD error)");
+                if (ImGui::BeginTable("tol", 4,
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("sigma (nm)");
+                    ImGui::TableSetupColumn("mean");
+                    ImGui::TableSetupColumn("std");
+                    ImGui::TableSetupColumn("worst");
+                    ImGui::TableHeadersRow();
+                    for (auto& t : g_tol) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::Text("%.0f", t.sigma_nm);
+                        ImGui::TableNextColumn(); ImGui::Text("%.3f", t.mean_strehl);
+                        ImGui::TableNextColumn(); ImGui::Text("%.3f", t.std_strehl);
+                        ImGui::TableNextColumn(); ImGui::Text("%.3f", t.worst_strehl);
+                    }
+                    ImGui::EndTable();
+                }
+            }
+            if (have_fov && !g_fov.empty()) {
+                ImGui::Spacing();
+                ImGui::TextUnformatted("Field of View (off-axis)");
+                if (ImGui::BeginTable("fov", 3,
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("angle (deg)");
+                    ImGui::TableSetupColumn("rel. Strehl");
+                    ImGui::TableSetupColumn("shift (um)");
+                    ImGui::TableHeadersRow();
+                    for (auto& f : g_fov) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::Text("%.0f", f.angle_deg);
+                        ImGui::TableNextColumn(); ImGui::Text("%.3f", f.rel_strehl);
+                        ImGui::TableNextColumn(); ImGui::Text("%.2f", f.spot_shift_um);
+                    }
+                    ImGui::EndTable();
+                }
+            }
         }
         ImGui::EndChild();
 
