@@ -45,6 +45,27 @@ add_library(celeris_core
 find_package(Threads REQUIRED)
 target_include_directories(celeris_core PUBLIC src)
 target_link_libraries(celeris_core PUBLIC Eigen3::Eigen Threads::Threads)
+
+# --- Optional CUDA GPU backend (eigensolve via cuSOLVER) ---------------------
+# Enable with -DCELERIS_USE_CUDA=ON. On Windows this needs the MSVC toolchain
+# plus the VS generator toolset:
+#   -G "Visual Studio 17 2022" -A x64
+#   -DCMAKE_GENERATOR_TOOLSET="cuda=<scoop>/apps/cuda/current"
+option(CELERIS_USE_CUDA "Build the CUDA GPU eigensolve backend" OFF)
+if(CELERIS_USE_CUDA)
+    # The GPU eigensolve is pure HOST code (cuSOLVER host API), so we compile it
+    # with the normal C++ compiler and just link the CUDA import libs. No nvcc,
+    # no CUDA language, no CCCL headers (which scoop's CUDA package omits), and
+    # it builds with the plain Visual Studio generator.
+    set(CELERIS_CUDA_DIR "$ENV{USERPROFILE}/scoop/apps/cuda/current"
+        CACHE PATH "CUDA toolkit directory (contains include/ and lib/x64/)")
+    target_sources(celeris_core PRIVATE src/celeris/cuda/eigensolve.cpp)
+    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA)
+    target_include_directories(celeris_core PRIVATE "${CELERIS_CUDA_DIR}/include")
+    target_link_libraries(celeris_core PUBLIC
+        "${CELERIS_CUDA_DIR}/lib/x64/cusolver.lib"
+        "${CELERIS_CUDA_DIR}/lib/x64/cudart.lib")
+endif()
 # ---------------------------------------------------------------------------
 
 # --- celeris: demo / validation app -----------------------------------------

@@ -2,6 +2,15 @@
 #include <print>
 #include <vector>
 
+#ifdef CELERIS_USE_CUDA
+#include <Eigen/Dense>
+#include <algorithm>
+#include <chrono>
+#include <random>
+
+#include "celeris/cuda/eigensolve.hpp"
+#endif
+
 #include "celeris/design/metalens.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
@@ -267,4 +276,57 @@ int main() {
                      lens.rms_phase_error_deg);
         std::println("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
     }
+
+#ifdef CELERIS_USE_CUDA
+    // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
+    // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
+    // Honest head-to-head on a representative 578x578 (2N at M=8): cuSOLVER
+    // Xgeev (GPU) vs Eigen ComplexEigenSolver (CPU). Verify eigenvalues agree.
+    {
+        const int n = 578;
+        std::mt19937 rng(42);
+        std::uniform_real_distribution<double> dist(-1.0, 1.0);
+        Eigen::MatrixXcd A(n, n);
+        for (int j = 0; j < n; ++j)
+            for (int i = 0; i < n; ++i)
+                A(i, j) = cdouble{dist(rng), dist(rng)};
+
+        std::println("[10] GPU vs CPU eigensolve ({}x{} general complex):", n, n);
+        if (!cuda::available()) {
+            std::println("     no CUDA device available");
+        } else {
+            auto t0 = std::chrono::steady_clock::now();
+            Eigen::ComplexEigenSolver<Eigen::MatrixXcd> ces(A);
+            auto t1 = std::chrono::steady_clock::now();
+            double cpu_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+            std::vector<cdouble> w(n), vr((std::size_t)n * n);
+            cuda::geev(A.data(), n, w.data(), vr.data());  // warm-up (device init)
+            auto t2 = std::chrono::steady_clock::now();
+            bool ok = cuda::geev(A.data(), n, w.data(), vr.data());
+            auto t3 = std::chrono::steady_clock::now();
+            double gpu_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+            // Compare eigenvalue sets (sort by real then imag).
+            std::vector<cdouble> ec(ces.eigenvalues().data(),
+                                    ces.eigenvalues().data() + n);
+            std::vector<cdouble> eg = w;
+            auto cmp = [](cdouble a, cdouble b) {
+                return a.real() != b.real() ? a.real() < b.real()
+                                            : a.imag() < b.imag();
+            };
+            std::sort(ec.begin(), ec.end(), cmp);
+            std::sort(eg.begin(), eg.end(), cmp);
+            double max_diff = 0.0;
+            for (int i = 0; i < n; ++i)
+                max_diff = std::max(max_diff, std::abs(ec[i] - eg[i]));
+
+            std::println("     CPU (Eigen)      : {:.1f} ms", cpu_ms);
+            std::println("     GPU (cuSOLVER)   : {:.1f} ms   ({:.1f}x)", gpu_ms,
+                         cpu_ms / gpu_ms);
+            std::println("     eigenvalue match : max|Δ| = {:.2e}  ok={}",
+                         max_diff, ok);
+        }
+    }
+#endif
 }
