@@ -37,6 +37,7 @@
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/system_opt.hpp"
 #include "celeris/io/gds.hpp"
+#include "celeris/io/image.hpp"
 #include "celeris/io/material_csv.hpp"
 #include "celeris/materials/database.hpp"
 #ifdef CELERIS_USE_CUDA_KERNELS
@@ -764,6 +765,55 @@ int main() {
                     std::lock_guard<std::mutex> lk(g_mtx);
                     g_status = np >= 0 ? std::format("Wrote {} pillars -> {}", np, gds_name)
                                        : std::string("ERROR: GDSII write failed");
+                }
+                static char rpt_prefix[256] = "celeris_report";
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                ImGui::InputText("##rpt", rpt_prefix, sizeof(rpt_prefix));
+                if (ImGui::Button("Save Report (txt + images + gds)", ImVec2(-FLT_MIN, 0))) {
+                    Results r; Params up;
+                    { std::lock_guard<std::mutex> lk(g_mtx); r = g_res; up = g_res.used; }
+                    std::string base = rpt_prefix;
+                    bool okall = true;
+                    // Metrics report.
+                    {
+                        std::ofstream f(base + "_report.txt");
+                        if (f) {
+                            f << "CELERIS metalens design report\n";
+                            f << "==============================\n\n";
+                            f << std::format("focal length      : {} um\n", up.focal);
+                            f << std::format("aperture diameter : {} um\n", up.diameter);
+                            f << std::format("wavelength        : {} um\n", up.wavelength);
+                            f << std::format("period            : {} um\n", up.period);
+                            f << std::format("pillar height     : {} um\n", up.thickness);
+                            f << std::format("pillar material   : {}\n", kPillarMats[up.pillar_mat]);
+                            f << std::format("substrate         : {}\n\n", kSubstrates[up.substrate_mat]);
+                            f << std::format("array             : {} x {} ({} pillars)\n", r.n_cells, r.n_cells, r.pillars);
+                            f << std::format("numerical aperture: {:.3f}\n", r.na);
+                            f << std::format("phase coverage    : {:.0f} deg\n", r.coverage_deg);
+                            f << std::format("RMS phase error   : {:.1f} deg\n", r.rms);
+                            f << std::format("mean transmission : {:.3f}\n\n", r.meanT);
+                            f << std::format("Strehl ratio      : {:.3f}\n", r.strehl);
+                            f << std::format("spot FWHM         : {:.3f} um\n", r.fwhm);
+                            f << std::format("diffraction limit : {:.3f} um\n", r.dl);
+                            f << std::format("encircled energy  : {:.1f} %\n", r.encircled * 100.0);
+                            f << std::format("wavefront RMS     : {:.4f} waves\n", r.wf.rms_waves);
+                            f << std::format("depth of focus    : {:.2f} um\n", r.tf.dof_um);
+                        } else okall = false;
+                    }
+                    // PSF image (gamma-boosted for sidelobes).
+                    if (!r.psf.intensity.empty())
+                        okall &= write_pgm(base + "_psf.pgm", r.psf.n, r.psf.n,
+                                           r.psf.intensity, 2.2);
+                    // Caustic image (convert normalized floats to doubles).
+                    if (!r.tf.caustic.empty()) {
+                        std::vector<double> cd(r.tf.caustic.begin(), r.tf.caustic.end());
+                        okall &= write_pgm(base + "_caustic.pgm", r.tf.caustic_nx,
+                                           r.tf.caustic_nz, cd, 1.6);
+                    }
+                    okall &= (write_metalens_gds(r.design, base + "_layout.gds") >= 0);
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    g_status = okall ? std::format("Report written: {}_report.txt (+ psf/caustic/gds)", base)
+                                     : std::string("ERROR: report write failed (check path)");
                 }
                 if (ImGui::Button("Run Tolerance", ImVec2(-FLT_MIN, 0)))
                     std::thread(run_tolerance).detach();
