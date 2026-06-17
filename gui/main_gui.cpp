@@ -213,8 +213,10 @@ Results g_res;
 // On-demand analyses (computed from the stored design when requested).
 std::atomic<bool> g_tol_pending{false};
 std::atomic<bool> g_fov_pending{false};
+std::atomic<bool> g_spot_pending{false};
 std::vector<ToleranceResult> g_tol;
 std::vector<FieldPoint> g_fov;
+std::vector<FieldPsf> g_spot;  // per-field-angle focal spots (spot diagram)
 
 // Design optimizer result (best period/height applied to the UI on completion).
 std::atomic<bool> g_opt_pending{false};
@@ -328,6 +330,34 @@ void run_fov() {
     { std::lock_guard<std::mutex> lk(g_mtx); g_fov = std::move(fov);
       g_status = "Field-of-view analysis done."; g_progress = 1.0f; }
     g_fov_pending = true;
+    g_running = false;
+}
+
+void run_spotgrid() {
+    g_running = true;
+    set_phase("Spot-vs-field diagram (off-axis PSFs)...", 0.1f);
+    MetalensDesign d; UnitCellLibrary lib; Params p;
+    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
+    const double dl = p.wavelength * p.focal / p.diameter;
+    const double win = std::max(8.0 * dl, 5.0);
+    const int ng = 81;
+    const std::vector<double> angles = {0.0, 2.0, 4.0, 6.0, 8.0};
+    std::vector<FieldPsf> spots;
+    // On-axis first to establish the reference peak for relative Strehl.
+    auto ax = compute_psf_field(d, lib, p.focal, p.wavelength, p.diameter, 0.0, ng, win);
+    double peak = 0.0;
+    for (double v : ax.psf.intensity) peak = std::max(peak, v);
+    ax.rel_strehl = 1.0;
+    spots.push_back(std::move(ax));
+    for (std::size_t i = 1; i < angles.size(); ++i) {
+        set_phase("Spot-vs-field diagram (off-axis PSFs)...",
+                  0.1f + 0.85f * static_cast<float>(i) / angles.size());
+        spots.push_back(compute_psf_field(d, lib, p.focal, p.wavelength, p.diameter,
+                                          angles[i], ng, win, peak));
+    }
+    { std::lock_guard<std::mutex> lk(g_mtx); g_spot = std::move(spots);
+      g_status = "Spot-vs-field diagram done."; g_progress = 1.0f; }
+    g_spot_pending = true;
     g_running = false;
 }
 
@@ -476,7 +506,8 @@ int main() {
     Params params;
     unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0;
     int layout_mode = 0, layout_built_mode = -1;
-    bool have_result = false, have_tol = false, have_fov = false;
+    std::vector<unsigned int> spot_texs;
+    bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
 
@@ -492,6 +523,13 @@ int main() {
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
         if (g_fov_pending.exchange(false)) have_fov = true;
+        if (g_spot_pending.exchange(false)) {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            spot_texs.resize(g_spot.size(), 0);
+            for (std::size_t i = 0; i < g_spot.size(); ++i)
+                upload_psf_texture(g_spot[i].psf, spot_texs[i]);
+            have_spot = true;
+        }
         if (g_opt_pending.exchange(false)) {
             std::lock_guard<std::mutex> lk(g_mtx);
             params.period = static_cast<float>(g_opt.period_um);
@@ -516,7 +554,7 @@ int main() {
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
-                    win_mats = true, win_layout = true;
+                    win_mats = true, win_layout = true, win_spot = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -534,6 +572,8 @@ int main() {
                     std::thread(run_tolerance).detach();
                 if (ImGui::MenuItem("Field of View", nullptr, false, can_act))
                     std::thread(run_fov).detach();
+                if (ImGui::MenuItem("Spot vs Field Diagram", nullptr, false, can_act))
+                    std::thread(run_spotgrid).detach();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
@@ -547,6 +587,7 @@ int main() {
                 ImGui::MenuItem("Wavefront", nullptr, &win_wf);
                 ImGui::MenuItem("MTF", nullptr, &win_mtf);
                 ImGui::MenuItem("Through Focus", nullptr, &win_tf);
+                ImGui::MenuItem("Spot vs Field", nullptr, &win_spot);
                 ImGui::MenuItem("Chromatic", nullptr, &win_chr);
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
@@ -630,6 +671,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Through Focus", cbottom);
             ImGui::DockBuilderDockWindow("Tolerance", cbottom);
             ImGui::DockBuilderDockWindow("Field of View", cbottom);
+            ImGui::DockBuilderDockWindow("Spot vs Field", cbottom);
             ImGui::DockBuilderDockWindow("Log", cbottom);
             ImGui::DockBuilderFinish(dockid);
         }
@@ -870,6 +912,38 @@ int main() {
                     else
                         ImGui::TextDisabled("Grayscale: pillar fill fraction "
                                             "(black = 0, white = 1).");
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Spot vs Field (off-axis spot diagram) ----
+        if (win_spot) {
+            if (ImGui::Begin("Spot vs Field", &win_spot)) {
+                bool can = have_result && !g_running.load();
+                if (ImGui::Button("Compute spot diagram") && can)
+                    std::thread(run_spotgrid).detach();
+                ImGui::SameLine();
+                ImGui::TextDisabled("off-axis focal spots vs field angle");
+                if (!have_spot)
+                    ImGui::TextDisabled("Run a design (F5), then Compute.");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    const float sz = 130.0f;
+                    for (std::size_t i = 0; i < g_spot.size() &&
+                                           i < spot_texs.size(); ++i) {
+                        ImGui::BeginGroup();
+                        ImGui::Text("%.0f deg", g_spot[i].angle_deg);
+                        if (spot_texs[i])
+                            ImGui::Image((ImTextureID)(intptr_t)spot_texs[i],
+                                         ImVec2(sz, sz));
+                        ImGui::Text("Strehl %.2f", g_spot[i].rel_strehl);
+                        ImGui::Text("shift %.1f um", g_spot[i].cx_um);
+                        ImGui::EndGroup();
+                        if (i + 1 < g_spot.size()) ImGui::SameLine();
+                    }
+                    ImGui::TextDisabled("Each tile is centered on the chief-ray "
+                                        "landing point; coma grows with angle.");
                 }
             }
             ImGui::End();

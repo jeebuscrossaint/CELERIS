@@ -37,4 +37,20 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
                    double focal_length_um, double wavelength_um,
                    double diameter_um, int n, double half_window_um);
 
+// Off-axis PSF: illuminate the aperture with a plane wave tilted by angle_deg
+// (in the x-z plane) and sample the focal plane in a window centered on the
+// expected chief-ray landing point (x ~ f*tan(theta)). This is the per-field
+// spot of a classic spot-vs-field diagram. The returned map's `cx_um` is that
+// window-center x offset so callers can report the lateral spot shift.
+struct FieldPsf {
+    PsfMap psf;
+    double angle_deg;
+    double cx_um;        // window center (chief-ray landing) along x
+    double rel_strehl;   // peak intensity relative to the on-axis peak
+};
+FieldPsf compute_psf_field(const MetalensDesign& lens, const UnitCellLibrary& lib,
+                           double focal_length_um, double wavelength_um,
+                           double diameter_um, double angle_deg, int n,
+                           double half_window_um, double on_axis_peak = 0.0);
+
 } // namespace celeris

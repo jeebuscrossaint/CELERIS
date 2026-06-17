@@ -155,4 +155,58 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
     return m;
 }
 
+FieldPsf compute_psf_field(const MetalensDesign& lens, const UnitCellLibrary& lib,
+                           double focal_length_um, double wavelength_um,
+                           double diameter_um, double angle_deg, int n,
+                           double half_window_um, double on_axis_peak) {
+    const double p = lens.period_um;
+    const double center = (lens.n_cells - 1) / 2.0;
+    const double R_ap = diameter_um / 2.0;
+    const double k = 2.0 * pi / wavelength_um;
+    const double theta = angle_deg * pi / 180.0;
+    const double sin_t = std::sin(theta);
+
+    // Aperture cells, each carrying the designed transmission times the tilted
+    // incident plane-wave phase exp(i k sin(theta) x).
+    struct Cell { double x, y; cdouble t; };
+    std::vector<Cell> cells;
+    for (int iy = 0; iy < lens.n_cells; ++iy)
+        for (int ix = 0; ix < lens.n_cells; ++ix) {
+            const double x = (ix - center) * p, y = (iy - center) * p;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            const double fill = lens.fill_map[static_cast<std::size_t>(iy) * lens.n_cells + ix];
+            cdouble t = lib.transmission_for_fill(fill) * std::polar(1.0, k * sin_t * x);
+            cells.push_back({x, y, t});
+        }
+
+    const double cx = focal_length_um * std::tan(theta);  // chief-ray landing
+    FieldPsf out;
+    out.angle_deg = angle_deg;
+    out.cx_um = cx;
+    out.psf.n = n;
+    out.psf.half_window_um = half_window_um;
+    out.psf.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
+    const double step = 2.0 * half_window_um / (n - 1);
+
+    parallel_rows(n, [&](int j) {
+        double fy = -half_window_um + j * step;
+        for (int i = 0; i < n; ++i) {
+            double fx = cx - half_window_um + i * step;  // window centered on cx
+            cdouble E{0.0, 0.0};
+            for (const Cell& c : cells) {
+                double R = std::sqrt((fx - c.x) * (fx - c.x) +
+                                     (fy - c.y) * (fy - c.y) +
+                                     focal_length_um * focal_length_um);
+                E += c.t * std::polar(1.0 / R, k * R);
+            }
+            out.psf.intensity[static_cast<std::size_t>(j) * n + i] = std::norm(E);
+        }
+    });
+
+    double peak = 0.0;
+    for (double v : out.psf.intensity) peak = std::max(peak, v);
+    out.rel_strehl = on_axis_peak > 0 ? peak / on_axis_peak : 1.0;
+    return out;
+}
+
 } // namespace celeris
