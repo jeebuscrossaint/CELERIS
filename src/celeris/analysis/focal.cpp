@@ -2,10 +2,28 @@
 
 #include "celeris/core.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <future>
+#include <thread>
 #include <vector>
 
 namespace celeris {
+namespace {
+// Run fn(j) for j in [0,n) across the hardware threads (focal-plane rows are
+// independent, so this is a clean speedup for large apertures).
+template <class Fn>
+void parallel_rows(int n, Fn fn) {
+    unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+    int workers = std::min<int>(static_cast<int>(hw), std::max(1, n));
+    std::vector<std::future<void>> jobs;
+    for (int w = 0; w < workers; ++w)
+        jobs.push_back(std::async(std::launch::async, [=, &fn] {
+            for (int j = w; j < n; j += workers) fn(j);
+        }));
+    for (auto& j : jobs) j.get();
+}
+} // namespace
 
 FocalAnalysis analyze_focus(const MetalensDesign& lens,
                             const UnitCellLibrary& lib, double focal_length_um,
@@ -52,19 +70,18 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
         return E;
     };
 
-    // Intensity grid for the design; track peak and central row for FWHM.
+    // Intensity grid for the design (rows computed in parallel).
     std::vector<double> I(static_cast<std::size_t>(NG) * NG, 0.0);
-    double peak = 0.0;
     int center_row = NG / 2;
-    for (int j = 0; j < NG; ++j) {
+    parallel_rows(NG, [&](int j) {
         double fy = -W + j * step;
         for (int i = 0; i < NG; ++i) {
             double fx = -W + i * step;
-            double v = std::norm(field_at(fx, fy, /*ideal=*/false));
-            I[static_cast<std::size_t>(j) * NG + i] = v;
-            if (v > peak) peak = v;
+            I[static_cast<std::size_t>(j) * NG + i] =
+                std::norm(field_at(fx, fy, /*ideal=*/false));
         }
-    }
+    });
+    double peak = *std::max_element(I.begin(), I.end());
     // Ideal peak (at focal center): perfect-phase lens.
     double peak_ideal = std::norm(field_at(0.0, 0.0, /*ideal=*/true));
 
@@ -121,7 +138,7 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
     m.half_window_um = half_window_um;
     m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
     const double step = 2.0 * half_window_um / (n - 1);
-    for (int j = 0; j < n; ++j) {
+    parallel_rows(n, [&](int j) {
         double fy = -half_window_um + j * step;
         for (int i = 0; i < n; ++i) {
             double fx = -half_window_um + i * step;
@@ -134,7 +151,7 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
             }
             m.intensity[static_cast<std::size_t>(j) * n + i] = std::norm(E);
         }
-    }
+    });
     return m;
 }
 

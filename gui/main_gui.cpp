@@ -15,6 +15,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <format>
 #include <fstream>
 #include <mutex>
@@ -91,26 +92,34 @@ void apply_theme() {
 
 std::atomic<bool> g_running{false};
 std::atomic<bool> g_pending{false};  // worker finished, main thread must ingest
+std::atomic<float> g_progress{0.0f};
 std::mutex g_mtx;
 std::string g_status = "Ready — set parameters and click Design.";
 Results g_res;
 
+void set_phase(const char* msg, float progress) {
+    std::lock_guard<std::mutex> lk(g_mtx);
+    g_status = msg;
+    g_progress = progress;
+}
+
 void run_design(Params p) {
     g_running = true;
-    {
-        std::lock_guard<std::mutex> lk(g_mtx);
-        g_status = "Building unit-cell library (RCWA sweep)...";
-    }
+    set_phase("Building unit-cell library (RCWA sweep)...", 0.05f);
     const auto pillar = Material::constant(cdouble{p.pillar_n, 0.0}, "pillar");
     auto lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
                                        materials::bk7(), p.period, p.wavelength,
                                        p.thickness, 0.08, 0.92, p.fill_samples,
                                        p.harmonics);
+    set_phase("Assembling lens (phase profile -> pillar map)...", 0.45f);
     auto lens = design_metalens(lib, p.focal, p.diameter);
+    set_phase("Analyzing focus (Rayleigh-Sommerfeld)...", 0.55f);
     auto foc = analyze_focus(lens, lib, p.focal, p.wavelength, p.diameter);
     double dl = p.wavelength * p.focal / p.diameter;
+    set_phase("Rendering point-spread function...", 0.72f);
     auto psf = compute_psf(lens, lib, p.focal, p.wavelength, p.diameter, 161,
                            std::max(5.0 * dl, 4.0));
+    set_phase("Chromatic sweep...", 0.9f);
     auto chrom = analyze_chromatic(lens, lib, p.focal, p.wavelength, p.diameter,
                                    p.wavelength * 0.85, p.wavelength * 1.25, 11);
 
@@ -133,6 +142,7 @@ void run_design(Params p) {
         std::lock_guard<std::mutex> lk(g_mtx);
         g_res = std::move(r);
         g_status = "Done.";
+        g_progress = 1.0f;
     }
     g_pending = true;
     g_running = false;
@@ -189,6 +199,7 @@ int main() {
     Params params;
     unsigned int psf_tex = 0;
     bool have_result = false;
+    double run_start = 0.0;  // ImGui time when the current run was launched
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -205,7 +216,10 @@ int main() {
 
         bool running = g_running.load();
         auto launch_design = [&] {
-            if (!g_running.load()) std::thread(run_design, params).detach();
+            if (!g_running.load()) {
+                run_start = ImGui::GetTime();
+                std::thread(run_design, params).detach();
+            }
         };
 
         ImGui::SetNextWindowPos({0, 0});
@@ -278,6 +292,16 @@ int main() {
         if (running) ImGui::BeginDisabled();
         if (ImGui::Button("Run Design  (F5)", ImVec2(-FLT_MIN, 30))) launch_design();
         if (running) ImGui::EndDisabled();
+
+        if (running) {
+            ImGui::Spacing();
+            char ov[48];
+            std::snprintf(ov, sizeof(ov), "%.0f%%", g_progress.load() * 100.0f);
+            ImGui::ProgressBar(g_progress.load(), ImVec2(-FLT_MIN, 0), ov);
+            ImGui::Text("Elapsed: %.1f s", ImGui::GetTime() - run_start);
+            std::lock_guard<std::mutex> lk(g_mtx);
+            ImGui::TextWrapped("%s", g_status.c_str());
+        }
         ImGui::EndChild();
 
         // ---- Results panel ----
