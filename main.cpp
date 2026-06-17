@@ -20,6 +20,7 @@
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
+#include "celeris/io/image.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
 #include "celeris/rcwa/rcwa1d.hpp"
@@ -506,6 +507,18 @@ int cmd_design(int argc, char** argv) {
             std::println("      {:>8.0f}  {:>12.3f}  {:>12.2f}", f.angle_deg,
                          f.rel_strehl, f.spot_shift_um);
     }
+
+    const char* psf_path = arg_value(argc, argv, "--psf", nullptr);
+    if (psf_path) {
+        const double dl = lambda * focal / diameter;
+        auto psf = compute_psf(lens, lib, focal, lambda, diameter, /*n=*/201,
+                               /*half_window=*/std::max(5.0 * dl, 4.0));
+        // gamma 2.2 brightens the faint Airy rings for visibility.
+        if (write_pgm(psf_path, psf.n, psf.n, psf.intensity, /*gamma=*/2.2))
+            std::println("  wrote focal PSF image ({0}x{0}) -> {1}", psf.n, psf_path);
+        else
+            std::println("  ERROR: could not write {}", psf_path);
+    }
     return 0;
 }
 
@@ -530,7 +543,8 @@ void print_help() {
         "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
         "  --out <metalens.gds>   output GDSII path\n"
         "  --tolerance            Monte-Carlo fabrication-error / yield analysis\n"
-        "  --fov                  off-axis field-of-view analysis");
+        "  --fov                  off-axis field-of-view analysis\n"
+        "  --psf <file.pgm>       write the focal-spot image (PGM)");
 }
 
 } // namespace

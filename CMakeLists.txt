@@ -47,6 +47,7 @@ add_library(celeris_core
     src/celeris/analysis/tolerance.cpp
     src/celeris/analysis/field.cpp
     src/celeris/io/gds.cpp
+    src/celeris/io/image.cpp
 )
 find_package(Threads REQUIRED)
 target_include_directories(celeris_core PUBLIC src)

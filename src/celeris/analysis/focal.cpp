@@ -98,4 +98,44 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
     return out;
 }
 
+PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
+                   double focal_length_um, double wavelength_um,
+                   double diameter_um, int n, double half_window_um) {
+    const double p = lens.period_um;
+    const double center = (lens.n_cells - 1) / 2.0;
+    const double R_ap = diameter_um / 2.0;
+    const double k = 2.0 * pi / wavelength_um;
+
+    struct Cell { double x, y; cdouble t; };
+    std::vector<Cell> cells;
+    for (int iy = 0; iy < lens.n_cells; ++iy)
+        for (int ix = 0; ix < lens.n_cells; ++ix) {
+            const double x = (ix - center) * p, y = (iy - center) * p;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            const double fill = lens.fill_map[static_cast<std::size_t>(iy) * lens.n_cells + ix];
+            cells.push_back({x, y, lib.transmission_for_fill(fill)});
+        }
+
+    PsfMap m;
+    m.n = n;
+    m.half_window_um = half_window_um;
+    m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
+    const double step = 2.0 * half_window_um / (n - 1);
+    for (int j = 0; j < n; ++j) {
+        double fy = -half_window_um + j * step;
+        for (int i = 0; i < n; ++i) {
+            double fx = -half_window_um + i * step;
+            cdouble E{0.0, 0.0};
+            for (const Cell& c : cells) {
+                double R = std::sqrt((fx - c.x) * (fx - c.x) +
+                                     (fy - c.y) * (fy - c.y) +
+                                     focal_length_um * focal_length_um);
+                E += c.t * std::polar(1.0 / R, k * R);
+            }
+            m.intensity[static_cast<std::size_t>(j) * n + i] = std::norm(E);
+        }
+    }
+    return m;
+}
+
 } // namespace celeris

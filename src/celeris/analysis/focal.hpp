@@ -26,4 +26,15 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
                             const UnitCellLibrary& lib, double focal_length_um,
                             double wavelength_um, double diameter_um);
 
+// Full 2D focal-plane intensity map (the point-spread function), sampled on an
+// n x n grid spanning +/- half_window_um about the axis at the focal plane.
+struct PsfMap {
+    int n;
+    double half_window_um;
+    std::vector<double> intensity;  // row-major, n*n, |E|^2
+};
+PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
+                   double focal_length_um, double wavelength_um,
+                   double diameter_um, int n, double half_window_um);
+
 } // namespace celeris
