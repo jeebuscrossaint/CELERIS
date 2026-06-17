@@ -672,6 +672,36 @@ int cmd_polardesign(int argc, char** argv) {
     std::println("  Y-pol: RMS phase error {:.1f} deg, mean |t| {:.3f}",
                  d.rms_phase_error_y_deg, d.mean_amp_y);
 
+    // Optical proof: scan on-axis intensity along z for each polarization and
+    // confirm the peaks land at the two target focal planes (the bifocal claim).
+    const double k = 2.0 * pi / lambda;
+    const double pp = d.period_um;
+    const double cen = (d.n_cells - 1) / 2.0;
+    const double R_ap = diameter / 2.0;
+    auto peak_z = [&](const std::vector<cdouble>& t) {
+        double zlo = 0.5 * std::min(focal_x, focal_y);
+        double zhi = 1.5 * std::max(focal_x, focal_y);
+        const int NZ = 240;
+        double best_z = zlo, best_I = -1.0;
+        for (int j = 0; j < NZ; ++j) {
+            double z = zlo + (zhi - zlo) * j / (NZ - 1);
+            cdouble E{0, 0};
+            for (int iy = 0; iy < d.n_cells; ++iy)
+                for (int ix = 0; ix < d.n_cells; ++ix) {
+                    double x = (ix - cen) * pp, y = (iy - cen) * pp;
+                    if (std::sqrt(x * x + y * y) > R_ap) continue;
+                    double r = std::sqrt(x * x + y * y + z * z);
+                    E += t[(std::size_t)iy * d.n_cells + ix] * std::polar(1.0 / r, k * r);
+                }
+            double I = std::norm(E);
+            if (I > best_I) { best_I = I; best_z = z; }
+        }
+        return best_z;
+    };
+    std::println("  optical check (on-axis focus):");
+    std::println("    X-pol focuses at z = {:.1f} um  (target {:.1f})", peak_z(d.t_x), focal_x);
+    std::println("    Y-pol focuses at z = {:.1f} um  (target {:.1f})", peak_z(d.t_y), focal_y);
+
     int np = write_rect_gds(out, d.n_cells, d.period_um, d.fill_x, d.fill_y);
     if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
     std::println("  wrote {} rectangular pillars -> {}", np, out);

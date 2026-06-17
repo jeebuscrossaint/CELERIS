@@ -9,6 +9,7 @@
 // per incident polarization -- then for each lattice site pick the pillar whose
 // (phase_x, phase_y) best matches the two target profiles simultaneously.
 
+#include "celeris/core.hpp"
 #include "celeris/materials/material.hpp"
 
 #include <vector>
@@ -43,6 +44,8 @@ struct PolarMetalensDesign {
     double period_um = 0;
     std::vector<double> fill_x;  // n_cells^2, row-major
     std::vector<double> fill_y;
+    std::vector<cdouble> t_x;    // realized per-pillar transmission, X-pol
+    std::vector<cdouble> t_y;    // realized per-pillar transmission, Y-pol
     double rms_phase_error_x_deg = 0, rms_phase_error_y_deg = 0;
     double mean_amp_x = 0, mean_amp_y = 0;
 };

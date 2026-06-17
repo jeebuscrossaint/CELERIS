@@ -86,6 +86,8 @@ PolarMetalensDesign design_polarization_metalens(const PolarizationLibrary& lib,
     d.period_um = p;
     d.fill_x.resize(static_cast<std::size_t>(n) * n);
     d.fill_y.resize(static_cast<std::size_t>(n) * n);
+    d.t_x.resize(static_cast<std::size_t>(n) * n);
+    d.t_y.resize(static_cast<std::size_t>(n) * n);
 
     auto target_phase = [&](double r, double f) {
         return -(2.0 * pi / lambda) * (std::sqrt(r * r + f * f) - f);
@@ -104,6 +106,8 @@ PolarMetalensDesign design_polarization_metalens(const PolarizationLibrary& lib,
             std::size_t off = static_cast<std::size_t>(iy) * n + ix;
             d.fill_x[off] = c.fill_x;
             d.fill_y[off] = c.fill_y;
+            d.t_x[off] = std::polar(c.amp_x, c.phase_x);
+            d.t_y[off] = std::polar(c.amp_y, c.phase_y);
             double ex = angle_diff(c.phase_x, tx), ey = angle_diff(c.phase_y, ty);
             sqx += ex * ex; sqy += ey * ey;
             ampx += c.amp_x; ampy += c.amp_y;
