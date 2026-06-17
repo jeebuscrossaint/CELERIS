@@ -712,6 +712,24 @@ int cmd_polardesign(int argc, char** argv) {
     std::println("    X-pol focuses at z = {:.1f} um  (target {:.1f})", zx, focal_x);
     std::println("    Y-pol focuses at z = {:.1f} um  (target {:.1f})", zy, focal_y);
 
+    // Focal isolation: how much stronger each channel focuses at its OWN plane
+    // than the other channel's light does there. This is the key spec for a
+    // polarization-multiplexed lens (channel cross-talk).
+    auto on_axis_I = [&](const std::vector<cdouble>& t, double z) {
+        cdouble E{0, 0};
+        for (std::size_t q = 0; q < px.size(); ++q) {
+            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
+            E += t[q] * std::polar(1.0 / r, k * r);
+        }
+        return std::norm(E);
+    };
+    if (std::abs(focal_x - focal_y) > 1e-6) {
+        double iso_x = 10.0 * std::log10(on_axis_I(tx, zx) / std::max(on_axis_I(ty, zx), 1e-30));
+        double iso_y = 10.0 * std::log10(on_axis_I(ty, zy) / std::max(on_axis_I(tx, zy), 1e-30));
+        std::println("    focal isolation: X-plane {:.1f} dB, Y-plane {:.1f} dB "
+                     "(channel separation)", iso_x, iso_y);
+    }
+
     int np = write_rect_gds(out, d.n_cells, d.period_um, d.fill_x, d.fill_y);
     if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
     std::println("  wrote {} rectangular pillars -> {}", np, out);
