@@ -40,7 +40,7 @@ struct Params {
 
 struct Results {
     double strehl = 0, fwhm = 0, dl = 0, encircled = 0, rms = 0, meanT = 0;
-    double coverage_deg = 0;
+    double coverage_deg = 0, na = 0;
     int n_cells = 0, pillars = 0;
     PsfMap psf;
     std::vector<float> chrom_wl, chrom_focus;
@@ -131,6 +131,7 @@ void run_design(Params p) {
     r.rms = lens.rms_phase_error_deg;
     r.meanT = lens.mean_amplitude;
     r.coverage_deg = lib.phase_span() * 180.0 / 3.14159265358979;
+    r.na = std::sin(std::atan((p.diameter / 2.0) / p.focal));  // numerical aperture (in air)
     r.n_cells = lens.n_cells;
     r.pillars = lens.n_cells * lens.n_cells;
     r.psf = std::move(psf);
@@ -325,6 +326,14 @@ int main() {
             if (kv_table("sum")) {
                 kvrow("Array", std::format("{0} x {0} pillars ({1})", g_res.n_cells,
                                            g_res.pillars));
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn(); ImGui::TextUnformatted("Numerical aperture");
+                ImGui::TableNextColumn();
+                if (g_res.na >= 0.7)
+                    ImGui::TextColored(rgb(190, 40, 40),
+                                       "%.2f  (extreme - metrics approximate)", g_res.na);
+                else
+                    ImGui::Text("%.2f", g_res.na);
                 kvrow("Phase coverage", std::format("{:.0f} deg", g_res.coverage_deg));
                 kvrow("RMS phase error", std::format("{:.1f} deg", g_res.rms));
                 kvrow("Mean transmission", std::format("{:.3f}", g_res.meanT));
