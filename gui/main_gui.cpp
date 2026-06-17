@@ -347,6 +347,53 @@ void upload_wavefront_texture(const WavefrontAnalysis& wf, unsigned int& tex) {
                  GL_UNSIGNED_BYTE, rgba.data());
 }
 
+// Map hue in [0,1) (S=V=1) to RGB — used for the cyclic phase colormap.
+void hue_to_rgb(double h, std::uint8_t& r, std::uint8_t& g, std::uint8_t& b) {
+    double x = (1.0 - std::abs(std::fmod(h * 6.0, 2.0) - 1.0));
+    double rr = 0, gg = 0, bb = 0;
+    int seg = static_cast<int>(h * 6.0) % 6;
+    switch (seg) {
+        case 0: rr = 1; gg = x; break;
+        case 1: rr = x; gg = 1; break;
+        case 2: gg = 1; bb = x; break;
+        case 3: gg = x; bb = 1; break;
+        case 4: rr = x; bb = 1; break;
+        default: rr = 1; bb = x; break;
+    }
+    r = static_cast<std::uint8_t>(rr * 255);
+    g = static_cast<std::uint8_t>(gg * 255);
+    b = static_cast<std::uint8_t>(bb * 255);
+}
+
+// Upload the lens layout (pillar map) as an n_cells x n_cells texture.
+// mode 0: imparted phase (cyclic hue colormap); mode 1: fill fraction (grayscale).
+void upload_layout_texture(const MetalensDesign& d, const UnitCellLibrary& lib,
+                           int mode, unsigned int& tex) {
+    const int n = d.n_cells;
+    if (n <= 0 || d.fill_map.empty()) return;
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(n) * n * 4);
+    for (std::size_t i = 0; i < d.fill_map.size(); ++i) {
+        double fill = d.fill_map[i];
+        std::uint8_t r, g, b;
+        if (mode == 0) {
+            cdouble t = lib.transmission_for_fill(fill);
+            double h = (std::arg(t) + pi) / (2.0 * pi);  // -pi..pi -> 0..1
+            hue_to_rgb(std::clamp(h, 0.0, 1.0), r, g, b);
+        } else {
+            auto v = static_cast<std::uint8_t>(std::clamp(fill, 0.0, 1.0) * 255.0);
+            r = g = b = v;
+        }
+        rgba[i * 4 + 0] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b;
+        rgba[i * 4 + 3] = 255;
+    }
+    if (tex == 0) glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, n, n, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rgba.data());
+}
+
 } // namespace
 
 int main() {
@@ -373,7 +420,8 @@ int main() {
     ImGui_ImplOpenGL3_Init("#version 130");
 
     Params params;
-    unsigned int psf_tex = 0, wf_tex = 0;
+    unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0;
+    int layout_mode = 0, layout_built_mode = -1;
     bool have_result = false, have_tol = false, have_fov = false;
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
@@ -385,6 +433,7 @@ int main() {
             std::lock_guard<std::mutex> lk(g_mtx);
             upload_psf_texture(g_res.psf, psf_tex);
             upload_wavefront_texture(g_res.wf, wf_tex);
+            layout_built_mode = -1;  // force layout texture rebuild for new design
             have_result = true;
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
@@ -411,7 +460,7 @@ int main() {
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
-                    win_mats = true;
+                    win_mats = true, win_layout = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -433,6 +482,7 @@ int main() {
                 ImGui::MenuItem("Layer Stack", nullptr, &win_stack);
                 ImGui::MenuItem("Materials", nullptr, &win_mats);
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
+                ImGui::MenuItem("Lens Layout", nullptr, &win_layout);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
                 ImGui::MenuItem("Wavefront", nullptr, &win_wf);
@@ -483,6 +533,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Design Summary", ctl);
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
+            ImGui::DockBuilderDockWindow("Lens Layout", ctr);
             ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
             ImGui::DockBuilderDockWindow("MTF", cbottom);
@@ -694,6 +745,41 @@ int main() {
                         kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
                         ImGui::EndTable();
                     }
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Lens Layout (pillar map) ----
+        if (win_layout) {
+            if (ImGui::Begin("Lens Layout", &win_layout)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    ImGui::TextUnformatted("View:"); ImGui::SameLine();
+                    ImGui::RadioButton("Phase", &layout_mode, 0); ImGui::SameLine();
+                    ImGui::RadioButton("Fill fraction", &layout_mode, 1);
+                    if (layout_mode != layout_built_mode) {
+                        std::lock_guard<std::mutex> lk(g_mtx);
+                        upload_layout_texture(g_res.design, g_res.lib, layout_mode,
+                                              layout_tex);
+                        layout_built_mode = layout_mode;
+                    }
+                    int nc; double per;
+                    { std::lock_guard<std::mutex> lk(g_mtx);
+                      nc = g_res.design.n_cells; per = g_res.design.period_um; }
+                    ImGui::Text("%d x %d pillars   period %.3f um   aperture %.1f um",
+                                nc, nc, per, nc * per);
+                    if (layout_tex) {
+                        ImVec2 a = ImGui::GetContentRegionAvail();
+                        float s = std::max(64.0f, std::min(a.x, a.y));
+                        ImGui::Image((ImTextureID)(intptr_t)layout_tex, ImVec2(s, s));
+                    }
+                    if (layout_mode == 0)
+                        ImGui::TextDisabled("Cyclic colormap: hue = imparted phase "
+                                            "(-pi..pi). Rings are Fresnel zones.");
+                    else
+                        ImGui::TextDisabled("Grayscale: pillar fill fraction "
+                                            "(black = 0, white = 1).");
                 }
             }
             ImGui::End();
