@@ -13,6 +13,7 @@
 #include "celeris/cuda/eigensolve.hpp"
 #endif
 
+#include "celeris/analysis/chromatic.hpp"
 #include "celeris/analysis/focal.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
@@ -306,6 +307,17 @@ static int run_selftest() {
                      foc.fwhm_um, foc.diffraction_limit_um);
         std::println("      encircled E    = {:.1f}% within first Airy null",
                      foc.encircled_energy * 100.0);
+
+        // Chromatic behavior: how the focus shifts across a wavelength band.
+        auto chrom = analyze_chromatic(lens, lib, /*f=*/50.0, /*λ0=*/0.532,
+                                       /*D=*/20.0, 0.45, 0.65, 5);
+        std::println("    Chromatic focal shift (designed for 532nm):");
+        std::println("      {:>7}  {:>12}  {:>10}  {:>10}", "λ(nm)", "focus(µm)",
+                     "f0·λ0/λ", "rel.peak");
+        for (auto& c : chrom)
+            std::println("      {:>7.0f}  {:>12.2f}  {:>10.2f}  {:>10.2f}",
+                         c.wavelength_um * 1000.0, c.focal_length_um,
+                         50.0 * 0.532 / c.wavelength_um, c.rel_peak);
     }
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
