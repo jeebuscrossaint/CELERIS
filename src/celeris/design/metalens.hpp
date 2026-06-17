@@ -28,6 +28,9 @@ struct UnitCellLibrary {
     double phase_span() const;
     // Index of the library entry whose phase best matches target (circularly).
     int lookup(double target_phase_rad) const;
+    // Like lookup, but trades off phase error against transmission: minimizes
+    // phase_error^2 + amplitude_weight*(1-|t|)^2. With weight 0 this is lookup.
+    int lookup_weighted(double target_phase_rad, double amplitude_weight) const;
     // Complex transmission t = |t|·e^{iφ} of the sampled pillar nearest `fill`.
     cdouble transmission_for_fill(double fill) const;
 };
@@ -54,6 +57,7 @@ struct MetalensDesign {
 // using the supplied library. Target phase is the hyperbolic lens profile
 //   phi(r) = -(2*pi/lambda) * (sqrt(r^2 + f^2) - f).
 MetalensDesign design_metalens(const UnitCellLibrary& lib,
-                               double focal_length_um, double diameter_um);
+                               double focal_length_um, double diameter_um,
+                               double amplitude_weight = 0.25);
 
 } // namespace celeris

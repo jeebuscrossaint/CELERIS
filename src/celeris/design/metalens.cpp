@@ -40,6 +40,19 @@ int UnitCellLibrary::lookup(double target_phase_rad) const {
     return best;
 }
 
+int UnitCellLibrary::lookup_weighted(double target_phase_rad,
+                                     double amplitude_weight) const {
+    int best = 0;
+    double best_cost = 1e300;
+    for (int i = 0; i < static_cast<int>(phase.size()); ++i) {
+        double dphi = angle_diff(phase[i], target_phase_rad);
+        double damp = 1.0 - amplitude[i];
+        double cost = dphi * dphi + amplitude_weight * damp * damp;
+        if (cost < best_cost) { best_cost = cost; best = i; }
+    }
+    return best;
+}
+
 cdouble UnitCellLibrary::transmission_for_fill(double f) const {
     int best = 0;
     double best_d = std::abs(fill[0] - f);
@@ -92,7 +105,8 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
 }
 
 MetalensDesign design_metalens(const UnitCellLibrary& lib,
-                               double focal_length_um, double diameter_um) {
+                               double focal_length_um, double diameter_um,
+                               double amplitude_weight) {
     const double p = lib.period_um;
     const double lambda = lib.wavelength_um;
     const int n = std::max(1, static_cast<int>(std::round(diameter_um / p)));
@@ -116,7 +130,7 @@ MetalensDesign design_metalens(const UnitCellLibrary& lib,
                 -(2.0 * pi / lambda) * (std::sqrt(r * r + focal_length_um *
                                                           focal_length_um) -
                                         focal_length_um);
-            const int idx = lib.lookup(target);
+            const int idx = lib.lookup_weighted(target, amplitude_weight);
             d.fill_map[static_cast<std::size_t>(iy) * n + ix] = lib.fill[idx];
 
             const double err = angle_diff(lib.phase[idx], target);

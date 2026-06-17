@@ -294,7 +294,12 @@ static int run_selftest() {
 
         // Does it actually focus? Propagate to the focal plane and measure.
         auto foc = analyze_focus(lens, lib, /*f=*/50.0, /*λ=*/0.532, /*D=*/20.0);
+        // A/B: amplitude-aware pillar selection vs phase-only.
+        auto lens_po = design_metalens(lib, 50.0, 20.0, /*amplitude_weight=*/0.0);
+        auto foc_po = analyze_focus(lens_po, lib, 50.0, 0.532, 20.0);
         std::println("    Focal performance:");
+        std::println("      Strehl: phase-only {:.3f} -> amplitude-aware {:.3f}",
+                     foc_po.strehl, foc.strehl);
         std::println("      Strehl ratio   = {:.3f}  (1.0 = perfect)", foc.strehl);
         std::println("      spot FWHM      = {:.2f} µm  (diffraction limit "
                      "λf/D = {:.2f} µm)",
