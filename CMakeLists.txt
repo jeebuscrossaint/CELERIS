@@ -45,6 +45,7 @@ add_library(celeris_core
     src/celeris/analysis/focal.cpp
     src/celeris/analysis/chromatic.cpp
     src/celeris/analysis/tolerance.cpp
+    src/celeris/analysis/field.cpp
     src/celeris/io/gds.cpp
 )
 find_package(Threads REQUIRED)

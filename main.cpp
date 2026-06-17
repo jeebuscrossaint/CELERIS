@@ -14,6 +14,7 @@
 #endif
 
 #include "celeris/analysis/chromatic.hpp"
+#include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
 #include "celeris/analysis/tolerance.hpp"
 #include "celeris/design/metalens.hpp"
@@ -492,6 +493,19 @@ int cmd_design(int argc, char** argv) {
             std::println("      {:>8.0f}  {:>10.3f}  {:>10.3f}  {:>10.3f}",
                          t.sigma_nm, t.mean_strehl, t.std_strehl, t.worst_strehl);
     }
+
+    bool fov = false;
+    for (int i = 2; i < argc; ++i)
+        if (std::string(argv[i]) == "--fov") fov = true;
+    if (fov) {
+        std::println("  field of view (off-axis focus quality):");
+        std::println("      {:>8}  {:>12}  {:>12}", "angle(°)", "rel.Strehl",
+                     "shift(µm)");
+        for (auto& f : analyze_field_of_view(lens, lib, focal, lambda, diameter,
+                                             {0.0, 1.0, 2.0, 5.0, 10.0}))
+            std::println("      {:>8.0f}  {:>12.3f}  {:>12.2f}", f.angle_deg,
+                         f.rel_strehl, f.spot_shift_um);
+    }
     return 0;
 }
 
@@ -515,7 +529,8 @@ void print_help() {
         "  --fill-samples <18>    library resolution\n"
         "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
         "  --out <metalens.gds>   output GDSII path\n"
-        "  --tolerance            Monte-Carlo fabrication-error / yield analysis");
+        "  --tolerance            Monte-Carlo fabrication-error / yield analysis\n"
+        "  --fov                  off-axis field-of-view analysis");
 }
 
 } // namespace
