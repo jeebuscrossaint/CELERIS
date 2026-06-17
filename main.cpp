@@ -1,5 +1,7 @@
 #include <cmath>
+#include <cstdlib>
 #include <print>
+#include <string>
 #include <vector>
 
 #ifdef CELERIS_USE_CUDA
@@ -22,7 +24,9 @@
 
 using namespace celeris;
 
-int main() {
+// Physics validation suite — every solver checked against closed-form results,
+// an independent solver, or energy conservation. Run with: celeris selftest
+static int run_selftest() {
     const double lambda = 0.550;  // design wavelength, 550 nm (µm)
     const double normal = 0.0;    // normal incidence
 
@@ -372,4 +376,95 @@ int main() {
         }
     }
 #endif
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// CLI front-end
+// ----------------------------------------------------------------------------
+
+namespace {
+
+const char* arg_value(int argc, char** argv, const std::string& key,
+                      const char* fallback) {
+    for (int i = 2; i + 1 < argc; ++i)
+        if (key == argv[i]) return argv[i + 1];
+    return fallback;
+}
+
+// celeris design: build a unit-cell library, design a focusing metalens, export
+// GDSII, and report design fidelity + focal performance.
+int cmd_design(int argc, char** argv) {
+    const double focal = std::atof(arg_value(argc, argv, "--focal", "50"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "20"));
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--fill-samples", "18"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const std::string out = arg_value(argc, argv, "--out", "metalens.gds");
+    const std::string sub_name = arg_value(argc, argv, "--substrate", "bk7");
+
+    const Material& substrate = sub_name == "air"  ? materials::air()
+                                : sub_name == "sio2" ? materials::fused_silica()
+                                                     : materials::bk7();
+    const auto pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    std::println("CELERIS metalens design");
+    std::println("  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
+                 focal, diameter, lambda, period, thickness, pillar_n, sub_name);
+    std::println("  building unit-cell library ({} pillars, M={})...", samples, M);
+
+    auto lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
+                                       substrate, period, lambda, thickness,
+                                       0.08, 0.92, samples, M);
+    std::println("  library phase coverage: {:.0f}°", lib.phase_span() * 180.0 / pi);
+
+    auto lens = design_metalens(lib, focal, diameter);
+    std::println("  designed {0}x{0} pillars, RMS phase error {1:.1f}°, mean |t| {2:.3f}",
+                 lens.n_cells, lens.rms_phase_error_deg, lens.mean_amplitude);
+
+    int np = write_metalens_gds(lens, out);
+    if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
+    std::println("  wrote {} pillars -> {}", np, out);
+
+    auto foc = analyze_focus(lens, lib, focal, lambda, diameter);
+    std::println("  focal: Strehl {:.3f}, FWHM {:.2f}µm (diffraction limit {:.2f}µm), "
+                 "encircled {:.0f}%",
+                 foc.strehl, foc.fwhm_um, foc.diffraction_limit_um,
+                 foc.encircled_energy * 100.0);
+    return 0;
+}
+
+void print_help() {
+    std::println(
+        "CELERIS — GPU-ready metalens design via rigorous coupled-wave analysis\n"
+        "\n"
+        "Usage:\n"
+        "  celeris design [options]   design a focusing metalens -> GDSII + report\n"
+        "  celeris selftest           run the physics validation suite\n"
+        "  celeris help               show this message\n"
+        "\n"
+        "design options (defaults):\n"
+        "  --focal <µm=50>        focal length\n"
+        "  --diameter <µm=20>     lens aperture diameter\n"
+        "  --wavelength <µm=0.532>\n"
+        "  --period <µm=0.35>     unit-cell pitch\n"
+        "  --thickness <µm=0.6>   pillar height\n"
+        "  --pillar-n <2.4>       pillar refractive index\n"
+        "  --substrate <bk7|air|sio2=bk7>\n"
+        "  --fill-samples <18>    library resolution\n"
+        "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
+        "  --out <metalens.gds>   output GDSII path");
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    const std::string cmd = argc > 1 ? argv[1] : "help";
+    if (cmd == "selftest") return run_selftest();
+    if (cmd == "design") return cmd_design(argc, argv);
+    print_help();
+    return (cmd == "help" || cmd == "--help" || cmd == "-h") ? 0 : 1;
 }
