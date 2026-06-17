@@ -15,6 +15,7 @@
 
 #include "celeris/analysis/chromatic.hpp"
 #include "celeris/analysis/focal.hpp"
+#include "celeris/analysis/tolerance.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
@@ -476,6 +477,21 @@ int cmd_design(int argc, char** argv) {
                  "encircled {:.0f}%",
                  foc.strehl, foc.fwhm_um, foc.diffraction_limit_um,
                  foc.encircled_energy * 100.0);
+
+    bool tolerance = false;
+    for (int i = 2; i < argc; ++i)
+        if (std::string(argv[i]) == "--tolerance") tolerance = true;
+    if (tolerance) {
+        std::println("  fabrication tolerance (Monte-Carlo CD error, Strehl):");
+        std::println("      {:>8}  {:>10}  {:>10}  {:>10}", "σ(nm)", "mean", "std",
+                     "worst");
+        auto tol = analyze_tolerance(lens, lib, focal, lambda, diameter,
+                                     {0.0, 5.0, 10.0, 20.0}, /*trials=*/12,
+                                     /*seed=*/12345);
+        for (auto& t : tol)
+            std::println("      {:>8.0f}  {:>10.3f}  {:>10.3f}  {:>10.3f}",
+                         t.sigma_nm, t.mean_strehl, t.std_strehl, t.worst_strehl);
+    }
     return 0;
 }
 
@@ -498,7 +514,8 @@ void print_help() {
         "  --substrate <bk7|air|sio2=bk7>\n"
         "  --fill-samples <18>    library resolution\n"
         "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
-        "  --out <metalens.gds>   output GDSII path");
+        "  --out <metalens.gds>   output GDSII path\n"
+        "  --tolerance            Monte-Carlo fabrication-error / yield analysis");
 }
 
 } // namespace

@@ -44,6 +44,7 @@ add_library(celeris_core
     src/celeris/design/optimize.cpp
     src/celeris/analysis/focal.cpp
     src/celeris/analysis/chromatic.cpp
+    src/celeris/analysis/tolerance.cpp
     src/celeris/io/gds.cpp
 )
 find_package(Threads REQUIRED)
