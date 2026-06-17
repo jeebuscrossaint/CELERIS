@@ -672,12 +672,24 @@ int cmd_polardesign(int argc, char** argv) {
     std::println("  Y-pol: RMS phase error {:.1f} deg, mean |t| {:.3f}",
                  d.rms_phase_error_y_deg, d.mean_amp_y);
 
-    // Optical proof: scan on-axis intensity along z for each polarization and
-    // confirm the peaks land at the two target focal planes (the bifocal claim).
-    const double k = 2.0 * pi / lambda;
+    // Aperture pillar list with per-polarization transmission.
     const double pp = d.period_um;
     const double cen = (d.n_cells - 1) / 2.0;
     const double R_ap = diameter / 2.0;
+    std::vector<double> px, py;
+    std::vector<cdouble> tx, ty;
+    for (int iy = 0; iy < d.n_cells; ++iy)
+        for (int ix = 0; ix < d.n_cells; ++ix) {
+            double x = (ix - cen) * pp, y = (iy - cen) * pp;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            std::size_t off = (std::size_t)iy * d.n_cells + ix;
+            px.push_back(x); py.push_back(y);
+            tx.push_back(d.t_x[off]); ty.push_back(d.t_y[off]);
+        }
+
+    // Optical proof: scan on-axis intensity along z for each polarization and
+    // confirm the peaks land at the two target focal planes (the bifocal claim).
+    const double k = 2.0 * pi / lambda;
     auto peak_z = [&](const std::vector<cdouble>& t) {
         double zlo = 0.5 * std::min(focal_x, focal_y);
         double zhi = 1.5 * std::max(focal_x, focal_y);
@@ -686,25 +698,52 @@ int cmd_polardesign(int argc, char** argv) {
         for (int j = 0; j < NZ; ++j) {
             double z = zlo + (zhi - zlo) * j / (NZ - 1);
             cdouble E{0, 0};
-            for (int iy = 0; iy < d.n_cells; ++iy)
-                for (int ix = 0; ix < d.n_cells; ++ix) {
-                    double x = (ix - cen) * pp, y = (iy - cen) * pp;
-                    if (std::sqrt(x * x + y * y) > R_ap) continue;
-                    double r = std::sqrt(x * x + y * y + z * z);
-                    E += t[(std::size_t)iy * d.n_cells + ix] * std::polar(1.0 / r, k * r);
-                }
+            for (std::size_t q = 0; q < px.size(); ++q) {
+                double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
+                E += t[q] * std::polar(1.0 / r, k * r);
+            }
             double I = std::norm(E);
             if (I > best_I) { best_I = I; best_z = z; }
         }
         return best_z;
     };
+    double zx = peak_z(tx), zy = peak_z(ty);
     std::println("  optical check (on-axis focus):");
-    std::println("    X-pol focuses at z = {:.1f} um  (target {:.1f})", peak_z(d.t_x), focal_x);
-    std::println("    Y-pol focuses at z = {:.1f} um  (target {:.1f})", peak_z(d.t_y), focal_y);
+    std::println("    X-pol focuses at z = {:.1f} um  (target {:.1f})", zx, focal_x);
+    std::println("    Y-pol focuses at z = {:.1f} um  (target {:.1f})", zy, focal_y);
 
     int np = write_rect_gds(out, d.n_cells, d.period_um, d.fill_x, d.fill_y);
     if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
     std::println("  wrote {} rectangular pillars -> {}", np, out);
+
+    // --report <prefix>: metrics txt + per-polarization focal PSF images + GDS.
+    const char* rp = arg_value(argc, argv, "--report", nullptr);
+    if (rp) {
+        std::string base = rp;
+        double dlx = lambda * focal_x / diameter, dly = lambda * focal_y / diameter;
+        auto psfx = propagate_pillars(px, py, tx, 0, 0, focal_x, lambda, 201,
+                                      std::max(5.0 * dlx, 4.0));
+        auto psfy = propagate_pillars(px, py, ty, 0, 0, focal_y, lambda, 201,
+                                      std::max(5.0 * dly, 4.0));
+        bool ok = write_pgm(base + "_xpol_psf.pgm", psfx.n, psfx.n, psfx.intensity, 2.2);
+        ok &= write_pgm(base + "_ypol_psf.pgm", psfy.n, psfy.n, psfy.intensity, 2.2);
+        std::ofstream f(base + "_polar_report.txt");
+        if (f) {
+            f << "CELERIS polarization-multiplexed metalens report\n";
+            f << "=================================================\n\n";
+            f << std::format("wavelength        : {} um\n", lambda);
+            f << std::format("aperture diameter : {} um\n", diameter);
+            f << std::format("array             : {0} x {0} rectangular pillars\n\n", d.n_cells);
+            f << std::format("X-pol focal target: {} um   measured focus: {:.1f} um\n", focal_x, zx);
+            f << std::format("X-pol RMS phase   : {:.1f} deg   mean |t|: {:.3f}\n\n",
+                             d.rms_phase_error_x_deg, d.mean_amp_x);
+            f << std::format("Y-pol focal target: {} um   measured focus: {:.1f} um\n", focal_y, zy);
+            f << std::format("Y-pol RMS phase   : {:.1f} deg   mean |t|: {:.3f}\n",
+                             d.rms_phase_error_y_deg, d.mean_amp_y);
+        } else ok = false;
+        std::println("  report bundle -> {0}_polar_report.txt (+ _xpol_psf.pgm, "
+                     "_ypol_psf.pgm)  ok={1}", base, ok);
+    }
     return 0;
 }
 
@@ -741,9 +780,10 @@ void print_help() {
         "  retardance (the polarization-optics / waveplate building block)\n"
         "\n"
         "celeris polardesign [--focal-x 50] [--focal-y 80] [--diameter --wavelength\n"
-        "                    --period --thickness --pillar-n --samples --out]\n"
+        "                    --period --thickness --pillar-n --samples --out\n"
+        "                    --report <prefix>]\n"
         "  polarization-multiplexed lens: X-pol and Y-pol focus at different\n"
-        "  distances; writes a rectangular-pillar GDS");
+        "  distances; writes a rectangular-pillar GDS (+ report bundle)");
 }
 
 } // namespace
