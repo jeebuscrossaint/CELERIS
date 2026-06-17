@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <future>
 
 namespace celeris {
 namespace {
@@ -54,13 +55,20 @@ OptimizedPillar optimize_pillar(const Material& pillar, const Material& backgrou
     double best_loss = loss(x);
 
     for (int t = 1; t <= max_iters; ++t) {
+        // Central-difference gradient: the 2*Ndim perturbed evaluations are
+        // independent RCWA solves, so run them concurrently.
         std::array<double, 2> grad{0.0, 0.0};
+        std::array<std::array<double, 2>, 2> xp{x, x}, xm{x, x};
         for (int k = 0; k < 2; ++k) {
-            auto xp = x, xm = x;
-            xp[k] = std::clamp(x[k] + h[k], lo[k], hi[k]);
-            xm[k] = std::clamp(x[k] - h[k], lo[k], hi[k]);
-            grad[k] = (loss(xp) - loss(xm)) / (xp[k] - xm[k]);
+            xp[k][k] = std::clamp(x[k] + h[k], lo[k], hi[k]);
+            xm[k][k] = std::clamp(x[k] - h[k], lo[k], hi[k]);
         }
+        auto j0p = std::async(std::launch::async, [&] { return loss(xp[0]); });
+        auto j0m = std::async(std::launch::async, [&] { return loss(xm[0]); });
+        auto j1p = std::async(std::launch::async, [&] { return loss(xp[1]); });
+        auto j1m = std::async(std::launch::async, [&] { return loss(xm[1]); });
+        grad[0] = (j0p.get() - j0m.get()) / (xp[0][0] - xm[0][0]);
+        grad[1] = (j1p.get() - j1m.get()) / (xp[1][1] - xm[1][1]);
         for (int k = 0; k < 2; ++k) {
             m[k] = b1 * m[k] + (1 - b1) * grad[k];
             v2[k] = b2 * v2[k] + (1 - b2) * grad[k] * grad[k];
