@@ -341,6 +341,31 @@ static int run_selftest() {
                      opt.achieved_amplitude, opt.loss);
     }
 
+    // ---- Demo 12: form birefringence (polarization-multiplexed basis) -----
+    // A rectangular pillar (fill_x != fill_y) responds differently to x- and
+    // y-polarized light — "form birefringence." That phase difference is the
+    // basis for polarization-multiplexed metalenses (one device, two functions
+    // selected by polarization). Here we show it grow with pillar asymmetry.
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        std::println("[12] Form birefringence (rectangular TiO2 pillar, 532nm):");
+        std::println("      {:>10}  {:>10}  {:>10}  {:>12}", "fill_x", "fill_y",
+                     "φx-φy(°)", "|tx|,|ty|");
+        for (auto [fx, fy] : {std::pair{0.5, 0.5}, {0.6, 0.4}, {0.7, 0.3}}) {
+            Rcwa2DStack cell{0.35, 0.35, {RectCell2D{tio2, materials::air(), fx, fy, 0.6}}};
+            auto rx = solve_rcwa_2d(materials::air(), cell, materials::bk7(),
+                                    0.532, 0.0, 0.0, 1.0, 0.0, 8, 8);  // x-pol
+            auto ry = solve_rcwa_2d(materials::air(), cell, materials::bk7(),
+                                    0.532, 0.0, 0.0, 0.0, 1.0, 8, 8);  // y-pol
+            double dphi = std::arg(rx.tx0) - std::arg(ry.ty0);
+            while (dphi > pi) dphi -= 2 * pi;
+            while (dphi <= -pi) dphi += 2 * pi;
+            std::println("      {:>10.2f}  {:>10.2f}  {:>10.1f}  {:>5.2f},{:>5.2f}",
+                         fx, fy, dphi * 180.0 / pi, std::abs(rx.tx0),
+                         std::abs(ry.ty0));
+        }
+    }
+
 #ifdef CELERIS_USE_CUDA
     // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
     // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
