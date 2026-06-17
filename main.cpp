@@ -23,6 +23,7 @@
 #include "celeris/analysis/chromatic.hpp"
 #include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
+#include "celeris/analysis/polarization.hpp"
 #include "celeris/analysis/throughfocus.hpp"
 #include "celeris/analysis/tolerance.hpp"
 #include "celeris/analysis/wavefront.hpp"
@@ -603,6 +604,41 @@ int cmd_design(int argc, char** argv) {
     return 0;
 }
 
+// celeris birefringence: sweep a rectangular pillar's x-width and report the
+// form birefringence (x- vs y-polarized phase + retardance). Demonstrates the
+// polarization-optics building block from the vectorial solver.
+int cmd_birefringence(int argc, char** argv) {
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const double fill_y = std::atof(arg_value(argc, argv, "--fill-y", "0.5"));
+    const int samples = std::atoi(arg_value(argc, argv, "--samples", "15"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const Material pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    std::println("CELERIS form-birefringence sweep");
+    std::println("  lambda={}um  period={}um  height={}um  n_pillar={}  fill_y={}",
+                 lambda, period, thickness, pillar_n, fill_y);
+    std::println("  {:>8}  {:>10}  {:>10}  {:>12}  {:>6}  {:>6}", "fill_x", "phase_x",
+                 "phase_y", "retardance", "|tx|", "|ty|");
+    auto pts = analyze_birefringence(pillar, materials::air(), materials::air(),
+                                     materials::bk7(), period, lambda, thickness,
+                                     fill_y, 0.10, 0.90, samples, M);
+    for (const auto& p : pts)
+        std::println("  {:>8.3f}  {:>9.1f}d  {:>9.1f}d  {:>11.1f}d  {:>6.3f}  {:>6.3f}",
+                     p.fill_x, p.phase_x_deg, p.phase_y_deg, p.retardance_deg, p.tx,
+                     p.ty);
+
+    // Sanity: at fill_x == fill_y the pillar is square -> retardance ~ 0.
+    double min_asym = 1e9;
+    for (const auto& p : pts)
+        min_asym = std::min(min_asym, std::abs(p.fill_x - fill_y));
+    std::println("  (square-pillar retardance should be ~0; max retardance shows the "
+                 "achievable waveplate range)");
+    return 0;
+}
+
 void print_help() {
     std::println(
         "CELERIS — GPU-ready metalens design via rigorous coupled-wave analysis\n"
@@ -628,7 +664,12 @@ void print_help() {
         "  --fov                  off-axis field-of-view analysis\n"
         "  --psf <file.pgm>       write the focal-spot image (PGM)\n"
         "  --report <prefix>      write a full deliverable bundle (txt metrics +\n"
-        "                         PSF & caustic images + GDS)");
+        "                         PSF & caustic images + GDS)\n"
+        "\n"
+        "celeris birefringence [--fill-y 0.5] [--period --wavelength --thickness\n"
+        "                       --pillar-n --samples --harmonics]\n"
+        "  sweep a rectangular pillar's x-width; report x/y-polarized phase and\n"
+        "  retardance (the polarization-optics / waveplate building block)");
 }
 
 } // namespace
@@ -803,6 +844,7 @@ int main(int argc, char** argv) {
     const std::string cmd = argc > 1 ? argv[1] : "help";
     if (cmd == "selftest") return run_selftest();
     if (cmd == "design") return cmd_design(argc, argv);
+    if (cmd == "birefringence") return cmd_birefringence(argc, argv);
 #ifdef CELERIS_USE_CUDA
     if (cmd == "gpubench") return run_gpubench(argc, argv);
 #endif

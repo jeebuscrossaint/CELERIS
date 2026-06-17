@@ -50,6 +50,7 @@ add_library(celeris_core
     src/celeris/analysis/wavefront.cpp
     src/celeris/analysis/mtf.cpp
     src/celeris/analysis/throughfocus.cpp
+    src/celeris/analysis/polarization.cpp
     src/celeris/io/gds.cpp
     src/celeris/io/image.cpp
     src/celeris/io/material_csv.cpp
