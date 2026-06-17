@@ -46,6 +46,7 @@ add_library(celeris_core
     src/celeris/analysis/chromatic.cpp
     src/celeris/analysis/tolerance.cpp
     src/celeris/analysis/field.cpp
+    src/celeris/analysis/wavefront.cpp
     src/celeris/io/gds.cpp
     src/celeris/io/image.cpp
     src/celeris/io/material_csv.cpp

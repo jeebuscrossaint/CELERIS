@@ -28,6 +28,7 @@
 #include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
 #include "celeris/analysis/tolerance.hpp"
+#include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/materials/database.hpp"
@@ -48,6 +49,7 @@ struct Results {
     int n_cells = 0, pillars = 0;
     PsfMap psf;
     std::vector<float> chrom_wl, chrom_focus;
+    WavefrontAnalysis wf;
     // Kept so the UI can export GDSII and run further analyses on demand.
     MetalensDesign design;
     UnitCellLibrary lib;
@@ -153,6 +155,7 @@ void run_design(Params p) {
         r.chrom_wl.push_back(static_cast<float>(c.wavelength_um * 1000.0));
         r.chrom_focus.push_back(static_cast<float>(c.focal_length_um));
     }
+    r.wf = analyze_wavefront(lens, lib, p.focal, p.wavelength, p.diameter);
     r.design = lens;
     r.lib = std::move(lib);
     r.used = p;
@@ -216,6 +219,32 @@ void upload_psf_texture(const PsfMap& psf, unsigned int& tex) {
                  GL_UNSIGNED_BYTE, rgba.data());
 }
 
+// Upload the wavefront OPD map with a diverging blue-white-red colormap
+// (negative -> blue, 0 -> white, positive -> red), outside-aperture -> gray.
+void upload_wavefront_texture(const WavefrontAnalysis& wf, unsigned int& tex) {
+    if (wf.n <= 0 || wf.opd.empty()) return;
+    double amp = 1e-9;
+    for (std::size_t i = 0; i < wf.opd.size(); ++i)
+        if (wf.mask[i]) amp = std::max(amp, std::abs(wf.opd[i]));
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(wf.n) * wf.n * 4);
+    for (std::size_t i = 0; i < wf.opd.size(); ++i) {
+        std::uint8_t r, g, b;
+        if (!wf.mask[i]) { r = g = b = 70; }  // outside aperture
+        else {
+            double v = std::clamp(wf.opd[i] / amp, -1.0, 1.0);  // -1..1
+            if (v >= 0) { r = 255; g = b = static_cast<std::uint8_t>(255 * (1 - v)); }
+            else        { b = 255; r = g = static_cast<std::uint8_t>(255 * (1 + v)); }
+        }
+        rgba[i * 4 + 0] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b; rgba[i * 4 + 3] = 255;
+    }
+    if (tex == 0) glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, wf.n, wf.n, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rgba.data());
+}
+
 } // namespace
 
 int main() {
@@ -242,7 +271,7 @@ int main() {
     ImGui_ImplOpenGL3_Init("#version 130");
 
     Params params;
-    unsigned int psf_tex = 0;
+    unsigned int psf_tex = 0, wf_tex = 0;
     bool have_result = false, have_tol = false, have_fov = false;
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
@@ -253,6 +282,7 @@ int main() {
         if (g_pending.exchange(false)) {
             std::lock_guard<std::mutex> lk(g_mtx);
             upload_psf_texture(g_res.psf, psf_tex);
+            upload_wavefront_texture(g_res.wf, wf_tex);
             have_result = true;
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
@@ -272,7 +302,8 @@ int main() {
 
         static bool show_about = false;
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
-                    win_chr = true, win_tol = true, win_fov = true, win_log = true;
+                    win_chr = true, win_tol = true, win_fov = true, win_log = true,
+                    win_wf = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -294,6 +325,7 @@ int main() {
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
+                ImGui::MenuItem("Wavefront", nullptr, &win_wf);
                 ImGui::MenuItem("Chromatic", nullptr, &win_chr);
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
@@ -337,6 +369,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Design Summary", ctl);
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
+            ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
             ImGui::DockBuilderDockWindow("Tolerance", cbottom);
             ImGui::DockBuilderDockWindow("Field of View", cbottom);
@@ -457,6 +490,44 @@ int main() {
                     float s = std::max(64.0f, std::min(a.x, a.y));
                     ImGui::Image((ImTextureID)(intptr_t)psf_tex, ImVec2(s, s));
                 } else ImGui::TextDisabled("Run a design (F5).");
+            }
+            ImGui::End();
+        }
+
+        // ---- Wavefront ----
+        if (win_wf) {
+            if (ImGui::Begin("Wavefront", &win_wf)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    ImGui::Text("RMS %.4f wv   P-V %.3f wv   Strehl(Marechal) %.3f",
+                                g_res.wf.rms_waves, g_res.wf.pv_waves,
+                                g_res.wf.strehl_marechal);
+                    if (wf_tex) {
+                        ImGui::Image((ImTextureID)(intptr_t)wf_tex, ImVec2(180, 180));
+                        ImGui::SameLine();
+                    }
+                    if (ImGui::BeginTable("zern", 2,
+                                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                              ImGuiTableFlags_ScrollY,
+                                          ImVec2(0, 180))) {
+                        ImGui::TableSetupColumn("Zernike aberration");
+                        ImGui::TableSetupColumn("coeff (waves)");
+                        ImGui::TableHeadersRow();
+                        for (auto& z : g_res.wf.zernike) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn(); ImGui::TextUnformatted(z.name.c_str());
+                            ImGui::TableNextColumn();
+                            // highlight the dominant aberrations
+                            if (std::abs(z.coeff_waves) >= 0.02)
+                                ImGui::TextColored(rgb(170, 90, 0), "%+.4f", z.coeff_waves);
+                            else
+                                ImGui::Text("%+.4f", z.coeff_waves);
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TextDisabled("OPD map: blue = negative, red = positive (piston removed)");
+                }
             }
             ImGui::End();
         }
