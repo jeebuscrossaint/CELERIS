@@ -508,6 +508,7 @@ int main() {
     int layout_mode = 0, layout_built_mode = -1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
+    bool gds_need_fit = false;  // refit the GDS viewer when a new design lands
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
 
@@ -519,6 +520,7 @@ int main() {
             upload_psf_texture(g_res.psf, psf_tex);
             upload_wavefront_texture(g_res.wf, wf_tex);
             layout_built_mode = -1;  // force layout texture rebuild for new design
+            gds_need_fit = true;     // refit the GDS viewer to the new aperture
             have_result = true;
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
@@ -554,7 +556,8 @@ int main() {
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
-                    win_mats = true, win_layout = true, win_spot = true;
+                    win_mats = true, win_layout = true, win_spot = true,
+                    win_gds = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -582,6 +585,7 @@ int main() {
                 ImGui::MenuItem("Materials", nullptr, &win_mats);
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
                 ImGui::MenuItem("Lens Layout", nullptr, &win_layout);
+                ImGui::MenuItem("GDS Layout", nullptr, &win_gds);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
                 ImGui::MenuItem("Wavefront", nullptr, &win_wf);
@@ -665,6 +669,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
             ImGui::DockBuilderDockWindow("Lens Layout", ctr);
+            ImGui::DockBuilderDockWindow("GDS Layout", ctr);
             ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
             ImGui::DockBuilderDockWindow("MTF", cbottom);
@@ -877,6 +882,136 @@ int main() {
                         kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
                         ImGui::EndTable();
                     }
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- GDS Layout (in-app fab-polygon viewer, pan/zoom) ----
+        if (win_gds) {
+            if (ImGui::Begin("GDS Layout", &win_gds)) {
+                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    static float gscale = 0.0f;      // pixels per micron
+                    static ImVec2 gcam(0.0f, 0.0f);  // world point at canvas center (um)
+                    static bool gphase = false;
+                    ImGui::Checkbox("Color by phase", &gphase); ImGui::SameLine();
+                    if (ImGui::Button("Fit")) gds_need_fit = true; ImGui::SameLine();
+                    ImGui::TextDisabled("scroll = zoom, drag = pan");
+
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    const MetalensDesign& d = g_res.design;
+                    const UnitCellLibrary& glib = g_res.lib;
+                    const int n = d.n_cells;
+                    const double pp = d.period_um;
+                    const double cen = (n - 1) / 2.0;
+                    const double extent = n * pp;  // full aperture width (um)
+
+                    ImVec2 avail = ImGui::GetContentRegionAvail();
+                    avail.x = std::max(avail.x, 60.0f);
+                    avail.y = std::max(avail.y, 60.0f);
+                    ImVec2 c0 = ImGui::GetCursorScreenPos();
+                    ImVec2 c1 = ImVec2(c0.x + avail.x, c0.y + avail.y);
+                    ImGui::InvisibleButton("gdscanvas", avail);
+                    bool hov = ImGui::IsItemHovered();
+                    ImVec2 cc = ImVec2((c0.x + c1.x) * 0.5f, (c0.y + c1.y) * 0.5f);
+
+                    if (gds_need_fit || gscale <= 0.0f) {
+                        gscale = std::min(avail.x, avail.y) /
+                                 static_cast<float>(extent * 1.1);
+                        gcam = ImVec2(0.0f, 0.0f);
+                        gds_need_fit = false;
+                    }
+
+                    auto w2s = [&](double wx, double wy) {
+                        return ImVec2(cc.x + static_cast<float>((wx - gcam.x) * gscale),
+                                      cc.y - static_cast<float>((wy - gcam.y) * gscale));
+                    };
+                    auto s2w = [&](ImVec2 s) {
+                        return ImVec2(gcam.x + (s.x - cc.x) / gscale,
+                                      gcam.y - (s.y - cc.y) / gscale);
+                    };
+
+                    // Zoom about the cursor; pan on left-drag.
+                    if (hov && io.MouseWheel != 0.0f) {
+                        ImVec2 wb = s2w(io.MousePos);
+                        gscale *= std::pow(1.15f, io.MouseWheel);
+                        ImVec2 wa = s2w(io.MousePos);
+                        gcam.x += wb.x - wa.x;
+                        gcam.y += wb.y - wa.y;
+                    }
+                    if (ImGui::IsItemActive() &&
+                        ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                        gcam.x -= io.MouseDelta.x / gscale;
+                        gcam.y += io.MouseDelta.y / gscale;
+                    }
+
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    dl->PushClipRect(c0, c1, true);
+                    dl->AddRectFilled(c0, c1, IM_COL32(248, 248, 248, 255));
+
+                    // Visible cell range (cull to viewport).
+                    ImVec2 wtl = s2w(c0), wbr = s2w(c1);
+                    double wxmin = std::min(wtl.x, wbr.x), wxmax = std::max(wtl.x, wbr.x);
+                    double wymin = std::min(wtl.y, wbr.y), wymax = std::max(wtl.y, wbr.y);
+                    int ixmin = std::max(0, (int)std::floor(wxmin / pp + cen));
+                    int ixmax = std::min(n - 1, (int)std::ceil(wxmax / pp + cen));
+                    int iymin = std::max(0, (int)std::floor(wymin / pp + cen));
+                    int iymax = std::min(n - 1, (int)std::ceil(wymax / pp + cen));
+
+                    // Stride so we never draw more than ~60k rects in one frame.
+                    long vis = (long)std::max(0, ixmax - ixmin + 1) *
+                               std::max(0, iymax - iymin + 1);
+                    int stride = 1;
+                    const long cap = 60000;
+                    if (vis > cap)
+                        stride = (int)std::ceil(std::sqrt((double)vis / cap));
+
+                    const ImU32 mask_col = IM_COL32(38, 78, 150, 255);
+                    int drawn = 0;
+                    for (int iy = iymin; iy <= iymax; iy += stride)
+                        for (int ix = ixmin; ix <= ixmax; ix += stride) {
+                            double fill = d.fill_map[(std::size_t)iy * n + ix];
+                            if (fill < 0.05) continue;  // matches GDS min_fill
+                            double cx = (ix - cen) * pp, cy = (iy - cen) * pp;
+                            double half = 0.5 * fill * pp;
+                            ImVec2 a = w2s(cx - half, cy + half);
+                            ImVec2 b = w2s(cx + half, cy - half);
+                            ImU32 col = mask_col;
+                            if (gphase) {
+                                cdouble t = glib.transmission_for_fill(fill);
+                                double h = (std::arg(t) + pi) / (2.0 * pi);
+                                std::uint8_t r, g, bl;
+                                hue_to_rgb(std::clamp(h, 0.0, 1.0), r, g, bl);
+                                col = IM_COL32(r, g, bl, 255);
+                            }
+                            if (b.x - a.x < 1.0f)
+                                dl->AddRectFilled(a, ImVec2(a.x + 1.0f, a.y + 1.0f), col);
+                            else
+                                dl->AddRectFilled(a, b, col);
+                            ++drawn;
+                        }
+                    dl->PopClipRect();
+
+                    // Overlay readout + scale bar.
+                    ImGui::SetCursorScreenPos(ImVec2(c0.x + 6, c0.y + 6));
+                    ImGui::Text("%d x %d cells   period %.3f um   aperture %.1f um",
+                                n, n, pp, extent);
+                    if (stride > 1) {
+                        ImGui::SetCursorScreenPos(ImVec2(c0.x + 6, c0.y + 26));
+                        ImGui::TextColored(rgb(170, 90, 0),
+                                           "thinned 1:%d (zoom in for every pillar)",
+                                           stride);
+                    }
+                    // Scale bar: pick a round micron length ~1/5 of the canvas width.
+                    double bar_um = std::pow(10.0, std::floor(std::log10(
+                                        (avail.x / gscale) / 5.0)));
+                    float bar_px = static_cast<float>(bar_um * gscale);
+                    ImVec2 bs(c1.x - bar_px - 12, c1.y - 16);
+                    dl->AddLine(bs, ImVec2(bs.x + bar_px, bs.y),
+                                IM_COL32(20, 20, 20, 255), 2.0f);
+                    char blab[32]; std::snprintf(blab, sizeof(blab), "%g um", bar_um);
+                    dl->AddText(ImVec2(bs.x, bs.y - 16), IM_COL32(20, 20, 20, 255), blab);
                 }
             }
             ImGui::End();
