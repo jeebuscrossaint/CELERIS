@@ -84,3 +84,40 @@ target_link_libraries(celeris PRIVATE celeris_core)
 if(MINGW)
     target_link_libraries(celeris PRIVATE stdc++exp)
 endif()
+
+# --- Optional desktop GUI (Dear ImGui + GLFW + OpenGL) -----------------------
+# Enable with -DCELERIS_BUILD_GUI=ON. Dependencies fetched automatically (MIT
+# licensed, no install). Builds the `celeris_gui` interactive app.
+option(CELERIS_BUILD_GUI "Build the Dear ImGui desktop GUI" OFF)
+if(CELERIS_BUILD_GUI)
+    include(FetchContent)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.4 GIT_SHALLOW ON)
+    FetchContent_MakeAvailable(glfw)
+
+    # Dear ImGui ships no CMakeLists — fetch sources and build them ourselves.
+    FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.91.5 GIT_SHALLOW ON)
+    FetchContent_MakeAvailable(imgui)
+
+    find_package(OpenGL REQUIRED)
+    add_library(celeris_imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+    target_include_directories(celeris_imgui PUBLIC
+        ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+    target_link_libraries(celeris_imgui PUBLIC glfw OpenGL::GL)
+
+    add_executable(celeris_gui gui/main_gui.cpp)
+    target_link_libraries(celeris_gui PRIVATE celeris_core celeris_imgui)
+    if(MINGW)
+        target_link_libraries(celeris_gui PRIVATE stdc++exp)
+    endif()
+endif()
