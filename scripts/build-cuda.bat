@@ -37,7 +37,8 @@ set "NVCC=%CUDADIR%\bin\nvcc.exe"
   -DCMAKE_CUDA_COMPILER="%NVCC%" ^
   -DCMAKE_CUDA_ARCHITECTURES=89 ^
   -DCELERIS_USE_CUDA=ON ^
-  -DCELERIS_CUDA_DIR="%CUDADIR%" || exit /b 1
+  -DCELERIS_CUDA_DIR="%CUDADIR%" ^
+  -DCELERIS_BUILD_GUI=ON || exit /b 1
 
-"%CMAKE%" --build build-cuda --target celeris || exit /b 1
+"%CMAKE%" --build build-cuda --target celeris celeris_gui || exit /b 1
 echo BUILD-CUDA-OK
