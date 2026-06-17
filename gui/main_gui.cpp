@@ -36,6 +36,7 @@
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/system_opt.hpp"
+#include "celeris/design/polar_metalens.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/io/image.hpp"
 #include "celeris/io/material_csv.hpp"
@@ -56,6 +57,7 @@ struct LayerRow {  // an extra (unpatterned by default) layer above the pillars
 
 struct Params {
     float focal = 50, diameter = 20, wavelength = 0.532f, period = 0.35f;
+    float focal_y = 80;  // Y-polarization focal length (polarization-multiplexed mode)
     float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
     int harmonics = 6, fill_samples = 18;
     int pillar_mat = 3;     // index into kPillarMats (default: TiO2 approx)
@@ -222,6 +224,11 @@ std::vector<ToleranceResult> g_tol;
 std::vector<FieldPoint> g_fov;
 std::vector<FieldPsf> g_spot;  // per-field-angle focal spots (spot diagram)
 
+// Polarization-multiplexed design (independent worker, own result).
+std::atomic<bool> g_polar_pending{false};
+PolarMetalensDesign g_polar;
+double g_polar_fx = 0, g_polar_fy = 0;  // focal lengths the result was built for
+
 // Design optimizer result (best period/height applied to the UI on completion).
 std::atomic<bool> g_opt_pending{false};
 SystemOptResult g_opt;
@@ -362,6 +369,29 @@ void run_spotgrid() {
     { std::lock_guard<std::mutex> lk(g_mtx); g_spot = std::move(spots);
       g_status = "Spot-vs-field diagram done."; g_progress = 1.0f; }
     g_spot_pending = true;
+    g_running = false;
+}
+
+void run_polardesign(Params p) {
+    g_running = true;
+    set_phase("Polarization library (fill_x x fill_y, 2 solves/cell)...", 0.1f);
+    auto lib = build_polarization_library(
+        make_pillar(p), materials::air(), materials::air(), make_substrate(p),
+        p.period, p.wavelength, p.thickness, 0.10, 0.90,
+        std::max(6, p.fill_samples), p.harmonics);
+    set_phase("Assigning rectangular pillars (dual phase profile)...", 0.7f);
+    auto d = design_polarization_metalens(lib, p.focal, p.focal_y, p.diameter);
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_polar = std::move(d);
+        g_polar_fx = p.focal; g_polar_fy = p.focal_y;
+        g_status = std::format("Polarization design: X@{:.0f}um RMS {:.1f}deg, "
+                               "Y@{:.0f}um RMS {:.1f}deg",
+                               p.focal, g_polar.rms_phase_error_x_deg, p.focal_y,
+                               g_polar.rms_phase_error_y_deg);
+        g_progress = 1.0f;
+    }
+    g_polar_pending = true;
     g_running = false;
 }
 
@@ -536,6 +566,7 @@ int main() {
     int layout_mode = 0, layout_built_mode = -1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
+    bool have_polar = false;
     bool gds_need_fit = false;  // refit the GDS viewer when a new design lands
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
@@ -554,6 +585,7 @@ int main() {
         }
         if (g_tol_pending.exchange(false)) have_tol = true;
         if (g_fov_pending.exchange(false)) have_fov = true;
+        if (g_polar_pending.exchange(false)) have_polar = true;
         if (g_spot_pending.exchange(false)) {
             std::lock_guard<std::mutex> lk(g_mtx);
             spot_texs.resize(g_spot.size(), 0);
@@ -586,7 +618,7 @@ int main() {
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
                     win_mats = true, win_layout = true, win_spot = true,
-                    win_gds = true;
+                    win_gds = true, win_polar = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -621,6 +653,7 @@ int main() {
                 ImGui::MenuItem("MTF", nullptr, &win_mtf);
                 ImGui::MenuItem("Through Focus", nullptr, &win_tf);
                 ImGui::MenuItem("Spot vs Field", nullptr, &win_spot);
+                ImGui::MenuItem("Polarization", nullptr, &win_polar);
                 ImGui::MenuItem("Chromatic", nullptr, &win_chr);
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
@@ -699,6 +732,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
             ImGui::DockBuilderDockWindow("Lens Layout", ctr);
             ImGui::DockBuilderDockWindow("GDS Layout", ctr);
+            ImGui::DockBuilderDockWindow("Polarization", ctr);
             ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
             ImGui::DockBuilderDockWindow("MTF", cbottom);
@@ -960,6 +994,96 @@ int main() {
                         kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
                         ImGui::EndTable();
                     }
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Polarization (polarization-multiplexed design) ----
+        if (win_polar) {
+            if (ImGui::Begin("Polarization", &win_polar)) {
+                ImGui::TextWrapped("Polarization-multiplexed lens: X-pol and Y-pol "
+                                   "focus at independent distances (rectangular "
+                                   "pillars).");
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputFloat("Focal X-pol (um)", &params.focal, 0, 0, "%.1f");
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputFloat("Focal Y-pol (um)", &params.focal_y, 0, 0, "%.1f");
+                bool busy = g_running.load();
+                if (busy) ImGui::BeginDisabled();
+                if (ImGui::Button("Run Polarization Design", ImVec2(-FLT_MIN, 28)))
+                    std::thread(run_polardesign, params).detach();
+                if (busy) ImGui::EndDisabled();
+
+                if (!have_polar)
+                    ImGui::TextDisabled("Set focal lengths and run.");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    ImGui::Separator();
+                    ImGui::Text("X-pol  @ %.0f um:  RMS %.1f deg   mean |t| %.3f",
+                                g_polar_fx, g_polar.rms_phase_error_x_deg, g_polar.mean_amp_x);
+                    ImGui::Text("Y-pol  @ %.0f um:  RMS %.1f deg   mean |t| %.3f",
+                                g_polar_fy, g_polar.rms_phase_error_y_deg, g_polar.mean_amp_y);
+                    static char ppath[256] = "polar_metalens.gds";
+                    ImGui::SetNextItemWidth(-110);
+                    ImGui::InputText("##ppath", ppath, sizeof(ppath)); ImGui::SameLine();
+                    if (ImGui::Button("Save GDS", ImVec2(-FLT_MIN, 0))) {
+                        int np = write_rect_gds(ppath, g_polar.n_cells, g_polar.period_um,
+                                                g_polar.fill_x, g_polar.fill_y);
+                        g_status = np >= 0 ? std::format("Wrote {} rect pillars -> {}", np, ppath)
+                                           : std::string("ERROR: GDS write failed");
+                    }
+                    // Rectangular-pillar layout canvas (pan/zoom, culled).
+                    static float ps = 0.0f; static ImVec2 pcam(0, 0); static bool pfit = true;
+                    if (ImGui::Button("Fit")) pfit = true;
+                    const int n = g_polar.n_cells; const double pp = g_polar.period_um;
+                    const double cen = (n - 1) / 2.0, ext = n * pp;
+                    ImVec2 av = ImGui::GetContentRegionAvail();
+                    av.x = std::max(av.x, 60.0f); av.y = std::max(av.y, 60.0f);
+                    ImVec2 q0 = ImGui::GetCursorScreenPos();
+                    ImVec2 q1 = ImVec2(q0.x + av.x, q0.y + av.y);
+                    ImGui::InvisibleButton("polcanvas", av);
+                    bool hov = ImGui::IsItemHovered();
+                    ImVec2 cc = ImVec2((q0.x + q1.x) * 0.5f, (q0.y + q1.y) * 0.5f);
+                    if (pfit || ps <= 0) { ps = std::min(av.x, av.y) / float(ext * 1.1); pcam = ImVec2(0, 0); pfit = false; }
+                    auto w2s = [&](double wx, double wy) {
+                        return ImVec2(cc.x + float((wx - pcam.x) * ps), cc.y - float((wy - pcam.y) * ps));
+                    };
+                    auto s2w = [&](ImVec2 s) { return ImVec2(pcam.x + (s.x - cc.x) / ps, pcam.y - (s.y - cc.y) / ps); };
+                    if (hov && io.MouseWheel != 0) {
+                        ImVec2 wb = s2w(io.MousePos); ps *= std::pow(1.15f, io.MouseWheel);
+                        ImVec2 wa = s2w(io.MousePos); pcam.x += wb.x - wa.x; pcam.y += wb.y - wa.y;
+                    }
+                    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                        pcam.x -= io.MouseDelta.x / ps; pcam.y += io.MouseDelta.y / ps;
+                    }
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    dl->PushClipRect(q0, q1, true);
+                    dl->AddRectFilled(q0, q1, IM_COL32(248, 248, 248, 255));
+                    ImVec2 wtl = s2w(q0), wbr = s2w(q1);
+                    double xmn = std::min(wtl.x, wbr.x), xmx = std::max(wtl.x, wbr.x);
+                    double ymn = std::min(wtl.y, wbr.y), ymx = std::max(wtl.y, wbr.y);
+                    int ixmin = std::max(0, (int)std::floor(xmn / pp + cen));
+                    int ixmax = std::min(n - 1, (int)std::ceil(xmx / pp + cen));
+                    int iymin = std::max(0, (int)std::floor(ymn / pp + cen));
+                    int iymax = std::min(n - 1, (int)std::ceil(ymx / pp + cen));
+                    long vis = (long)std::max(0, ixmax - ixmin + 1) * std::max(0, iymax - iymin + 1);
+                    int stride = vis > 60000 ? (int)std::ceil(std::sqrt((double)vis / 60000)) : 1;
+                    const ImU32 col = IM_COL32(38, 78, 150, 255);
+                    for (int iy = iymin; iy <= iymax; iy += stride)
+                        for (int ix = ixmin; ix <= ixmax; ix += stride) {
+                            std::size_t off = (std::size_t)iy * n + ix;
+                            double fxw = g_polar.fill_x[off], fyw = g_polar.fill_y[off];
+                            if (fxw < 0.05 && fyw < 0.05) continue;
+                            double cx = (ix - cen) * pp, cy = (iy - cen) * pp;
+                            ImVec2 a = w2s(cx - 0.5 * fxw * pp, cy + 0.5 * fyw * pp);
+                            ImVec2 b = w2s(cx + 0.5 * fxw * pp, cy - 0.5 * fyw * pp);
+                            if (b.x - a.x < 1.0f) dl->AddRectFilled(a, ImVec2(a.x + 1, a.y + 1), col);
+                            else dl->AddRectFilled(a, b, col);
+                        }
+                    dl->PopClipRect();
+                    ImGui::SetCursorScreenPos(ImVec2(q0.x + 6, q0.y + 6));
+                    ImGui::Text("%d x %d rectangular pillars   aperture %.1f um", n, n, ext);
                 }
             }
             ImGui::End();
