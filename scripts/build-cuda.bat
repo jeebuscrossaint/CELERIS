@@ -17,14 +17,17 @@ set "VCVER=14.44.35207"
 set "SDKROOT=C:\Program Files (x86)\Windows Kits\10"
 set "SDKVER=10.0.26100.0"
 
+REM Full official CUDA Toolkit (has CCCL + nvcc; scoop's package omits CCCL).
+set "CUDADIR=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3"
+
 set "VCT=%VSROOT%\VC\Tools\MSVC\%VCVER%"
 set "INCLUDE=%VCT%\include;%SDKROOT%\Include\%SDKVER%\ucrt;%SDKROOT%\Include\%SDKVER%\um;%SDKROOT%\Include\%SDKVER%\shared;%SDKROOT%\Include\%SDKVER%\winrt"
 set "LIB=%VCT%\lib\x64;%SDKROOT%\Lib\%SDKVER%\ucrt\x64;%SDKROOT%\Lib\%SDKVER%\um\x64"
-set "PATH=%VCT%\bin\Hostx64\x64;%SDKROOT%\bin\%SDKVER%\x64;%USERPROFILE%\scoop\apps\cuda\current\bin;%PATH%"
+set "PATH=%VCT%\bin\Hostx64\x64;%SDKROOT%\bin\%SDKVER%\x64;%CUDADIR%\bin;%PATH%"
 
-set "CMAKE=%USERPROFILE%\scoop\apps\cmake\current\bin\cmake.exe"
+set "CMAKE=%USERPROFILE%\scoop\shims\cmake.exe"
 set "NINJA=%USERPROFILE%\scoop\shims\ninja.exe"
-set "NVCC=%USERPROFILE%\scoop\apps\cuda\current\bin\nvcc.exe"
+set "NVCC=%CUDADIR%\bin\nvcc.exe"
 
 "%CMAKE%" -B build-cuda -G Ninja ^
   -DCMAKE_MAKE_PROGRAM="%NINJA%" ^
@@ -32,7 +35,9 @@ set "NVCC=%USERPROFILE%\scoop\apps\cuda\current\bin\nvcc.exe"
   -DCMAKE_C_COMPILER=cl ^
   -DCMAKE_CXX_COMPILER=cl ^
   -DCMAKE_CUDA_COMPILER="%NVCC%" ^
-  -DCELERIS_USE_CUDA=ON || exit /b 1
+  -DCMAKE_CUDA_ARCHITECTURES=89 ^
+  -DCELERIS_USE_CUDA=ON ^
+  -DCELERIS_CUDA_DIR="%CUDADIR%" || exit /b 1
 
-"%CMAKE%" --build build-cuda || exit /b 1
+"%CMAKE%" --build build-cuda --target celeris || exit /b 1
 echo BUILD-CUDA-OK

@@ -8,6 +8,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef CELERIS_USE_CUDA_KERNELS
+#include "celeris/cuda/propagate.hpp"
+#endif
+
 namespace celeris {
 namespace {
 // Run fn(j) for j in [0,n) across the hardware threads (focal-plane rows are
@@ -70,17 +74,31 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
         return E;
     };
 
-    // Intensity grid for the design (rows computed in parallel).
+    // Intensity grid for the design (rows computed in parallel, or on the GPU).
     std::vector<double> I(static_cast<std::size_t>(NG) * NG, 0.0);
     int center_row = NG / 2;
-    parallel_rows(NG, [&](int j) {
-        double fy = -W + j * step;
-        for (int i = 0; i < NG; ++i) {
-            double fx = -W + i * step;
-            I[static_cast<std::size_t>(j) * NG + i] =
-                std::norm(field_at(fx, fy, /*ideal=*/false));
+    bool grid_done = false;
+#ifdef CELERIS_USE_CUDA_KERNELS
+    {
+        std::vector<double> px(cells.size()), py(cells.size());
+        std::vector<cdouble> pt(cells.size());
+        for (std::size_t c = 0; c < cells.size(); ++c) {
+            px[c] = cells[c].x; py[c] = cells[c].y; pt[c] = cells[c].t;
         }
-    });
+        grid_done = cuda::propagate_psf(px.data(), py.data(), pt.data(),
+                                        static_cast<int>(cells.size()), 0.0, 0.0,
+                                        focal_length_um, k, NG, W, I.data());
+    }
+#endif
+    if (!grid_done)
+        parallel_rows(NG, [&](int j) {
+            double fy = -W + j * step;
+            for (int i = 0; i < NG; ++i) {
+                double fx = -W + i * step;
+                I[static_cast<std::size_t>(j) * NG + i] =
+                    std::norm(field_at(fx, fy, /*ideal=*/false));
+            }
+        });
     double peak = *std::max_element(I.begin(), I.end());
     // Ideal peak (at focal center): perfect-phase lens.
     double peak_ideal = std::norm(field_at(0.0, 0.0, /*ideal=*/true));
@@ -138,6 +156,23 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
     m.half_window_um = half_window_um;
     m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
     const double step = 2.0 * half_window_um / (n - 1);
+
+#ifdef CELERIS_USE_CUDA_KERNELS
+    // GPU far-field propagation (hundreds of x faster for large apertures).
+    {
+        std::vector<double> px(cells.size()), py(cells.size());
+        std::vector<cdouble> pt(cells.size());
+        for (std::size_t c = 0; c < cells.size(); ++c) {
+            px[c] = cells[c].x; py[c] = cells[c].y; pt[c] = cells[c].t;
+        }
+        if (cuda::propagate_psf(px.data(), py.data(), pt.data(),
+                                static_cast<int>(cells.size()), 0.0, 0.0,
+                                focal_length_um, k, n, half_window_um,
+                                m.intensity.data()))
+            return m;  // CPU fallback below if this returns false
+    }
+#endif
+
     parallel_rows(n, [&](int j) {
         double fy = -half_window_um + j * step;
         for (int i = 0; i < n; ++i) {
@@ -187,6 +222,25 @@ FieldPsf compute_psf_field(const MetalensDesign& lens, const UnitCellLibrary& li
     out.psf.half_window_um = half_window_um;
     out.psf.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
     const double step = 2.0 * half_window_um / (n - 1);
+
+#ifdef CELERIS_USE_CUDA_KERNELS
+    {
+        std::vector<double> px(cells.size()), py(cells.size());
+        std::vector<cdouble> pt(cells.size());
+        for (std::size_t c = 0; c < cells.size(); ++c) {
+            px[c] = cells[c].x; py[c] = cells[c].y; pt[c] = cells[c].t;
+        }
+        if (cuda::propagate_psf(px.data(), py.data(), pt.data(),
+                                static_cast<int>(cells.size()), cx, 0.0,
+                                focal_length_um, k, n, half_window_um,
+                                out.psf.intensity.data())) {
+            double peak = 0.0;
+            for (double v : out.psf.intensity) peak = std::max(peak, v);
+            out.rel_strehl = on_axis_peak > 0 ? peak / on_axis_peak : 1.0;
+            return out;
+        }
+    }
+#endif
 
     parallel_rows(n, [&](int j) {
         double fy = -half_window_um + j * step;

@@ -77,6 +77,29 @@ if(CELERIS_USE_CUDA)
     target_link_libraries(celeris_core PUBLIC
         "${CELERIS_CUDA_DIR}/lib/x64/cusolver.lib"
         "${CELERIS_CUDA_DIR}/lib/x64/cudart.lib")
+
+    # Device kernels (the far-field propagation) need nvcc. Build them in a
+    # SEPARATE CUDA-only static library so they don't inherit the project's
+    # C++23 dialect (nvcc would reject "CUDA23"); the kernel only needs C++17.
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES 75 86 89)  # Turing/Ampere/Ada
+        endif()
+        add_library(celeris_cuda STATIC src/celeris/cuda/propagate.cu)
+        target_include_directories(celeris_cuda PRIVATE src "${CELERIS_CUDA_DIR}/include")
+        set_target_properties(celeris_cuda PROPERTIES
+            CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+            CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
+        target_link_libraries(celeris_core PUBLIC celeris_cuda)
+        target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA_KERNELS)
+        message(STATUS "CELERIS: CUDA device kernels enabled (nvcc found)")
+    else()
+        message(STATUS "CELERIS: nvcc not found - GPU propagation kernel disabled "
+                       "(host-only cuSOLVER path still built)")
+    endif()
 endif()
 # ---------------------------------------------------------------------------
 

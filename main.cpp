@@ -13,6 +13,9 @@
 #include <thread>
 
 #include "celeris/cuda/eigensolve.hpp"
+#ifdef CELERIS_USE_CUDA_KERNELS
+#include "celeris/cuda/propagate.hpp"
+#endif
 #endif
 
 #include "celeris/analysis/chromatic.hpp"
@@ -671,12 +674,93 @@ static int run_gpubench(int argc, char** argv) {
 }
 #endif
 
+#ifdef CELERIS_USE_CUDA_KERNELS
+// Honest head-to-head for the GPU far-field propagation kernel: build a real
+// metalens, then compute its focal PSF on the CPU (analyze_focus path, double,
+// parallel over cores) vs the GPU kernel (float), comparing the maps and timing.
+// Usage: celeris psfbench [--diameter D] [--focal F] [--grid N].
+static int run_psfbench(int argc, char** argv) {
+    double diameter = 120.0, focal = 50.0, wavelength = 0.532, period = 0.35;
+    int grid = 161, M = 5, fill_samples = 16;
+    for (int i = 2; i < argc; ++i) {
+        std::string a = argv[i];
+        auto nd = [&] { return (i + 1 < argc) ? std::atof(argv[++i]) : 0.0; };
+        auto ni = [&] { return (i + 1 < argc) ? std::atoi(argv[++i]) : 0; };
+        if (a == "--diameter") diameter = nd();
+        else if (a == "--focal") focal = nd();
+        else if (a == "--grid") grid = ni();
+    }
+    if (!cuda::available()) { std::println("psfbench: no CUDA device available"); return 1; }
+
+    std::println("PSF propagation benchmark (building lens...)");
+    auto pillar = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+    auto lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
+                                       materials::bk7(), period, wavelength, 0.6,
+                                       0.08, 0.92, fill_samples, M);
+    auto lens = design_metalens(lib, focal, diameter);
+    const double dl = wavelength * focal / diameter;
+    const double W = std::max(6.0 * dl, 4.0);
+
+    // Aperture pillar list (same construction analyze_focus/compute_psf use).
+    const double p = lens.period_um;
+    const double center = (lens.n_cells - 1) / 2.0;
+    const double R_ap = diameter / 2.0;
+    std::vector<double> px, py;
+    std::vector<cdouble> pt;
+    for (int iy = 0; iy < lens.n_cells; ++iy)
+        for (int ix = 0; ix < lens.n_cells; ++ix) {
+            double x = (ix - center) * p, y = (iy - center) * p;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            double fill = lens.fill_map[(std::size_t)iy * lens.n_cells + ix];
+            px.push_back(x); py.push_back(y);
+            pt.push_back(lib.transmission_for_fill(fill));
+        }
+    std::println("  {} x {} cells, {} pillars in aperture, {}x{} focal grid",
+                 lens.n_cells, lens.n_cells, px.size(), grid, grid);
+
+    // CPU (double, parallel across cores).
+    auto t0 = std::chrono::steady_clock::now();
+    auto cpu = compute_psf(lens, lib, focal, wavelength, diameter, grid, W);
+    auto t1 = std::chrono::steady_clock::now();
+    double cpu_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    // GPU (float kernel). Warm up first so device init isn't timed.
+    std::vector<double> gpu((std::size_t)grid * grid);
+    double k = 2.0 * pi / wavelength;
+    cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(), 0.0, 0.0,
+                        focal, k, grid, W, gpu.data());  // warm-up
+    auto t2 = std::chrono::steady_clock::now();
+    bool ok = cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(),
+                                  0.0, 0.0, focal, k, grid, W, gpu.data());
+    auto t3 = std::chrono::steady_clock::now();
+    double gpu_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+    // Compare peak-normalized maps.
+    double cmax = 0, gmax = 0;
+    for (double v : cpu.intensity) cmax = std::max(cmax, v);
+    for (double v : gpu) gmax = std::max(gmax, v);
+    double maxrel = 0.0;
+    if (cmax > 0 && gmax > 0)
+        for (std::size_t i = 0; i < gpu.size(); ++i)
+            maxrel = std::max(maxrel, std::abs(cpu.intensity[i] / cmax - gpu[i] / gmax));
+
+    std::println("");
+    std::println("  CPU (double, parallel) : {:8.1f} ms", cpu_ms);
+    std::println("  GPU (float kernel)     : {:8.1f} ms   ({:.1f}x faster)", gpu_ms, cpu_ms / gpu_ms);
+    std::println("  agreement              : max|d normalized PSF| = {:.2e}  ok={}", maxrel, ok);
+    return ok ? 0 : 1;
+}
+#endif
+
 int main(int argc, char** argv) {
     const std::string cmd = argc > 1 ? argv[1] : "help";
     if (cmd == "selftest") return run_selftest();
     if (cmd == "design") return cmd_design(argc, argv);
 #ifdef CELERIS_USE_CUDA
     if (cmd == "gpubench") return run_gpubench(argc, argv);
+#endif
+#ifdef CELERIS_USE_CUDA_KERNELS
+    if (cmd == "psfbench") return run_psfbench(argc, argv);
 #endif
     print_help();
     return (cmd == "help" || cmd == "--help" || cmd == "-h") ? 0 : 1;
