@@ -68,5 +68,8 @@ vcpkg_installed/
 Testing/
 .cache/
 
-# Generated layout files
+# Generated layout / output / project files
 *.gds
+*.pgm
+celeris_report*
+metalens.celeris
