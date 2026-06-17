@@ -21,6 +21,7 @@
 #include "celeris/design/optimize.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/io/image.hpp"
+#include "celeris/io/material_csv.hpp"
 #include "celeris/materials/database.hpp"
 #include "celeris/optics/tmm.hpp"
 #include "celeris/rcwa/rcwa1d.hpp"
@@ -454,7 +455,10 @@ int cmd_design(int argc, char** argv) {
     const Material& substrate = sub_name == "air"  ? materials::air()
                                 : sub_name == "sio2" ? materials::fused_silica()
                                                      : materials::bk7();
-    const auto pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+    const char* pillar_csv = arg_value(argc, argv, "--pillar-csv", nullptr);
+    const Material pillar =
+        pillar_csv ? load_material_csv(pillar_csv, "pillar-csv")
+                   : Material::constant(cdouble{pillar_n, 0.0}, "pillar");
 
     std::println("CELERIS metalens design");
     std::println("  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
@@ -537,7 +541,8 @@ void print_help() {
         "  --wavelength <µm=0.532>\n"
         "  --period <µm=0.35>     unit-cell pitch\n"
         "  --thickness <µm=0.6>   pillar height\n"
-        "  --pillar-n <2.4>       pillar refractive index\n"
+        "  --pillar-n <2.4>       pillar refractive index (constant)\n"
+        "  --pillar-csv <file>    load pillar n,k from CSV (overrides --pillar-n)\n"
         "  --substrate <bk7|air|sio2=bk7>\n"
         "  --fill-samples <18>    library resolution\n"
         "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
