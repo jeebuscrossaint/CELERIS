@@ -890,22 +890,60 @@ int main() {
         // ---- GDS Layout (in-app fab-polygon viewer, pan/zoom) ----
         if (win_gds) {
             if (ImGui::Begin("GDS Layout", &win_gds)) {
-                if (!have_result) ImGui::TextDisabled("Run a design (F5).");
-                else {
-                    static float gscale = 0.0f;      // pixels per micron
-                    static ImVec2 gcam(0.0f, 0.0f);  // world point at canvas center (um)
-                    static bool gphase = false;
-                    ImGui::Checkbox("Color by phase", &gphase); ImGui::SameLine();
-                    if (ImGui::Button("Fit")) gds_need_fit = true; ImGui::SameLine();
-                    ImGui::TextDisabled("scroll = zoom, drag = pan");
+                static float gscale = 0.0f;      // pixels per micron
+                static ImVec2 gcam(0.0f, 0.0f);  // world point at canvas center (um)
+                static bool gphase = false;
+                static GdsLayout gloaded;        // a .gds opened from disk
+                static char gpath[256] = "metalens.gds";
+                static bool show_file = false;   // false = live design, true = file
+                static std::string gmsg;
 
+                // Toolbar.
+                if (ImGui::Button("Fit")) gds_need_fit = true;
+                ImGui::SameLine();
+                if (!show_file) {
+                    ImGui::Checkbox("Color by phase", &gphase); ImGui::SameLine();
+                }
+                ImGui::SetNextItemWidth(220);
+                ImGui::InputText("##gdspath", gpath, sizeof(gpath)); ImGui::SameLine();
+                if (ImGui::Button("Open GDS")) {
+                    GdsLayout L = read_gds(gpath);
+                    if (L.ok) { gloaded = std::move(L); show_file = true;
+                                gds_need_fit = true;
+                                gmsg = std::format("Loaded {} polygons", gloaded.polygons.size()); }
+                    else gmsg = "Could not parse GDS file.";
+                }
+                if (gloaded.ok) {
+                    ImGui::SameLine();
+                    if (ImGui::RadioButton("Design", !show_file)) { show_file = false; gds_need_fit = true; }
+                    ImGui::SameLine();
+                    if (ImGui::RadioButton("File", show_file)) { show_file = true; gds_need_fit = true; }
+                }
+                if (!gmsg.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", gmsg.c_str()); }
+
+                bool drawing_file = show_file && gloaded.ok;
+                if (!have_result && !drawing_file) {
+                    ImGui::TextDisabled("Run a design (F5), or type a path and Open GDS.");
+                } else {
                     std::lock_guard<std::mutex> lk(g_mtx);
                     const MetalensDesign& d = g_res.design;
                     const UnitCellLibrary& glib = g_res.lib;
                     const int n = d.n_cells;
                     const double pp = d.period_um;
                     const double cen = (n - 1) / 2.0;
-                    const double extent = n * pp;  // full aperture width (um)
+
+                    // World bounding box of whatever we're showing.
+                    double bxmin, bxmax, bymin, bymax;
+                    if (drawing_file) {
+                        bxmin = gloaded.min_x; bxmax = gloaded.max_x;
+                        bymin = gloaded.min_y; bymax = gloaded.max_y;
+                    } else {
+                        double ext = n * pp;
+                        bxmin = -ext / 2; bxmax = ext / 2;
+                        bymin = -ext / 2; bymax = ext / 2;
+                    }
+                    double bcx = (bxmin + bxmax) / 2, bcy = (bymin + bymax) / 2;
+                    double bsize = std::max(std::max(bxmax - bxmin, bymax - bymin), 1e-6);
 
                     ImVec2 avail = ImGui::GetContentRegionAvail();
                     avail.x = std::max(avail.x, 60.0f);
@@ -918,8 +956,8 @@ int main() {
 
                     if (gds_need_fit || gscale <= 0.0f) {
                         gscale = std::min(avail.x, avail.y) /
-                                 static_cast<float>(extent * 1.1);
-                        gcam = ImVec2(0.0f, 0.0f);
+                                 static_cast<float>(bsize * 1.1);
+                        gcam = ImVec2(static_cast<float>(bcx), static_cast<float>(bcy));
                         gds_need_fit = false;
                     }
 
@@ -932,7 +970,6 @@ int main() {
                                       gcam.y - (s.y - cc.y) / gscale);
                     };
 
-                    // Zoom about the cursor; pan on left-drag.
                     if (hov && io.MouseWheel != 0.0f) {
                         ImVec2 wb = s2w(io.MousePos);
                         gscale *= std::pow(1.15f, io.MouseWheel);
@@ -950,60 +987,84 @@ int main() {
                     dl->PushClipRect(c0, c1, true);
                     dl->AddRectFilled(c0, c1, IM_COL32(248, 248, 248, 255));
 
-                    // Visible cell range (cull to viewport).
                     ImVec2 wtl = s2w(c0), wbr = s2w(c1);
                     double wxmin = std::min(wtl.x, wbr.x), wxmax = std::max(wtl.x, wbr.x);
                     double wymin = std::min(wtl.y, wbr.y), wymax = std::max(wtl.y, wbr.y);
-                    int ixmin = std::max(0, (int)std::floor(wxmin / pp + cen));
-                    int ixmax = std::min(n - 1, (int)std::ceil(wxmax / pp + cen));
-                    int iymin = std::max(0, (int)std::floor(wymin / pp + cen));
-                    int iymax = std::min(n - 1, (int)std::ceil(wymax / pp + cen));
-
-                    // Stride so we never draw more than ~60k rects in one frame.
-                    long vis = (long)std::max(0, ixmax - ixmin + 1) *
-                               std::max(0, iymax - iymin + 1);
-                    int stride = 1;
-                    const long cap = 60000;
-                    if (vis > cap)
-                        stride = (int)std::ceil(std::sqrt((double)vis / cap));
-
                     const ImU32 mask_col = IM_COL32(38, 78, 150, 255);
-                    int drawn = 0;
-                    for (int iy = iymin; iy <= iymax; iy += stride)
-                        for (int ix = ixmin; ix <= ixmax; ix += stride) {
-                            double fill = d.fill_map[(std::size_t)iy * n + ix];
-                            if (fill < 0.05) continue;  // matches GDS min_fill
-                            double cx = (ix - cen) * pp, cy = (iy - cen) * pp;
-                            double half = 0.5 * fill * pp;
-                            ImVec2 a = w2s(cx - half, cy + half);
-                            ImVec2 b = w2s(cx + half, cy - half);
-                            ImU32 col = mask_col;
-                            if (gphase) {
-                                cdouble t = glib.transmission_for_fill(fill);
-                                double h = (std::arg(t) + pi) / (2.0 * pi);
-                                std::uint8_t r, g, bl;
-                                hue_to_rgb(std::clamp(h, 0.0, 1.0), r, g, bl);
-                                col = IM_COL32(r, g, bl, 255);
+                    int stride = 1;
+
+                    if (drawing_file) {
+                        // Render parsed polygons (viewport-culled, strided if huge).
+                        long np = static_cast<long>(gloaded.polygons.size());
+                        const long cap = 80000;
+                        if (np > cap) stride = (int)std::ceil((double)np / cap);
+                        for (long i = 0; i < np; i += stride) {
+                            const auto& poly = gloaded.polygons[i];
+                            if (poly.pts.size() < 3) continue;
+                            // Quick bbox cull.
+                            double pminx = 1e300, pmaxx = -1e300, pminy = 1e300, pmaxy = -1e300;
+                            for (auto& q : poly.pts) {
+                                pminx = std::min(pminx, q.first); pmaxx = std::max(pmaxx, q.first);
+                                pminy = std::min(pminy, q.second); pmaxy = std::max(pmaxy, q.second);
                             }
-                            if (b.x - a.x < 1.0f)
-                                dl->AddRectFilled(a, ImVec2(a.x + 1.0f, a.y + 1.0f), col);
-                            else
-                                dl->AddRectFilled(a, b, col);
-                            ++drawn;
+                            if (pmaxx < wxmin || pminx > wxmax || pmaxy < wymin || pminy > wymax)
+                                continue;
+                            // Drop the duplicate closing vertex if present.
+                            std::size_t m = poly.pts.size();
+                            if (m > 1 && poly.pts.front() == poly.pts.back()) --m;
+                            static std::vector<ImVec2> sp; sp.clear();
+                            for (std::size_t k = 0; k < m; ++k)
+                                sp.push_back(w2s(poly.pts[k].first, poly.pts[k].second));
+                            dl->AddConvexPolyFilled(sp.data(), (int)sp.size(), mask_col);
                         }
+                    } else {
+                        // Render the live design's pillar squares (matches the .gds).
+                        int ixmin = std::max(0, (int)std::floor(wxmin / pp + cen));
+                        int ixmax = std::min(n - 1, (int)std::ceil(wxmax / pp + cen));
+                        int iymin = std::max(0, (int)std::floor(wymin / pp + cen));
+                        int iymax = std::min(n - 1, (int)std::ceil(wymax / pp + cen));
+                        long vis = (long)std::max(0, ixmax - ixmin + 1) *
+                                   std::max(0, iymax - iymin + 1);
+                        const long cap = 60000;
+                        if (vis > cap) stride = (int)std::ceil(std::sqrt((double)vis / cap));
+                        for (int iy = iymin; iy <= iymax; iy += stride)
+                            for (int ix = ixmin; ix <= ixmax; ix += stride) {
+                                double fill = d.fill_map[(std::size_t)iy * n + ix];
+                                if (fill < 0.05) continue;  // matches GDS min_fill
+                                double cx = (ix - cen) * pp, cy = (iy - cen) * pp;
+                                double half = 0.5 * fill * pp;
+                                ImVec2 a = w2s(cx - half, cy + half);
+                                ImVec2 b = w2s(cx + half, cy - half);
+                                ImU32 col = mask_col;
+                                if (gphase) {
+                                    cdouble t = glib.transmission_for_fill(fill);
+                                    double h = (std::arg(t) + pi) / (2.0 * pi);
+                                    std::uint8_t r, g, bl;
+                                    hue_to_rgb(std::clamp(h, 0.0, 1.0), r, g, bl);
+                                    col = IM_COL32(r, g, bl, 255);
+                                }
+                                if (b.x - a.x < 1.0f)
+                                    dl->AddRectFilled(a, ImVec2(a.x + 1.0f, a.y + 1.0f), col);
+                                else
+                                    dl->AddRectFilled(a, b, col);
+                            }
+                    }
                     dl->PopClipRect();
 
-                    // Overlay readout + scale bar.
+                    // Overlay readout.
                     ImGui::SetCursorScreenPos(ImVec2(c0.x + 6, c0.y + 6));
-                    ImGui::Text("%d x %d cells   period %.3f um   aperture %.1f um",
-                                n, n, pp, extent);
+                    if (drawing_file)
+                        ImGui::Text("FILE: %zu polygons   extent %.1f x %.1f um",
+                                    gloaded.polygons.size(), bxmax - bxmin, bymax - bymin);
+                    else
+                        ImGui::Text("DESIGN: %d x %d cells   period %.3f um   aperture %.1f um",
+                                    n, n, pp, n * pp);
                     if (stride > 1) {
                         ImGui::SetCursorScreenPos(ImVec2(c0.x + 6, c0.y + 26));
                         ImGui::TextColored(rgb(170, 90, 0),
-                                           "thinned 1:%d (zoom in for every pillar)",
-                                           stride);
+                                           "thinned 1:%d (zoom in for full detail)", stride);
                     }
-                    // Scale bar: pick a round micron length ~1/5 of the canvas width.
+                    // Scale bar: round micron length ~1/5 of the canvas width.
                     double bar_um = std::pow(10.0, std::floor(std::log10(
                                         (avail.x / gscale) / 5.0)));
                     float bar_px = static_cast<float>(bar_um * gscale);

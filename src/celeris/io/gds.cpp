@@ -128,6 +128,86 @@ int write_metalens_gds(const MetalensDesign& lens, const std::string& path,
     return f.good() ? count : -1;
 }
 
+namespace {
+// Decode a GDSII 8-byte real (inverse of put_real8).
+double get_real8(const uint8_t* b) {
+    int sign = (b[0] & 0x80) ? -1 : 1;
+    int exp = (b[0] & 0x7F) - 64;
+    double mant = 0.0;
+    for (int i = 1; i < 8; ++i) mant = mant * 256.0 + b[i];
+    mant /= 72057594037927936.0;  // 2^56
+    return sign * mant * std::pow(16.0, exp);
+}
+int32_t get32(const uint8_t* b) {
+    return static_cast<int32_t>((uint32_t(b[0]) << 24) | (uint32_t(b[1]) << 16) |
+                                (uint32_t(b[2]) << 8) | uint32_t(b[3]));
+}
+} // namespace
+
+GdsLayout read_gds(const std::string& path) {
+    GdsLayout out;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return out;
+
+    double um_per_db = 1e-3;  // microns per database unit (from UNITS record)
+    int cur_layer = 0;
+    bool in_boundary = false;
+    bool first_pt = true;
+    out.min_x = out.min_y = 1e300;
+    out.max_x = out.max_y = -1e300;
+
+    while (f) {
+        uint8_t h[4];
+        if (!f.read(reinterpret_cast<char*>(h), 4)) break;
+        uint16_t len = static_cast<uint16_t>((h[0] << 8) | h[1]);
+        if (len < 4) return GdsLayout{};  // malformed
+        uint8_t type = h[2];
+        int payload = len - 4;
+        std::vector<uint8_t> data(payload);
+        if (payload && !f.read(reinterpret_cast<char*>(data.data()), payload)) break;
+
+        switch (type) {
+            case UNITS:  // two REAL8: user-units/db, meters/db
+                if (payload >= 16) um_per_db = get_real8(&data[8]) * 1e6;
+                break;
+            case BOUNDARY:
+                in_boundary = true;
+                cur_layer = 0;
+                out.polygons.push_back({});
+                break;
+            case LAYER:
+                if (payload >= 2)
+                    cur_layer = static_cast<int16_t>((data[0] << 8) | data[1]);
+                break;
+            case XY:
+                if (in_boundary && !out.polygons.empty()) {
+                    auto& poly = out.polygons.back();
+                    poly.layer = cur_layer;
+                    int npts = payload / 8;  // pairs of int32
+                    for (int i = 0; i < npts; ++i) {
+                        double x = get32(&data[i * 8]) * um_per_db;
+                        double y = get32(&data[i * 8 + 4]) * um_per_db;
+                        poly.pts.emplace_back(x, y);
+                        out.min_x = std::min(out.min_x, x);
+                        out.max_x = std::max(out.max_x, x);
+                        out.min_y = std::min(out.min_y, y);
+                        out.max_y = std::max(out.max_y, y);
+                        first_pt = false;
+                    }
+                }
+                break;
+            case ENDEL:
+                in_boundary = false;
+                break;
+            default:
+                break;
+        }
+    }
+    if (first_pt) { out.min_x = out.max_x = out.min_y = out.max_y = 0; }
+    out.ok = !out.polygons.empty();
+    return out;
+}
+
 int gds_count_boundaries(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return -1;
