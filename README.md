@@ -33,6 +33,12 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
 - **Inverse design** — gradient-based optimizer (Adam) finds the pillar
   geometry meeting a target phase with maximum transmission; plus a
   period × height system optimizer.
+- **Polarization optics** — rectangular pillars give independent phase to X- and
+  Y-polarization (form birefringence). Build polarization-multiplexed lenses
+  (X-pol and Y-pol focus at different planes) with a 2D `(fill_x, fill_y)`
+  library; reports per-polarization RMS phase, measured foci, and focal
+  isolation (channel cross-talk, dB). The core of polarization-imaging
+  metasurfaces.
 - **Fabrication output** — GDSII export (no dependencies; emits the binary
   records directly), and an in-app GDS viewer that renders any `.gds` file.
 - **Analysis battery** — focal Strehl / FWHM / encircled energy, full wavefront
@@ -96,6 +102,12 @@ celeris design --focal 50 --diameter 40 --report mylens
 # Run the physics validation suite
 celeris selftest
 
+# Polarization-multiplexed lens: X-pol @50um, Y-pol @80um -> rectangular GDS
+celeris polardesign --focal-x 50 --focal-y 80 --diameter 24 --report mypolar
+
+# Form-birefringence sweep (waveplate building block)
+celeris birefringence --fill-y 0.5
+
 # GPU benchmarks (CUDA build only)
 celeris psfbench --diameter 120     # far-field kernel vs CPU
 celeris gpubench --n 242 --batch 32 # batched eigensolve (honest negative result)
@@ -132,8 +144,9 @@ src/celeris/
   materials/           dispersion models + built-in library + CSV import
   optics/              Fresnel equations, Transfer Matrix Method
   rcwa/                1D (TE/TM, multilayer) + 2D vectorial RCWA, S-matrix
-  design/              unit-cell library, lens assembler, inverse-design + system optimizer
-  analysis/            focal, chromatic, wavefront, MTF, through-focus, field
+  design/              unit-cell library, lens assembler, inverse-design + system optimizer,
+                       polarization-multiplexed design
+  analysis/            focal, chromatic, wavefront, MTF, through-focus, field, polarization
   io/                  GDSII read/write, PGM image, material CSV
   cuda/                cuSOLVER eigensolve + GPU far-field propagation kernel
 gui/                   Dear ImGui desktop application (celeris_gui)
@@ -147,7 +160,8 @@ GPU-accelerated analysis path. Notable items still ahead:
 - Faster CPU eigensolve (OpenBLAS/LAPACK `zgeev`) — the remaining bottleneck is
   the RCWA library build, which the GPU eigensolve cannot accelerate.
 - Full-2π / thickness-swept libraries and broadband / achromatic optimization.
-- Polarization-multiplexed design (the vectorial solver already supports it).
+- Geometric (Pancharatnam–Berry) phase from rotated pillars for circular-
+  polarization optics (the linear-birefringence path is already built).
 - Validation against a published metalens; Python bindings; Linux/macOS GUI.
 
 ## License
