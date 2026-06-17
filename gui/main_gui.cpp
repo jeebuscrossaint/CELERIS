@@ -228,6 +228,8 @@ std::vector<FieldPsf> g_spot;  // per-field-angle focal spots (spot diagram)
 std::atomic<bool> g_polar_pending{false};
 PolarMetalensDesign g_polar;
 double g_polar_fx = 0, g_polar_fy = 0;  // focal lengths the result was built for
+double g_polar_zx = 0, g_polar_zy = 0;  // measured on-axis focus per polarization
+double g_polar_iso_x = 0, g_polar_iso_y = 0;  // focal isolation (dB)
 PsfMap g_polar_psf_x, g_polar_psf_y;    // each polarization's focal-plane PSF
 
 // Design optimizer result (best period/height applied to the UI on completion).
@@ -403,12 +405,36 @@ void run_polardesign(Params p) {
                                   std::max(5.0 * dlx, 4.0));
     auto psfy = propagate_pillars(px, py, ty, 0, 0, p.focal_y, p.wavelength, 161,
                                   std::max(5.0 * dly, 4.0));
+
+    // Measured on-axis foci + focal isolation (channel separation).
+    const double kk = 2.0 * pi / p.wavelength;
+    auto on_axis = [&](const std::vector<cdouble>& t, double z) {
+        cdouble E{0, 0};
+        for (std::size_t q = 0; q < px.size(); ++q) {
+            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
+            E += t[q] * std::polar(1.0 / r, kk * r);
+        }
+        return std::norm(E);
+    };
+    auto peak_z = [&](const std::vector<cdouble>& t) {
+        double zlo = 0.5 * std::min(p.focal, p.focal_y), zhi = 1.5 * std::max(p.focal, p.focal_y);
+        double bz = zlo, bi = -1;
+        for (int j = 0; j < 200; ++j) { double z = zlo + (zhi - zlo) * j / 199.0;
+            double I = on_axis(t, z); if (I > bi) { bi = I; bz = z; } }
+        return bz;
+    };
+    double zx = peak_z(tx), zy = peak_z(ty);
+    double isox = (std::abs(p.focal - p.focal_y) > 1e-6)
+        ? 10.0 * std::log10(on_axis(tx, zx) / std::max(on_axis(ty, zx), 1e-30)) : 0.0;
+    double isoy = (std::abs(p.focal - p.focal_y) > 1e-6)
+        ? 10.0 * std::log10(on_axis(ty, zy) / std::max(on_axis(tx, zy), 1e-30)) : 0.0;
     {
         std::lock_guard<std::mutex> lk(g_mtx);
         g_polar = std::move(d);
         g_polar_psf_x = std::move(psfx);
         g_polar_psf_y = std::move(psfy);
         g_polar_fx = p.focal; g_polar_fy = p.focal_y;
+        g_polar_zx = zx; g_polar_zy = zy; g_polar_iso_x = isox; g_polar_iso_y = isoy;
         g_status = std::format("Polarization design: X@{:.0f}um RMS {:.1f}deg, "
                                "Y@{:.0f}um RMS {:.1f}deg",
                                p.focal, g_polar.rms_phase_error_x_deg, p.focal_y,
@@ -1092,6 +1118,10 @@ int main() {
                                 g_polar_fx, g_polar.rms_phase_error_x_deg, g_polar.mean_amp_x);
                     ImGui::Text("Y-pol  @ %.0f um:  RMS %.1f deg   mean |t| %.3f",
                                 g_polar_fy, g_polar.rms_phase_error_y_deg, g_polar.mean_amp_y);
+                    ImGui::Text("measured focus:  X %.1f um   Y %.1f um", g_polar_zx, g_polar_zy);
+                    if (g_polar_iso_x != 0.0 || g_polar_iso_y != 0.0)
+                        ImGui::Text("focal isolation: X-plane %.1f dB   Y-plane %.1f dB",
+                                    g_polar_iso_x, g_polar_iso_y);
                     // Focal-plane PSF of each polarization at its target plane:
                     // two tight spots = the bifocal split, proven optically.
                     if (polar_psf_x_tex && polar_psf_y_tex) {
