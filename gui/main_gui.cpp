@@ -27,6 +27,7 @@
 #include "celeris/analysis/chromatic.hpp"
 #include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
+#include "celeris/analysis/mtf.hpp"
 #include "celeris/analysis/tolerance.hpp"
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
@@ -50,6 +51,7 @@ struct Results {
     PsfMap psf;
     std::vector<float> chrom_wl, chrom_focus;
     WavefrontAnalysis wf;
+    MtfCurve mtf;
     // Kept so the UI can export GDSII and run further analyses on demand.
     MetalensDesign design;
     UnitCellLibrary lib;
@@ -156,6 +158,7 @@ void run_design(Params p) {
         r.chrom_focus.push_back(static_cast<float>(c.focal_length_um));
     }
     r.wf = analyze_wavefront(lens, lib, p.focal, p.wavelength, p.diameter);
+    r.mtf = analyze_mtf(lens, lib, p.focal, p.wavelength, p.diameter);
     r.design = lens;
     r.lib = std::move(lib);
     r.used = p;
@@ -303,7 +306,7 @@ int main() {
         static bool show_about = false;
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
-                    win_wf = true;
+                    win_wf = true, win_mtf = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -326,6 +329,7 @@ int main() {
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
                 ImGui::MenuItem("Wavefront", nullptr, &win_wf);
+                ImGui::MenuItem("MTF", nullptr, &win_mtf);
                 ImGui::MenuItem("Chromatic", nullptr, &win_chr);
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
@@ -371,6 +375,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
             ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
+            ImGui::DockBuilderDockWindow("MTF", cbottom);
             ImGui::DockBuilderDockWindow("Tolerance", cbottom);
             ImGui::DockBuilderDockWindow("Field of View", cbottom);
             ImGui::DockBuilderDockWindow("Log", cbottom);
@@ -542,6 +547,44 @@ int main() {
                     ImGui::PlotLines("##chrom", g_res.chrom_focus.data(),
                                      static_cast<int>(g_res.chrom_focus.size()), 0,
                                      nullptr, FLT_MAX, FLT_MAX, ImGui::GetContentRegionAvail());
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- MTF ----
+        if (win_mtf) {
+            if (ImGui::Begin("MTF", &win_mtf)) {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                if (g_res.mtf.mtf.empty()) ImGui::TextDisabled("Run a design (F5).");
+                else {
+                    ImGui::Text("Diffraction cutoff: %.0f cycles/mm",
+                                g_res.mtf.cutoff_cyc_mm);
+                    ImGui::PlotLines("##mtf", g_res.mtf.mtf.data(),
+                                     static_cast<int>(g_res.mtf.mtf.size()), 0,
+                                     "lens MTF (vs spatial frequency)", 0.0f, 1.0f,
+                                     ImVec2(-FLT_MIN, 120));
+                    ImGui::PlotLines("##mtfi", g_res.mtf.mtf_ideal.data(),
+                                     static_cast<int>(g_res.mtf.mtf_ideal.size()), 0,
+                                     "diffraction-limited MTF", 0.0f, 1.0f,
+                                     ImVec2(-FLT_MIN, 80));
+                    if (ImGui::BeginTable("mtft", 3,
+                                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                              ImGuiTableFlags_ScrollY, ImVec2(0, 140))) {
+                        ImGui::TableSetupColumn("freq (cyc/mm)");
+                        ImGui::TableSetupColumn("lens MTF");
+                        ImGui::TableSetupColumn("ideal MTF");
+                        ImGui::TableHeadersRow();
+                        const auto& m = g_res.mtf;
+                        int step = std::max<int>(1, static_cast<int>(m.freq_cyc_mm.size()) / 12);
+                        for (std::size_t i = 0; i < m.freq_cyc_mm.size(); i += step) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn(); ImGui::Text("%.0f", m.freq_cyc_mm[i]);
+                            ImGui::TableNextColumn(); ImGui::Text("%.3f", m.mtf[i]);
+                            ImGui::TableNextColumn(); ImGui::Text("%.3f", m.mtf_ideal[i]);
+                        }
+                        ImGui::EndTable();
+                    }
                 }
             }
             ImGui::End();
