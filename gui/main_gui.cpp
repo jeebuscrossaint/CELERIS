@@ -20,6 +20,8 @@
 #include <format>
 #include <fstream>
 #include <mutex>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -34,6 +36,7 @@
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/system_opt.hpp"
 #include "celeris/io/gds.hpp"
+#include "celeris/io/material_csv.hpp"
 #include "celeris/materials/database.hpp"
 
 using namespace celeris;
@@ -57,8 +60,13 @@ struct Params {
 
 const char* kPillarMats[] = {"Custom (constant n)", "Silicon nitride (Si3N4)",
                              "Fused silica (SiO2)",  "TiO2 (approx n=2.40)",
-                             "a-Si (approx n=3.50)", "GaN (approx n=2.35)"};
+                             "a-Si (approx n=3.50)", "GaN (approx n=2.35)",
+                             "Loaded CSV"};
 const char* kSubstrates[] = {"N-BK7", "Air", "Fused silica (SiO2)"};
+
+// A material loaded from a CSV file at runtime (real n,k data).
+std::optional<Material> g_loaded_material;
+std::string g_loaded_name = "(none)";
 
 Material make_pillar(const Params& p) {
     switch (p.pillar_mat) {
@@ -67,6 +75,9 @@ Material make_pillar(const Params& p) {
         case 3: return Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         case 4: return Material::constant(cdouble{3.50, 0.0}, "a-Si~");
         case 5: return Material::constant(cdouble{2.35, 0.0}, "GaN~");
+        case 6:
+            if (g_loaded_material) return *g_loaded_material;
+            return Material::constant(cdouble{p.pillar_n, 0.0}, "custom");
         default: return Material::constant(cdouble{p.pillar_n, 0.0}, "custom");
     }
 }
@@ -381,7 +392,8 @@ int main() {
         static bool show_about = false;
         static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
-                    win_wf = true, win_mtf = true, win_tf = true, win_stack = true;
+                    win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
+                    win_mats = true;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -401,6 +413,7 @@ int main() {
             if (ImGui::BeginMenu("View")) {
                 ImGui::MenuItem("Lens Data", nullptr, &win_lens);
                 ImGui::MenuItem("Layer Stack", nullptr, &win_stack);
+                ImGui::MenuItem("Materials", nullptr, &win_mats);
                 ImGui::MenuItem("Design Summary", nullptr, &win_sum);
                 ImGui::MenuItem("Focus Performance", nullptr, &win_foc);
                 ImGui::MenuItem("Focal PSF", nullptr, &win_psf);
@@ -448,6 +461,7 @@ int main() {
             ImGuiID ctl = ImGui::DockBuilderSplitNode(ctop, ImGuiDir_Left, 0.5f, nullptr, &ctr);
             ImGui::DockBuilderDockWindow("Lens Data", left);
             ImGui::DockBuilderDockWindow("Layer Stack", left);
+            ImGui::DockBuilderDockWindow("Materials", left);
             ImGui::DockBuilderDockWindow("Design Summary", ctl);
             ImGui::DockBuilderDockWindow("Focus Performance", ctl);
             ImGui::DockBuilderDockWindow("Focal PSF", ctr);
@@ -555,6 +569,67 @@ int main() {
                 ImGui::Spacing();
                 ImGui::TextDisabled("fill = 1.0 -> uniform film; <1 -> square patch. "
                                     "Press F5 to rebuild.");
+            }
+            ImGui::End();
+        }
+
+        // ---- Materials (dispersion + CSV import) ----
+        if (win_mats) {
+            if (ImGui::Begin("Materials", &win_mats)) {
+                ImGui::Text("Pillar material: %s", kPillarMats[params.pillar_mat]);
+                Material m = make_pillar(params);
+                const float l0 = 0.40f, l1 = 0.75f;
+                const int NS = 60;
+                std::vector<float> nv(NS), kv(NS);
+                for (int i = 0; i < NS; ++i) {
+                    double L = l0 + (l1 - l0) * i / (NS - 1);
+                    auto idx = m.index(L);
+                    nv[i] = static_cast<float>(idx.real());
+                    kv[i] = static_cast<float>(idx.imag());
+                }
+                ImGui::PlotLines("##nl", nv.data(), NS, 0, "n  (0.40-0.75 um)",
+                                 FLT_MAX, FLT_MAX, ImVec2(-FLT_MIN, 90));
+                ImGui::PlotLines("##kl", kv.data(), NS, 0, "k  (extinction)",
+                                 FLT_MAX, FLT_MAX, ImVec2(-FLT_MIN, 60));
+
+                ImGui::SeparatorText("Built-in materials (n at design wavelength)");
+                if (ImGui::BeginTable("matlib", 2,
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("material");
+                    ImGui::TableSetupColumn("n(lambda)");
+                    ImGui::TableHeadersRow();
+                    auto row = [&](const char* nm, const Material& mat) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted(nm);
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%.3f", mat.index(params.wavelength).real());
+                    };
+                    row("Air", materials::air());
+                    row("N-BK7", materials::bk7());
+                    row("Fused silica (SiO2)", materials::fused_silica());
+                    row("Silicon nitride (Si3N4)", materials::silicon_nitride());
+                    ImGui::EndTable();
+                }
+
+                ImGui::SeparatorText("Load real n,k from CSV");
+                ImGui::TextDisabled("format: wavelength_um, n [, k]  (refractiveindex.info)");
+                static char path[256] = "material.csv";
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                ImGui::InputText("##mcsv", path, sizeof(path));
+                if (ImGui::Button("Load as pillar material", ImVec2(-FLT_MIN, 0))) {
+                    try {
+                        Material lm = load_material_csv(path, "CSV");
+                        g_loaded_material = std::move(lm);
+                        g_loaded_name = path;
+                        params.pillar_mat = 6;
+                        std::lock_guard<std::mutex> lk(g_mtx);
+                        g_status = std::format("Loaded material from {}", path);
+                    } catch (const std::exception& e) {
+                        std::lock_guard<std::mutex> lk(g_mtx);
+                        g_status = std::string("CSV load failed: ") + e.what();
+                    }
+                }
+                ImGui::Text("Loaded CSV: %s", g_loaded_name.c_str());
             }
             ImGui::End();
         }
