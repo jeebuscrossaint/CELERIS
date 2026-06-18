@@ -106,22 +106,31 @@ if(CELERIS_USE_CUDA)
 endif()
 # ---------------------------------------------------------------------------
 
-# --- Optional OpenBLAS/LAPACK fast eigensolve -------------------------------
+# --- Optional LAPACK eigensolve backend -------------------------------------
 # The RCWA per-layer eigenproblem (general complex zgeev) dominates the library
-# build. Eigen's solver is header-only (default, zero-dependency single exe) but
-# unoptimized; OpenBLAS's zgeev is much faster. Enable with
-# -DCELERIS_USE_OPENBLAS=ON (and a vcpkg toolchain providing OpenBLAS). Static
-# linking keeps the result a single self-contained executable.
-option(CELERIS_USE_OPENBLAS "Use OpenBLAS/LAPACK zgeev for the RCWA eigensolve" OFF)
+# build. eig.cpp can dispatch it to LAPACK instead of Eigen's header-only solver,
+# statically linked so the exe stays a single self-contained file.
+#
+# MEASURED (this machine): the only Fortran-free LAPACK available here (CLAPACK,
+# f2c reference LAPACK, even on top of OpenBLAS's fast BLAS) is ~1.5x SLOWER than
+# Eigen -- the bottleneck is the *reference* zgeev algorithm, not the BLAS. A
+# real speedup needs a re-optimized LAPACK, i.e. Intel MKL. So this flag is a
+# plug-in point for MKL (or any optimized LAPACK exposing zgeev_), NOT a win with
+# reference LAPACK. Default OFF -> Eigen, which is the fastest option here.
+option(CELERIS_USE_OPENBLAS "Link an external LAPACK (e.g. MKL) for zgeev; needs an OPTIMIZED LAPACK to beat Eigen" OFF)
 if(CELERIS_USE_OPENBLAS)
-    find_package(OpenBLAS CONFIG REQUIRED)
-    target_link_libraries(celeris_core PUBLIC OpenBLAS::OpenBLAS)
-    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_LAPACK)
-    # vcpkg installs lapacke.h under include/openblas; add it if present.
-    if(OpenBLAS_INCLUDE_DIRS)
-        target_include_directories(celeris_core PRIVATE ${OpenBLAS_INCLUDE_DIRS})
+    find_library(CEL_LAPACK NAMES lapack mkl_rt REQUIRED)
+    find_library(CEL_BLAS NAMES openblas blas mkl_rt)
+    find_library(CEL_F2C NAMES libf2c f2c)
+    target_link_libraries(celeris_core PUBLIC ${CEL_LAPACK})
+    if(CEL_BLAS)
+        target_link_libraries(celeris_core PUBLIC ${CEL_BLAS})
     endif()
-    message(STATUS "CELERIS: OpenBLAS LAPACK eigensolve enabled")
+    if(CEL_F2C)
+        target_link_libraries(celeris_core PUBLIC ${CEL_F2C})
+    endif()
+    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_LAPACK)
+    message(STATUS "CELERIS: external LAPACK zgeev enabled -- ${CEL_LAPACK}")
 endif()
 # ---------------------------------------------------------------------------
 
