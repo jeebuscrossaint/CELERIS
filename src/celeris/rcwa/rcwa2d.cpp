@@ -1,4 +1,5 @@
 #include "celeris/rcwa/rcwa2d.hpp"
+#include "celeris/rcwa/eig.hpp"
 #include "celeris/rcwa/smatrix.hpp"
 
 #include <Eigen/Dense>
@@ -129,11 +130,11 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
         Q.block(N, 0, N, N) = Ky * Ky - Erc;
         Q.block(N, N, N, N) = -Ky * Kx;
 
-        Eigen::ComplexEigenSolver<MatrixXcd> ces(P * Q);
-        VectorXcd omega = ces.eigenvalues().cwiseSqrt();
+        VectorXcd evals; MatrixXcd W;
+        eig_general(P * Q, evals, W);
+        VectorXcd omega = evals.cwiseSqrt();
         for (int i = 0; i < 2 * N; ++i)
             if (omega(i).real() < 0) omega(i) = -omega(i);  // decaying branch
-        MatrixXcd W = ces.eigenvectors();
         VectorXcd omega_inv = omega.cwiseInverse();
         MatrixXcd V = Q * W * omega_inv.asDiagonal();
         MatrixXcd X = (-k0 * layer.thickness_um * omega.array()).exp().matrix().asDiagonal();

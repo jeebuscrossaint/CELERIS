@@ -12,6 +12,7 @@
 // algorithms for modeling layered diffraction gratings," JOSA A 13 (1996).
 
 #include "celeris/rcwa/rcwa1d.hpp"
+#include "celeris/rcwa/eig.hpp"
 #include "celeris/rcwa/smatrix.hpp"
 
 #include <Eigen/Dense>
@@ -60,13 +61,14 @@ LayerModes compute_layer_modes(const GratingLayer1D& layer,
         A = E * (Kx * Einv * Kx - Id);
     }
 
-    Eigen::ComplexEigenSolver<MatrixXcd> ces(A);
-    VectorXcd q = ces.eigenvalues().cwiseSqrt();
+    VectorXcd evals; MatrixXcd Wm;
+    eig_general(A, evals, Wm);
+    VectorXcd q = evals.cwiseSqrt();
     for (int i = 0; i < n; ++i)
         if (q(i).real() < 0) q(i) = -q(i);  // decaying branch
 
     LayerModes m;
-    m.W = ces.eigenvectors();
+    m.W = Wm;
     const cdouble j_unit{0.0, 1.0};
     m.V = (pol == Pol::TE) ? MatrixXcd(m.W * q.asDiagonal())
                            : MatrixXcd(j_unit * (E.inverse() * m.W) *

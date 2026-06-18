@@ -1,5 +1,7 @@
 #include "celeris/rcwa/rcwa1d.hpp"
 
+#include "celeris/rcwa/eig.hpp"
+
 #include <Eigen/Dense>
 #include <cmath>
 #include <stdexcept>
@@ -62,11 +64,9 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
     MatrixXcd Vmodes;
     VectorXcd Yreg_I(n), Yreg_II(n);
 
-    ComplexEigenSolver<MatrixXcd> ces;
     if (pol == Pol::TE) {
         // E_y is primary; companion H_x. A = Kx² − E,  V = W·Q,  Y = j·kz/k0.
         A = Kx * Kx - E;
-        ces.compute(A);
     } else {
         // TM: H_y primary; companion E_x. Li's rule -> middle uses Toeplitz of
         // 1/ε; companion uses the matrix inverse of [ε].  A = E·(Kx·Einv·Kx−I).
@@ -76,13 +76,13 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
                 Einv(a, b) =
                     grating.eps_inv_fourier((a - M) - (b - M), wavelength_um);
         A = E * (Kx * Einv * Kx - Id);
-        ces.compute(A);
     }
 
-    VectorXcd q = ces.eigenvalues().cwiseSqrt();  // q = kz_layer/k0 per mode
+    VectorXcd evals; MatrixXcd W;
+    eig_general(A, evals, W);
+    VectorXcd q = evals.cwiseSqrt();  // q = kz_layer/k0 per mode
     for (int i = 0; i < n; ++i)
         if (q(i).real() < 0) q(i) = -q(i);  // decaying / outgoing branch
-    MatrixXcd W = ces.eigenvectors();
 
     const cdouble j_unit{0.0, 1.0};
     if (pol == Pol::TE) {

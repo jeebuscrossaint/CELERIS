@@ -40,6 +40,7 @@ add_library(celeris_core
     src/celeris/rcwa/rcwa1d.cpp
     src/celeris/rcwa/rcwa_stack1d.cpp
     src/celeris/rcwa/rcwa2d.cpp
+    src/celeris/rcwa/eig.cpp
     src/celeris/design/metalens.cpp
     src/celeris/design/optimize.cpp
     src/celeris/design/system_opt.cpp
@@ -102,6 +103,25 @@ if(CELERIS_USE_CUDA)
         message(STATUS "CELERIS: nvcc not found - GPU propagation kernel disabled "
                        "(host-only cuSOLVER path still built)")
     endif()
+endif()
+# ---------------------------------------------------------------------------
+
+# --- Optional OpenBLAS/LAPACK fast eigensolve -------------------------------
+# The RCWA per-layer eigenproblem (general complex zgeev) dominates the library
+# build. Eigen's solver is header-only (default, zero-dependency single exe) but
+# unoptimized; OpenBLAS's zgeev is much faster. Enable with
+# -DCELERIS_USE_OPENBLAS=ON (and a vcpkg toolchain providing OpenBLAS). Static
+# linking keeps the result a single self-contained executable.
+option(CELERIS_USE_OPENBLAS "Use OpenBLAS/LAPACK zgeev for the RCWA eigensolve" OFF)
+if(CELERIS_USE_OPENBLAS)
+    find_package(OpenBLAS CONFIG REQUIRED)
+    target_link_libraries(celeris_core PUBLIC OpenBLAS::OpenBLAS)
+    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_LAPACK)
+    # vcpkg installs lapacke.h under include/openblas; add it if present.
+    if(OpenBLAS_INCLUDE_DIRS)
+        target_include_directories(celeris_core PRIVATE ${OpenBLAS_INCLUDE_DIRS})
+    endif()
+    message(STATUS "CELERIS: OpenBLAS LAPACK eigensolve enabled")
 endif()
 # ---------------------------------------------------------------------------
 
