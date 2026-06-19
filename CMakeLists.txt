@@ -174,8 +174,16 @@ if(CELERIS_BUILD_GUI)
         ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
     target_link_libraries(celeris_imgui PUBLIC glfw OpenGL::GL)
 
-    add_executable(celeris_gui gui/main_gui.cpp)
+    add_executable(celeris_gui
+        gui/main_gui.cpp
+        gui/theme.cpp
+        gui/textures.cpp
+        gui/app_state.cpp
+        gui/workers.cpp)
     target_link_libraries(celeris_gui PRIVATE celeris_core celeris_imgui)
+    if(WIN32)
+        target_link_libraries(celeris_gui PRIVATE psapi)  # process CPU/mem monitor
+    endif()
     if(MINGW)
         target_link_libraries(celeris_gui PRIVATE stdc++exp)
     endif()

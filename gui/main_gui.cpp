@@ -47,546 +47,18 @@
 
 using namespace celeris;
 
-namespace {
+#include "app_state.hpp"
+#include "theme.hpp"
+#include "textures.hpp"
 
-struct LayerRow {  // an extra (unpatterned by default) layer above the pillars
-    float n = 1.46f;       // refractive index
-    float fill = 1.0f;     // 1.0 = uniform film; <1 = a square patch
-    float thickness = 0.1f;
-};
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <psapi.h>  // process CPU/memory for the internal performance monitor
+#endif
 
-struct Params {
-    float focal = 50, diameter = 20, wavelength = 0.532f, period = 0.35f;
-    float focal_y = 80;  // Y-polarization focal length (polarization-multiplexed mode)
-    float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
-    int harmonics = 6, fill_samples = 18;
-    int pillar_mat = 3;     // index into kPillarMats (default: TiO2 approx)
-    int substrate_mat = 0;  // 0 = N-BK7, 1 = air, 2 = fused silica
-    std::vector<LayerRow> extra_layers;  // stacked above the pillars (cap/AR…)
-};
-
-const char* kPillarMats[] = {"Custom (constant n)", "Silicon nitride (Si3N4)",
-                             "Fused silica (SiO2)",  "TiO2 (approx n=2.40)",
-                             "a-Si (approx n=3.50)", "GaN (approx n=2.35)",
-                             "Loaded CSV"};
-const char* kSubstrates[] = {"N-BK7", "Air", "Fused silica (SiO2)"};
-
-// A material loaded from a CSV file at runtime (real n,k data).
-std::optional<Material> g_loaded_material;
-std::string g_loaded_name = "(none)";
-
-Material make_pillar(const Params& p) {
-    switch (p.pillar_mat) {
-        case 1: return materials::silicon_nitride();
-        case 2: return materials::fused_silica();
-        case 3: return Material::constant(cdouble{2.40, 0.0}, "TiO2~");
-        case 4: return Material::constant(cdouble{3.50, 0.0}, "a-Si~");
-        case 5: return Material::constant(cdouble{2.35, 0.0}, "GaN~");
-        case 6:
-            if (g_loaded_material) return *g_loaded_material;
-            return Material::constant(cdouble{p.pillar_n, 0.0}, "custom");
-        default: return Material::constant(cdouble{p.pillar_n, 0.0}, "custom");
-    }
-}
-
-const Material& make_substrate(const Params& p) {
-    switch (p.substrate_mat) {
-        case 1: return materials::air();
-        case 2: return materials::fused_silica();
-        default: return materials::bk7();
-    }
-}
-
-// Project persistence — a plain key/value text file (.celeris). No external
-// dependency; human-readable and diff-friendly.
-bool save_project(const std::string& path, const Params& p) {
-    std::ofstream f(path);
-    if (!f) return false;
-    f << "celeris_project 1\n";
-    f << "focal " << p.focal << "\n";
-    f << "diameter " << p.diameter << "\n";
-    f << "wavelength " << p.wavelength << "\n";
-    f << "period " << p.period << "\n";
-    f << "thickness " << p.thickness << "\n";
-    f << "pillar_n " << p.pillar_n << "\n";
-    f << "harmonics " << p.harmonics << "\n";
-    f << "fill_samples " << p.fill_samples << "\n";
-    f << "pillar_mat " << p.pillar_mat << "\n";
-    f << "substrate_mat " << p.substrate_mat << "\n";
-    for (const auto& L : p.extra_layers)
-        f << "layer " << L.n << " " << L.fill << " " << L.thickness << "\n";
-    return static_cast<bool>(f);
-}
-
-bool load_project(const std::string& path, Params& p) {
-    std::ifstream f(path);
-    if (!f) return false;
-    Params np;
-    np.extra_layers.clear();
-    std::string line;
-    bool header = false;
-    while (std::getline(f, line)) {
-        std::istringstream ss(line);
-        std::string key;
-        if (!(ss >> key)) continue;
-        if (key == "celeris_project") { header = true; }
-        else if (key == "focal") ss >> np.focal;
-        else if (key == "diameter") ss >> np.diameter;
-        else if (key == "wavelength") ss >> np.wavelength;
-        else if (key == "period") ss >> np.period;
-        else if (key == "thickness") ss >> np.thickness;
-        else if (key == "pillar_n") ss >> np.pillar_n;
-        else if (key == "harmonics") ss >> np.harmonics;
-        else if (key == "fill_samples") ss >> np.fill_samples;
-        else if (key == "pillar_mat") ss >> np.pillar_mat;
-        else if (key == "substrate_mat") ss >> np.substrate_mat;
-        else if (key == "layer") {
-            LayerRow L; ss >> L.n >> L.fill >> L.thickness;
-            np.extra_layers.push_back(L);
-        }
-    }
-    if (!header) return false;
-    p = std::move(np);
-    return true;
-}
-
-struct Results {
-    double strehl = 0, fwhm = 0, dl = 0, encircled = 0, rms = 0, meanT = 0;
-    double coverage_deg = 0, na = 0;
-    int n_cells = 0, pillars = 0;
-    PsfMap psf;
-    std::vector<float> chrom_wl, chrom_focus;
-    WavefrontAnalysis wf;
-    MtfCurve mtf;
-    ThroughFocus tf;
-    // Kept so the UI can export GDSII and run further analyses on demand.
-    MetalensDesign design;
-    UnitCellLibrary lib;
-    Params used;
-};
-
-ImVec4 rgb(int r, int g, int b, float a = 1.0f) {
-    return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a);
-}
-
-// Utilitarian engineering-tool theme (think OpticStudio/MFC): light gray,
-// square corners, thin borders everywhere, dense spacing, classic Windows-blue
-// selection. Deliberately plain — it should read "serious instrument," not "app".
-void apply_theme() {
-    ImGui::StyleColorsLight();
-    ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding = 0; s.ChildRounding = 0; s.FrameRounding = 0;
-    s.PopupRounding = 0;  s.GrabRounding = 0;  s.TabRounding = 0;
-    s.ScrollbarRounding = 0;
-    s.WindowBorderSize = 1; s.ChildBorderSize = 1; s.FrameBorderSize = 1;
-    s.PopupBorderSize = 1;
-    s.WindowPadding = ImVec2(6, 6);  s.FramePadding = ImVec2(6, 3);
-    s.ItemSpacing = ImVec2(6, 4);    s.ItemInnerSpacing = ImVec2(5, 4);
-    s.CellPadding = ImVec2(6, 3);    s.ScrollbarSize = 14; s.GrabMinSize = 10;
-
-    ImVec4* c = s.Colors;
-    const ImVec4 face = rgb(238, 238, 238), field = rgb(255, 255, 255),
-                 text = rgb(20, 20, 20), border = rgb(158, 158, 158),
-                 head = rgb(222, 222, 222), sel = rgb(0, 120, 215),
-                 hov = rgb(229, 241, 251), prs = rgb(204, 228, 247);
-    c[ImGuiCol_WindowBg] = face;   c[ImGuiCol_ChildBg] = face;
-    c[ImGuiCol_MenuBarBg] = head;  c[ImGuiCol_PopupBg] = field;
-    c[ImGuiCol_Text] = text;       c[ImGuiCol_Border] = border;
-    c[ImGuiCol_FrameBg] = field;   c[ImGuiCol_FrameBgHovered] = hov;
-    c[ImGuiCol_FrameBgActive] = prs;
-    c[ImGuiCol_Button] = rgb(225, 225, 225); c[ImGuiCol_ButtonHovered] = hov;
-    c[ImGuiCol_ButtonActive] = prs;
-    c[ImGuiCol_Header] = prs;      c[ImGuiCol_HeaderHovered] = hov;
-    c[ImGuiCol_HeaderActive] = sel;
-    c[ImGuiCol_SliderGrab] = sel;  c[ImGuiCol_SliderGrabActive] = rgb(0, 102, 184);
-    c[ImGuiCol_CheckMark] = sel;
-    c[ImGuiCol_TableHeaderBg] = head;
-    c[ImGuiCol_TableBorderStrong] = border;
-    c[ImGuiCol_TableBorderLight] = rgb(200, 200, 200);
-    c[ImGuiCol_TableRowBg] = field; c[ImGuiCol_TableRowBgAlt] = rgb(247, 247, 247);
-    c[ImGuiCol_TitleBg] = head;     c[ImGuiCol_TitleBgActive] = head;
-    c[ImGuiCol_Separator] = border; c[ImGuiCol_PlotLines] = sel;
-    c[ImGuiCol_ScrollbarBg] = face;
-}
-
-std::atomic<bool> g_running{false};
-std::atomic<bool> g_pending{false};  // worker finished, main thread must ingest
-std::atomic<float> g_progress{0.0f};
-std::mutex g_mtx;
-std::string g_status = "Ready — set parameters and click Design.";
-Results g_res;
-
-// On-demand analyses (computed from the stored design when requested).
-std::atomic<bool> g_tol_pending{false};
-std::atomic<bool> g_fov_pending{false};
-std::atomic<bool> g_spot_pending{false};
-std::vector<ToleranceResult> g_tol;
-std::vector<FieldPoint> g_fov;
-std::vector<FieldPsf> g_spot;  // per-field-angle focal spots (spot diagram)
-
-// Polarization-multiplexed design (independent worker, own result).
-std::atomic<bool> g_polar_pending{false};
-PolarMetalensDesign g_polar;
-double g_polar_fx = 0, g_polar_fy = 0;  // focal lengths the result was built for
-double g_polar_zx = 0, g_polar_zy = 0;  // measured on-axis focus per polarization
-double g_polar_iso_x = 0, g_polar_iso_y = 0;  // focal isolation (dB)
-PsfMap g_polar_psf_x, g_polar_psf_y;    // each polarization's focal-plane PSF
-
-// Design optimizer result (best period/height applied to the UI on completion).
-std::atomic<bool> g_opt_pending{false};
-SystemOptResult g_opt;
-
-void set_phase(const char* msg, float progress) {
-    std::lock_guard<std::mutex> lk(g_mtx);
-    g_status = msg;
-    g_progress = progress;
-}
-
-void run_design(Params p) {
-    g_running = true;
-    set_phase("Building unit-cell library (RCWA sweep)...", 0.05f);
-    // Assemble the unit-cell stack: extra layers (caps/AR coatings) above the
-    // patterned pillar layer, which is the active (fill-swept) layer.
-    Rcwa2DStack stack;
-    stack.period_x_um = stack.period_y_um = p.period;
-    for (const auto& L : p.extra_layers)
-        stack.layers.push_back(RectCell2D{
-            Material::constant(cdouble{L.n, 0.0}, "layer"), materials::air(),
-            L.fill, L.fill, L.thickness});
-    const int active = static_cast<int>(stack.layers.size());
-    stack.layers.push_back(RectCell2D{make_pillar(p), materials::air(),
-                                      0.5, 0.5, p.thickness});
-    auto lib = build_unit_cell_library_stack(stack, active, materials::air(),
-                                             make_substrate(p), p.wavelength, 0.08,
-                                             0.92, p.fill_samples, p.harmonics);
-    set_phase("Assembling lens (phase profile -> pillar map)...", 0.45f);
-    auto lens = design_metalens(lib, p.focal, p.diameter);
-    set_phase("Analyzing focus (Rayleigh-Sommerfeld)...", 0.55f);
-    auto foc = analyze_focus(lens, lib, p.focal, p.wavelength, p.diameter);
-    double dl = p.wavelength * p.focal / p.diameter;
-    set_phase("Rendering point-spread function...", 0.72f);
-    auto psf = compute_psf(lens, lib, p.focal, p.wavelength, p.diameter, 161,
-                           std::max(5.0 * dl, 4.0));
-    set_phase("Chromatic sweep (re-solving meta-atoms per wavelength)...", 0.9f);
-    // Rigorous chromatic model: rebuild the RCWA meta-atom library at each
-    // wavelength so material + waveguide dispersion enter the focal shift, not
-    // just the propagation phase. Same builder used for the design library.
-    auto build_lib_at = [p](double lam) {
-        Rcwa2DStack s;
-        s.period_x_um = s.period_y_um = p.period;
-        for (const auto& L : p.extra_layers)
-            s.layers.push_back(RectCell2D{
-                Material::constant(cdouble{L.n, 0.0}, "layer"), materials::air(),
-                L.fill, L.fill, L.thickness});
-        const int act = static_cast<int>(s.layers.size());
-        s.layers.push_back(RectCell2D{make_pillar(p), materials::air(),
-                                      0.5, 0.5, p.thickness});
-        return build_unit_cell_library_stack(s, act, materials::air(),
-                                             make_substrate(p), lam, 0.08, 0.92,
-                                             p.fill_samples, p.harmonics);
-    };
-    auto chrom = analyze_chromatic_dispersive(
-        lens, build_lib_at, p.focal, p.wavelength, p.diameter,
-        p.wavelength * 0.85, p.wavelength * 1.25, 11);
-
-    Results r;
-    r.strehl = foc.strehl;
-    r.fwhm = foc.fwhm_um;
-    r.dl = foc.diffraction_limit_um;
-    r.encircled = foc.encircled_energy;
-    r.rms = lens.rms_phase_error_deg;
-    r.meanT = lens.mean_amplitude;
-    r.coverage_deg = lib.phase_span() * 180.0 / 3.14159265358979;
-    r.na = std::sin(std::atan((p.diameter / 2.0) / p.focal));  // numerical aperture (in air)
-    r.n_cells = lens.n_cells;
-    r.pillars = lens.n_cells * lens.n_cells;
-    r.psf = std::move(psf);
-    for (auto& c : chrom) {
-        r.chrom_wl.push_back(static_cast<float>(c.wavelength_um * 1000.0));
-        r.chrom_focus.push_back(static_cast<float>(c.focal_length_um));
-    }
-    r.wf = analyze_wavefront(lens, lib, p.focal, p.wavelength, p.diameter);
-    r.mtf = analyze_mtf(lens, lib, p.focal, p.wavelength, p.diameter);
-    r.tf = analyze_through_focus(lens, lib, p.focal, p.wavelength, p.diameter);
-    r.design = lens;
-    r.lib = std::move(lib);
-    r.used = p;
-    {
-        std::lock_guard<std::mutex> lk(g_mtx);
-        g_res = std::move(r);
-        g_status = "Done.";
-        g_progress = 1.0f;
-    }
-    g_pending = true;
-    g_running = false;
-}
-
-void run_tolerance() {
-    g_running = true;
-    set_phase("Monte-Carlo fabrication tolerance...", 0.2f);
-    MetalensDesign d; UnitCellLibrary lib; Params p;
-    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
-    auto tol = analyze_tolerance(d, lib, p.focal, p.wavelength, p.diameter,
-                                 {0.0, 5.0, 10.0, 20.0}, 12, 12345);
-    { std::lock_guard<std::mutex> lk(g_mtx); g_tol = std::move(tol);
-      g_status = "Tolerance analysis done."; g_progress = 1.0f; }
-    g_tol_pending = true;
-    g_running = false;
-}
-
-void run_fov() {
-    g_running = true;
-    set_phase("Field-of-view (off-axis) analysis...", 0.2f);
-    MetalensDesign d; UnitCellLibrary lib; Params p;
-    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
-    auto fov = analyze_field_of_view(d, lib, p.focal, p.wavelength, p.diameter,
-                                     {0.0, 1.0, 2.0, 5.0, 10.0});
-    { std::lock_guard<std::mutex> lk(g_mtx); g_fov = std::move(fov);
-      g_status = "Field-of-view analysis done."; g_progress = 1.0f; }
-    g_fov_pending = true;
-    g_running = false;
-}
-
-void run_spotgrid() {
-    g_running = true;
-    set_phase("Spot-vs-field diagram (off-axis PSFs)...", 0.1f);
-    MetalensDesign d; UnitCellLibrary lib; Params p;
-    { std::lock_guard<std::mutex> lk(g_mtx); d = g_res.design; lib = g_res.lib; p = g_res.used; }
-    const double dl = p.wavelength * p.focal / p.diameter;
-    const double win = std::max(8.0 * dl, 5.0);
-    const int ng = 81;
-    const std::vector<double> angles = {0.0, 2.0, 4.0, 6.0, 8.0};
-    std::vector<FieldPsf> spots;
-    // On-axis first to establish the reference peak for relative Strehl.
-    auto ax = compute_psf_field(d, lib, p.focal, p.wavelength, p.diameter, 0.0, ng, win);
-    double peak = 0.0;
-    for (double v : ax.psf.intensity) peak = std::max(peak, v);
-    ax.rel_strehl = 1.0;
-    spots.push_back(std::move(ax));
-    for (std::size_t i = 1; i < angles.size(); ++i) {
-        set_phase("Spot-vs-field diagram (off-axis PSFs)...",
-                  0.1f + 0.85f * static_cast<float>(i) / angles.size());
-        spots.push_back(compute_psf_field(d, lib, p.focal, p.wavelength, p.diameter,
-                                          angles[i], ng, win, peak));
-    }
-    { std::lock_guard<std::mutex> lk(g_mtx); g_spot = std::move(spots);
-      g_status = "Spot-vs-field diagram done."; g_progress = 1.0f; }
-    g_spot_pending = true;
-    g_running = false;
-}
-
-void run_polardesign(Params p) {
-    g_running = true;
-    set_phase("Polarization library (fill_x x fill_y, 2 solves/cell)...", 0.1f);
-    auto lib = build_polarization_library(
-        make_pillar(p), materials::air(), materials::air(), make_substrate(p),
-        p.period, p.wavelength, p.thickness, 0.10, 0.90,
-        std::max(6, p.fill_samples), p.harmonics);
-    set_phase("Assigning rectangular pillars (dual phase profile)...", 0.7f);
-    auto d = design_polarization_metalens(lib, p.focal, p.focal_y, p.diameter);
-
-    // Propagate each polarization to its target focal plane (GPU when available)
-    // to visually confirm the bifocal split.
-    set_phase("Propagating X/Y-pol focal spots...", 0.9f);
-    std::vector<double> px, py;
-    std::vector<cdouble> tx, ty;
-    const double cen = (d.n_cells - 1) / 2.0, R_ap = p.diameter / 2.0;
-    for (int iy = 0; iy < d.n_cells; ++iy)
-        for (int ix = 0; ix < d.n_cells; ++ix) {
-            double x = (ix - cen) * d.period_um, y = (iy - cen) * d.period_um;
-            if (std::sqrt(x * x + y * y) > R_ap) continue;
-            std::size_t off = (std::size_t)iy * d.n_cells + ix;
-            px.push_back(x); py.push_back(y);
-            tx.push_back(d.t_x[off]); ty.push_back(d.t_y[off]);
-        }
-    double dlx = p.wavelength * p.focal / p.diameter;
-    double dly = p.wavelength * p.focal_y / p.diameter;
-    auto psfx = propagate_pillars(px, py, tx, 0, 0, p.focal, p.wavelength, 161,
-                                  std::max(5.0 * dlx, 4.0));
-    auto psfy = propagate_pillars(px, py, ty, 0, 0, p.focal_y, p.wavelength, 161,
-                                  std::max(5.0 * dly, 4.0));
-
-    // Measured on-axis foci + focal isolation (channel separation).
-    const double kk = 2.0 * pi / p.wavelength;
-    auto on_axis = [&](const std::vector<cdouble>& t, double z) {
-        cdouble E{0, 0};
-        for (std::size_t q = 0; q < px.size(); ++q) {
-            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
-            E += t[q] * std::polar(1.0 / r, kk * r);
-        }
-        return std::norm(E);
-    };
-    auto peak_z = [&](const std::vector<cdouble>& t) {
-        double zlo = 0.5 * std::min(p.focal, p.focal_y), zhi = 1.5 * std::max(p.focal, p.focal_y);
-        double bz = zlo, bi = -1;
-        for (int j = 0; j < 200; ++j) { double z = zlo + (zhi - zlo) * j / 199.0;
-            double I = on_axis(t, z); if (I > bi) { bi = I; bz = z; } }
-        return bz;
-    };
-    double zx = peak_z(tx), zy = peak_z(ty);
-    double isox = (std::abs(p.focal - p.focal_y) > 1e-6)
-        ? 10.0 * std::log10(on_axis(tx, zx) / std::max(on_axis(ty, zx), 1e-30)) : 0.0;
-    double isoy = (std::abs(p.focal - p.focal_y) > 1e-6)
-        ? 10.0 * std::log10(on_axis(ty, zy) / std::max(on_axis(tx, zy), 1e-30)) : 0.0;
-    {
-        std::lock_guard<std::mutex> lk(g_mtx);
-        g_polar = std::move(d);
-        g_polar_psf_x = std::move(psfx);
-        g_polar_psf_y = std::move(psfy);
-        g_polar_fx = p.focal; g_polar_fy = p.focal_y;
-        g_polar_zx = zx; g_polar_zy = zy; g_polar_iso_x = isox; g_polar_iso_y = isoy;
-        g_status = std::format("Polarization design: X@{:.0f}um RMS {:.1f}deg, "
-                               "Y@{:.0f}um RMS {:.1f}deg",
-                               p.focal, g_polar.rms_phase_error_x_deg, p.focal_y,
-                               g_polar.rms_phase_error_y_deg);
-        g_progress = 1.0f;
-    }
-    g_polar_pending = true;
-    g_running = false;
-}
-
-void run_optimize(Params p) {
-    g_running = true;
-    set_phase("Optimizing design (period x height search)...", 0.0f);
-    auto res = optimize_system(
-        make_pillar(p), materials::air(), materials::air(), make_substrate(p), p.focal,
-        p.diameter, p.wavelength, 0.20, 0.45, 0.30, 1.00, /*grid=*/5, /*M=*/5,
-        /*fill_samples=*/12, /*efficiency_weight=*/0.3,
-        [](float fr) { set_phase("Optimizing design (period x height search)...", fr); });
-    {
-        std::lock_guard<std::mutex> lk(g_mtx);
-        g_opt = res;
-        g_status = std::format("Optimized: period {:.3f} um, height {:.3f} um "
-                               "(Strehl~{:.3f}). Applied -- press F5 to run.",
-                               res.period_um, res.thickness_um, res.strehl);
-        g_progress = 1.0f;
-    }
-    g_opt_pending = true;
-    g_running = false;
-}
-
-// Upload a PSF map to an OpenGL texture (grayscale, gamma-boosted). Runs on the
-// main/GL thread.
-void upload_psf_texture(const PsfMap& psf, unsigned int& tex) {
-    if (psf.n <= 0 || psf.intensity.empty()) return;
-    double mx = 0.0;
-    for (double v : psf.intensity) mx = std::max(mx, v);
-    if (mx <= 0.0) mx = 1.0;
-    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(psf.n) * psf.n * 4);
-    for (std::size_t i = 0; i < psf.intensity.size(); ++i) {
-        double v = std::pow(psf.intensity[i] / mx, 1.0 / 2.2);  // gamma
-        auto b = static_cast<std::uint8_t>(std::lround(std::clamp(v, 0.0, 1.0) * 255.0));
-        rgba[i * 4 + 0] = b;
-        rgba[i * 4 + 1] = b;
-        rgba[i * 4 + 2] = b;
-        rgba[i * 4 + 3] = 255;
-    }
-    if (tex == 0) glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, psf.n, psf.n, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, rgba.data());
-}
-
-// Upload the wavefront OPD map with a diverging blue-white-red colormap
-// (negative -> blue, 0 -> white, positive -> red), outside-aperture -> gray.
-void upload_wavefront_texture(const WavefrontAnalysis& wf, unsigned int& tex) {
-    if (wf.n <= 0 || wf.opd.empty()) return;
-    double amp = 1e-9;
-    for (std::size_t i = 0; i < wf.opd.size(); ++i)
-        if (wf.mask[i]) amp = std::max(amp, std::abs(wf.opd[i]));
-    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(wf.n) * wf.n * 4);
-    for (std::size_t i = 0; i < wf.opd.size(); ++i) {
-        std::uint8_t r, g, b;
-        if (!wf.mask[i]) { r = g = b = 70; }  // outside aperture
-        else {
-            double v = std::clamp(wf.opd[i] / amp, -1.0, 1.0);  // -1..1
-            if (v >= 0) { r = 255; g = b = static_cast<std::uint8_t>(255 * (1 - v)); }
-            else        { b = 255; r = g = static_cast<std::uint8_t>(255 * (1 + v)); }
-        }
-        rgba[i * 4 + 0] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b; rgba[i * 4 + 3] = 255;
-    }
-    if (tex == 0) glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, wf.n, wf.n, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, rgba.data());
-}
-
-// Map hue in [0,1) (S=V=1) to RGB — used for the cyclic phase colormap.
-void hue_to_rgb(double h, std::uint8_t& r, std::uint8_t& g, std::uint8_t& b) {
-    double x = (1.0 - std::abs(std::fmod(h * 6.0, 2.0) - 1.0));
-    double rr = 0, gg = 0, bb = 0;
-    int seg = static_cast<int>(h * 6.0) % 6;
-    switch (seg) {
-        case 0: rr = 1; gg = x; break;
-        case 1: rr = x; gg = 1; break;
-        case 2: gg = 1; bb = x; break;
-        case 3: gg = x; bb = 1; break;
-        case 4: rr = x; bb = 1; break;
-        default: rr = 1; bb = x; break;
-    }
-    r = static_cast<std::uint8_t>(rr * 255);
-    g = static_cast<std::uint8_t>(gg * 255);
-    b = static_cast<std::uint8_t>(bb * 255);
-}
-
-// Upload the lens layout (pillar map) as an n_cells x n_cells texture.
-// mode 0: imparted phase (cyclic hue colormap); mode 1: fill fraction (grayscale).
-void upload_layout_texture(const MetalensDesign& d, const UnitCellLibrary& lib,
-                           int mode, unsigned int& tex) {
-    const int n = d.n_cells;
-    if (n <= 0 || d.fill_map.empty()) return;
-    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(n) * n * 4);
-    for (std::size_t i = 0; i < d.fill_map.size(); ++i) {
-        double fill = d.fill_map[i];
-        std::uint8_t r, g, b;
-        if (mode == 0) {
-            cdouble t = lib.transmission_for_fill(fill);
-            double h = (std::arg(t) + pi) / (2.0 * pi);  // -pi..pi -> 0..1
-            hue_to_rgb(std::clamp(h, 0.0, 1.0), r, g, b);
-        } else {
-            auto v = static_cast<std::uint8_t>(std::clamp(fill, 0.0, 1.0) * 255.0);
-            r = g = b = v;
-        }
-        rgba[i * 4 + 0] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b;
-        rgba[i * 4 + 3] = 255;
-    }
-    if (tex == 0) glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, n, n, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, rgba.data());
-}
-
-// Upload the through-focus caustic (x-z slice) with a "hot" colormap
-// (black -> red -> yellow -> white). Runs on the GL thread.
-void upload_caustic_texture(const ThroughFocus& tf, unsigned int& tex) {
-    if (tf.caustic_nx <= 0 || tf.caustic.empty()) return;
-    const int w = tf.caustic_nx, h = tf.caustic_nz;
-    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(w) * h * 4);
-    for (std::size_t i = 0; i < tf.caustic.size(); ++i) {
-        double v = std::pow(std::clamp((double)tf.caustic[i], 0.0, 1.0), 1.0 / 1.6);
-        auto ch = [](double t) {
-            return static_cast<std::uint8_t>(std::clamp(t, 0.0, 1.0) * 255.0);
-        };
-        rgba[i * 4 + 0] = ch(v * 3.0);          // red first
-        rgba[i * 4 + 1] = ch(v * 3.0 - 1.0);    // then green
-        rgba[i * 4 + 2] = ch(v * 3.0 - 2.0);    // then blue -> white
-        rgba[i * 4 + 3] = 255;
-    }
-    if (tex == 0) glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                 rgba.data());
-}
-
-} // namespace
+using namespace celeris::gui;
 
 int main() {
     if (!glfwInit()) return 1;
@@ -607,7 +79,8 @@ int main() {
         std::ifstream probe(font_path);
         if (probe.good()) io.Fonts->AddFontFromFileTTF(font_path, 19.0f);
     }
-    apply_theme();
+    bool dark_mode = false;
+    apply_theme(dark_mode);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -674,7 +147,8 @@ int main() {
                     win_chr = true, win_tol = true, win_fov = true, win_log = true,
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
                     win_mats = true, win_layout = true, win_spot = true,
-                    win_gds = true, win_polar = true, win_lib = true;
+                    win_gds = true, win_polar = true, win_lib = true,
+                    win_perf = false;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -715,6 +189,10 @@ int main() {
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
                 ImGui::MenuItem("Log", nullptr, &win_log);
+                ImGui::MenuItem("Performance", nullptr, &win_perf);
+                ImGui::Separator();
+                if (ImGui::MenuItem("Dark mode", nullptr, &dark_mode))
+                    apply_theme(dark_mode);
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help")) {
@@ -799,6 +277,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Field of View", cbottom);
             ImGui::DockBuilderDockWindow("Spot vs Field", cbottom);
             ImGui::DockBuilderDockWindow("Log", cbottom);
+            ImGui::DockBuilderDockWindow("Performance", cbottom);
             ImGui::DockBuilderFinish(dockid);
         }
 
@@ -1637,6 +1116,70 @@ int main() {
                     }
                     ImGui::EndTable();
                 }
+            }
+            ImGui::End();
+        }
+
+        // ---- Performance (internal "task manager") ----
+        if (win_perf) {
+            if (ImGui::Begin("Performance", &win_perf)) {
+                // Frame-rate + a rolling frame-time history.
+                static float ft_hist[120] = {0};
+                static int ft_ofs = 0;
+                float frame_ms = io.DeltaTime * 1000.0f;
+                ft_hist[ft_ofs] = frame_ms;
+                ft_ofs = (ft_ofs + 1) % IM_ARRAYSIZE(ft_hist);
+                ImGui::Text("FPS: %.1f   (%.2f ms/frame)", io.Framerate, 1000.0f / io.Framerate);
+                char ov[32]; std::snprintf(ov, sizeof(ov), "%.2f ms", frame_ms);
+                ImGui::PlotLines("##ft", ft_hist, IM_ARRAYSIZE(ft_hist), ft_ofs, ov,
+                                 0.0f, 40.0f, ImVec2(-FLT_MIN, 60));
+
+                ImGui::SeparatorText("Process");
+#ifdef _WIN32
+                // Process CPU% (kernel+user time delta / wall delta / cores) and
+                // working-set memory, refreshed a few times a second.
+                static double cpu_pct = 0.0, mem_mb = 0.0;
+                static double last_wall = 0.0;
+                static unsigned long long last_kt = 0, last_ut = 0;
+                static unsigned ncpu = std::max(1u, std::thread::hardware_concurrency());
+                double now = ImGui::GetTime();
+                FILETIME fc, fe, fk, fu;
+                if (GetProcessTimes(GetCurrentProcess(), &fc, &fe, &fk, &fu)) {
+                    auto u64 = [](FILETIME f) {
+                        return (static_cast<unsigned long long>(f.dwHighDateTime) << 32) |
+                               f.dwLowDateTime;
+                    };
+                    unsigned long long kt = u64(fk), ut = u64(fu);
+                    if (last_wall > 0.0) {
+                        double dw = now - last_wall;
+                        if (dw >= 0.25) {  // 100ns ticks -> seconds: *1e-7
+                            double dproc = static_cast<double>((kt - last_kt) + (ut - last_ut)) * 1e-7;
+                            cpu_pct = 100.0 * dproc / (dw * ncpu);
+                            last_wall = now; last_kt = kt; last_ut = ut;
+                        }
+                    } else { last_wall = now; last_kt = kt; last_ut = ut; }
+                }
+                PROCESS_MEMORY_COUNTERS pmc;
+                if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+                    mem_mb = pmc.WorkingSetSize / 1048576.0;
+                ImGui::Text("CPU: %.0f%%  of %u cores", cpu_pct, ncpu);
+                ImGui::Text("Memory (working set): %.0f MB", mem_mb);
+#else
+                ImGui::TextDisabled("CPU/memory stats: Windows only");
+#endif
+                ImGui::SeparatorText("Compute");
+                ImGui::Text("Workers: %s", g_running.load() ? "BUSY" : "idle");
+#ifdef CELERIS_USE_CUDA_KERNELS
+                if (cuda::available())
+                    ImGui::TextColored(rgb(20, 130, 40), "Device: GPU (%s)", cuda::device_name());
+                else
+                    ImGui::TextColored(rgb(170, 90, 0), "Device: CPU (no CUDA device)");
+#else
+                ImGui::TextDisabled("Device: CPU (CPU build)");
+#endif
+                ImGui::Text("ImGui: %d verts, %d draw cmds",
+                            ImGui::GetIO().MetricsRenderVertices,
+                            ImGui::GetIO().MetricsRenderIndices / 3);
             }
             ImGui::End();
         }
