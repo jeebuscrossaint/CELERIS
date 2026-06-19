@@ -14,7 +14,15 @@
 namespace celeris {
 
 struct FocalAnalysis {
-    double strehl;              // peak(design) / peak(ideal phase), 0..1
+    // Transmission-weighted Strehl: peak(design) / peak(ideal lens, |t|=1
+    // everywhere). Folds the aperture-averaged transmission loss into the number,
+    // so strehl ~= (mean |t|)^2 * phase_strehl. Conservative; 1.0 = perfect.
+    double strehl;
+    // Phase Strehl: peak(design) / peak(same-amplitude, perfectly-phased lens).
+    // Divides out the transmission loss, isolating wavefront/phase quality — the
+    // classic optical Strehl ratio (relative to an aberration-free system with
+    // the SAME amplitude apodization). 1.0 = diffraction-limited phase.
+    double phase_strehl;
     double fwhm_um;            // focal-spot full width at half maximum
     double diffraction_limit_um;  // lambda * f / D for reference
     double encircled_energy;   // fraction of focal-window power within first null

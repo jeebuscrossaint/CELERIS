@@ -100,8 +100,19 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
             }
         });
     double peak = *std::max_element(I.begin(), I.end());
-    // Ideal peak (at focal center): perfect-phase lens.
+    // Ideal peak (at focal center): perfect-phase lens, |t|=1 everywhere.
     double peak_ideal = std::norm(field_at(0.0, 0.0, /*ideal=*/true));
+    // Same-amplitude perfectly-phased reference: each cell contributes its
+    // actual |t| but with the ideal focusing phase, so all add in phase at the
+    // center. peak = (Σ |t|/R)^2. Dividing the design peak by this isolates the
+    // phase/wavefront quality from the transmission loss (the optical Strehl).
+    double amp_inphase = 0.0;
+    for (const Cell& c : cells) {
+        const double Rr = std::sqrt(c.x * c.x + c.y * c.y +
+                                    focal_length_um * focal_length_um);
+        amp_inphase += std::abs(c.t) / Rr;
+    }
+    double peak_same_amp = amp_inphase * amp_inphase;
 
     // FWHM along the central row.
     double half = peak / 2.0;
@@ -127,6 +138,7 @@ FocalAnalysis analyze_focus(const MetalensDesign& lens,
 
     FocalAnalysis out;
     out.strehl = peak_ideal > 0 ? peak / peak_ideal : 0.0;
+    out.phase_strehl = peak_same_amp > 0 ? peak / peak_same_amp : 0.0;
     out.fwhm_um = fwhm;
     out.diffraction_limit_um = dl;
     out.encircled_energy = total > 0 ? in / total : 0.0;

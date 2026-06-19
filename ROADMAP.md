@@ -33,10 +33,21 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 ---
 
 ## 1. Credibility & correctness  (makes it TRUSTED)
-- [ ] **Validation vs a published, fabricated metalens** — reproduce a paper's
-      measured efficiency/Strehl/FWHM (e.g. Khorasaninejad 2016 TiO₂). THE #1 item.
-- [ ] Convergence studies documented (metric vs harmonics M, vs sampling) so users
-      know how to trust/tune accuracy
+- [~] **Validation vs a published, fabricated metalens** — `celeris validate` runs the
+      credibility battery on REAL tabulated TiO₂ n,k (Siefke 2016 ALD, in `data/`)
+      on fused silica. DONE now: a real-TiO₂ focusing lens is **diffraction-limited**
+      — phase Strehl 0.965, FWHM exactly at λf/D, NA 0.20 — and this is M-robust.
+      GATED: a *quantitative* match to a paper's measured *efficiency* needs Li
+      factorization (next bullet), because absolute meta-atom transmittance isn't
+      converged yet. Phase/FWHM/NA validated; efficiency pending.
+- [ ] **Li's normal-vector 2D Fourier factorization** — `validate`'s convergence study
+      EXPOSED that the basic 2D factorization does not converge for high-contrast TiO₂
+      pillars (zeroth-order transmittance swings ~0.6 across M; energy conservation
+      degrades beyond M≈8). This is the documented Li-1996 limitation. REQUIRED for
+      trustworthy absolute efficiency and the quantitative half of the #1 validation.
+- [x] Convergence studies documented (metric vs harmonics M, vs sampling) — `celeris
+      validate` §1 tabulates phase/transmittance/energy-conservation vs M; honest trust
+      signal (and it found the non-convergence above).
 - [ ] Cross-check vs an external solver (S4 / grcwa / Lumerical) on 1–2 benchmarks
 - [ ] Auto-convergence helper (suggest M for a target accuracy)
 - [ ] Numerical edge cases hardened (Rayleigh anomalies, grazing orders, resonances)
@@ -74,7 +85,8 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Efficiency breakdown (per diffraction order, reflection, absorption budget)
 - [ ] Polarization analysis maps (Stokes/Mueller, extinction-ratio map)
 - [ ] Stray light / higher-order ghosts
-- [ ] Bundled real n,k library (TiO₂, a-Si, c-Si, GaN, SiN, Al₂O₃, Au/Ag/Al)
+- [~] Bundled real n,k library — TiO₂ (Siefke 2016, ALD amorphous) shipped in
+      `data/TiO2_Siefke.csv`; still need a-Si, c-Si, GaN, SiN, Al₂O₃, Au/Ag/Al
 - [ ] Material editor in GUI (fit Sellmeier to data, anisotropic, thermo-optic)
 - [ ] Fabrication-aware analysis (sidewall angle, corner rounding → performance)
 

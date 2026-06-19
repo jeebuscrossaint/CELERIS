@@ -102,6 +102,10 @@ celeris design --focal 50 --diameter 40 --report mylens
 # Run the physics validation suite
 celeris selftest
 
+# Credibility battery on REAL tabulated TiO2 n,k (data/TiO2_Siefke.csv):
+# convergence vs harmonics, broadband meta-atom library, end-to-end focusing
+celeris validate --report myvalidation
+
 # Polarization-multiplexed lens: X-pol @50um, Y-pol @80um -> rectangular GDS
 celeris polardesign --focal-x 50 --focal-y 80 --diameter 24 --report mypolar
 
