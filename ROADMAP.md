@@ -79,6 +79,9 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Fabrication-aware analysis (sidewall angle, corner rounding → performance)
 
 ## 5. GUI / UX polish  (makes it feel like a product)
+- [x] Dark mode + themed native title bar (immersive dark), commit in title, app icon
+- [x] Internal performance monitor (FPS + frame-time graph, process CPU%/memory, device)
+- [x] GUI modularized (split the monolith into celeris::gui: theme/textures/app_state/workers)
 - [ ] ImPlot interactive charts (zoom/pan/hover) — replace static plots
 - [ ] Parametric sweep / optimization UI (vary param → live metric plot), merit editor
 - [ ] Undo/redo, units management, input validation, tooltips/contextual help
