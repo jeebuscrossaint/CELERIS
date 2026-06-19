@@ -56,9 +56,47 @@ using namespace celeris;
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <psapi.h>  // process CPU/memory for the internal performance monitor
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#include <dwmapi.h>  // immersive dark-mode title bar
 #endif
 
 using namespace celeris::gui;
+
+#ifdef _WIN32
+// Make the native OS title bar follow the app theme (Win10 2004+/Win11).
+static void set_titlebar_dark(GLFWwindow* w, bool dark) {
+    HWND hwnd = glfwGetWin32Window(w);
+    BOOL v = dark ? TRUE : FALSE;
+    // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (current); 19 on older builds.
+    if (FAILED(DwmSetWindowAttribute(hwnd, 20, &v, sizeof(v))))
+        DwmSetWindowAttribute(hwnd, 19, &v, sizeof(v));
+}
+#else
+static void set_titlebar_dark(GLFWwindow*, bool) {}
+#endif
+
+// A procedural 48x48 RGBA app icon: concentric rings (the focusing/Airy motif)
+// in the brand blue on transparent — no asset file, stays a single exe.
+static void set_app_icon(GLFWwindow* window) {
+    const int N = 48;
+    static unsigned char px[N * N * 4];
+    const double cx = (N - 1) / 2.0, cy = (N - 1) / 2.0, R = (N - 1) / 2.0;
+    for (int y = 0; y < N; ++y)
+        for (int x = 0; x < N; ++x) {
+            double dx = x - cx, dy = y - cy, r = std::sqrt(dx * dx + dy * dy);
+            unsigned char* p = &px[(y * N + x) * 4];
+            if (r > R) { p[0] = p[1] = p[2] = p[3] = 0; continue; }
+            double t = 0.5 + 0.5 * std::cos(r * 0.95);  // rings
+            p[0] = static_cast<unsigned char>(10 + 70 * t);
+            p[1] = static_cast<unsigned char>(40 + 130 * t);
+            p[2] = static_cast<unsigned char>(90 + 165 * t);
+            double edge = std::clamp(R - r, 0.0, 1.5) / 1.5;  // feather rim
+            p[3] = static_cast<unsigned char>(255 * edge);
+        }
+    GLFWimage img{N, N, px};
+    glfwSetWindowIcon(window, 1, &img);
+}
 
 int main() {
     if (!glfwInit()) return 1;
@@ -67,6 +105,12 @@ int main() {
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
+
+    set_app_icon(window);
+#ifdef CELERIS_GIT_COMMIT
+    glfwSetWindowTitle(window,
+        "CELERIS  —  Metalens Designer     |     build " CELERIS_GIT_COMMIT);
+#endif
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -81,6 +125,7 @@ int main() {
     }
     bool dark_mode = false;
     apply_theme(dark_mode);
+    set_titlebar_dark(window, dark_mode);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -191,8 +236,10 @@ int main() {
                 ImGui::MenuItem("Log", nullptr, &win_log);
                 ImGui::MenuItem("Performance", nullptr, &win_perf);
                 ImGui::Separator();
-                if (ImGui::MenuItem("Dark mode", nullptr, &dark_mode))
+                if (ImGui::MenuItem("Dark mode", nullptr, &dark_mode)) {
                     apply_theme(dark_mode);
+                    set_titlebar_dark(window, dark_mode);
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help")) {
@@ -286,6 +333,14 @@ int main() {
             ImGui::TableNextColumn(); ImGui::TextUnformatted(k);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(v.c_str());
         };
+
+        // Theme-aware colors for the custom-drawn canvases (GDS/polar viewers).
+        const ImU32 canvas_bg = dark_mode ? IM_COL32(30, 30, 32, 255)
+                                          : IM_COL32(248, 248, 248, 255);
+        const ImU32 canvas_fg = dark_mode ? IM_COL32(225, 225, 225, 255)
+                                          : IM_COL32(20, 20, 20, 255);
+        const ImU32 pillar_col = dark_mode ? IM_COL32(90, 150, 235, 255)
+                                           : IM_COL32(38, 78, 150, 255);
 
         // ---- Lens Data ----
         if (win_lens) {
@@ -651,7 +706,7 @@ int main() {
                     }
                     ImDrawList* dl = ImGui::GetWindowDrawList();
                     dl->PushClipRect(q0, q1, true);
-                    dl->AddRectFilled(q0, q1, IM_COL32(248, 248, 248, 255));
+                    dl->AddRectFilled(q0, q1, canvas_bg);
                     ImVec2 wtl = s2w(q0), wbr = s2w(q1);
                     double xmn = std::min(wtl.x, wbr.x), xmx = std::max(wtl.x, wbr.x);
                     double ymn = std::min(wtl.y, wbr.y), ymx = std::max(wtl.y, wbr.y);
@@ -661,7 +716,7 @@ int main() {
                     int iymax = std::min(n - 1, (int)std::ceil(ymx / pp + cen));
                     long vis = (long)std::max(0, ixmax - ixmin + 1) * std::max(0, iymax - iymin + 1);
                     int stride = vis > 60000 ? (int)std::ceil(std::sqrt((double)vis / 60000)) : 1;
-                    const ImU32 col = IM_COL32(38, 78, 150, 255);
+                    const ImU32 col = pillar_col;
                     for (int iy = iymin; iy <= iymax; iy += stride)
                         for (int ix = ixmin; ix <= ixmax; ix += stride) {
                             std::size_t off = (std::size_t)iy * n + ix;
@@ -779,12 +834,12 @@ int main() {
 
                     ImDrawList* dl = ImGui::GetWindowDrawList();
                     dl->PushClipRect(c0, c1, true);
-                    dl->AddRectFilled(c0, c1, IM_COL32(248, 248, 248, 255));
+                    dl->AddRectFilled(c0, c1, canvas_bg);
 
                     ImVec2 wtl = s2w(c0), wbr = s2w(c1);
                     double wxmin = std::min(wtl.x, wbr.x), wxmax = std::max(wtl.x, wbr.x);
                     double wymin = std::min(wtl.y, wbr.y), wymax = std::max(wtl.y, wbr.y);
-                    const ImU32 mask_col = IM_COL32(38, 78, 150, 255);
+                    const ImU32 mask_col = pillar_col;
                     int stride = 1;
 
                     if (drawing_file) {
@@ -863,10 +918,9 @@ int main() {
                                         (avail.x / gscale) / 5.0)));
                     float bar_px = static_cast<float>(bar_um * gscale);
                     ImVec2 bs(c1.x - bar_px - 12, c1.y - 16);
-                    dl->AddLine(bs, ImVec2(bs.x + bar_px, bs.y),
-                                IM_COL32(20, 20, 20, 255), 2.0f);
+                    dl->AddLine(bs, ImVec2(bs.x + bar_px, bs.y), canvas_fg, 2.0f);
                     char blab[32]; std::snprintf(blab, sizeof(blab), "%g um", bar_um);
-                    dl->AddText(ImVec2(bs.x, bs.y - 16), IM_COL32(20, 20, 20, 255), blab);
+                    dl->AddText(ImVec2(bs.x, bs.y - 16), canvas_fg, blab);
                 }
             }
             ImGui::End();
@@ -1209,7 +1263,8 @@ int main() {
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
-        glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
+        if (dark_mode) glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
+        else glClearColor(0.55f, 0.55f, 0.56f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);

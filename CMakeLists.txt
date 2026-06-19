@@ -181,8 +181,20 @@ if(CELERIS_BUILD_GUI)
         gui/app_state.cpp
         gui/workers.cpp)
     target_link_libraries(celeris_gui PRIVATE celeris_core celeris_imgui)
+
+    # Short git commit -> window title (captured at configure time).
+    execute_process(COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE CEL_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT CEL_GIT_COMMIT)
+        set(CEL_GIT_COMMIT "dev")
+    endif()
+    target_compile_definitions(celeris_gui PRIVATE
+        CELERIS_GIT_COMMIT="${CEL_GIT_COMMIT}")
+
     if(WIN32)
-        target_link_libraries(celeris_gui PRIVATE psapi)  # process CPU/mem monitor
+        # psapi: process CPU/mem monitor; dwmapi: dark-mode native title bar.
+        target_link_libraries(celeris_gui PRIVATE psapi dwmapi)
     endif()
     if(MINGW)
         target_link_libraries(celeris_gui PRIVATE stdc++exp)
