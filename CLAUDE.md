@@ -13,10 +13,10 @@ Scope stays in the lane: metalenses + RCWA. NOT general ray tracing, NOT FDTD.
 1. **Ground**: read `memory/celeris-resume.md` (where we left off), `ROADMAP.md`
    (the punch list), and run `git log --oneline -20`. Trust these over memory.
 2. **Act**: take the next item from ROADMAP sequencing (or what resume says).
-3. **Verify** (NON-NEGOTIABLE before claiming done): build, then run
-   `./build-msvc/Release/celeris.exe selftest`. Physics must still hold
-   (2D=1D ~5e-12, energy=1, RCWA=TMM exact, Strehl ~0.55). If it didn't build
-   and pass, it is NOT done — say so.
+3. **Verify** (NON-NEGOTIABLE before claiming done): run **`scripts\check.bat`**
+   (configure → build CLI+GUI → physics selftest, one command). Physics must
+   still hold (2D=1D ~5e-12, energy=1, RCWA=TMM exact, Strehl ~0.55). If it
+   didn't build and pass, it is NOT done — say so.
 4. **Record**: commit + push, update `memory/celeris-resume.md` (state + next),
    tick the box in `ROADMAP.md`.
 
