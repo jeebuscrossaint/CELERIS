@@ -35,6 +35,11 @@ struct RectCell2D {
     // 2D Fourier coefficient ε_{p,q} of the permittivity.
     cdouble eps_fourier(int p, int q, double wavelength_um) const;
 
+    // 2D Fourier coefficient of the RECIPROCAL permittivity (1/ε)_{p,q}, used by
+    // Li's inverse-rule factorization for the field component normal to a
+    // material interface (what makes high-contrast cells converge).
+    cdouble inv_eps_fourier(int p, int q, double wavelength_um) const;
+
     static RectCell2D homogeneous(Material m, double thickness_um) {
         return RectCell2D{m, m, 1.0, 1.0, thickness_um};
     }

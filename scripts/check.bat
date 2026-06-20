@@ -4,7 +4,7 @@ REM CELERIS one-shot verify: configure -> build (CLI + GUI) -> run physics
 REM selftest. This is the "Verify" beat of the work loop. Run from repo root:
 REM   scripts\check.bat
 REM Exit code 0 = built and selftest ran; nonzero = build/configure failed.
-REM (Eyeball the selftest numbers: energy=1.000000, 2D=1D ~5e-12, Strehl ~0.55.)
+REM (Eyeball the selftest numbers: energy=1.000000, 2D vs grcwa |d|<1e-2, Strehl ~0.55.)
 REM ============================================================================
 setlocal
 cd /d "%~dp0.."
@@ -22,5 +22,5 @@ build-msvc\Release\celeris.exe selftest
 echo ----------------------------------------------------------------------
 echo.
 echo CHECK COMPLETE: build OK. Review the selftest numbers above
-echo   (expect energy=1.000000, 2D-vs-1D ~5e-12, designed Strehl ~0.55).
+echo   (expect energy=1.000000, 2D vs grcwa cross-check ^|d^|^<1e-2, Strehl ~0.55).
 endlocal

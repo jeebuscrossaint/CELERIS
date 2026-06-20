@@ -35,20 +35,29 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 ## 1. Credibility & correctness  (makes it TRUSTED)
 - [~] **Validation vs a published, fabricated metalens** — `celeris validate` runs the
       credibility battery on REAL tabulated TiO₂ n,k (Siefke 2016 ALD, in `data/`)
-      on fused silica. DONE now: a real-TiO₂ focusing lens is **diffraction-limited**
-      — phase Strehl 0.965, FWHM exactly at λf/D, NA 0.20 — and this is M-robust.
-      GATED: a *quantitative* match to a paper's measured *efficiency* needs Li
-      factorization (next bullet), because absolute meta-atom transmittance isn't
-      converged yet. Phase/FWHM/NA validated; efficiency pending.
-- [ ] **Li's normal-vector 2D Fourier factorization** — `validate`'s convergence study
-      EXPOSED that the basic 2D factorization does not converge for high-contrast TiO₂
-      pillars (zeroth-order transmittance swings ~0.6 across M; energy conservation
-      degrades beyond M≈8). This is the documented Li-1996 limitation. REQUIRED for
-      trustworthy absolute efficiency and the quantitative half of the #1 validation.
+      on fused silica. DONE: a real-TiO₂ focusing lens is **diffraction-limited**
+      — phase Strehl 0.97, FWHM exactly at λf/D, NA 0.20 — and the meta-atom
+      transmittance now **converges** (Li factorization landed) and matches an external
+      solver (grcwa). Absolute efficiency is trustworthy. REMAINING for a full
+      paper reproduction: a specific published device + (for K2016) the PB-phase
+      design path; and full-2π libraries to push the focusing efficiency higher.
+- [x] **Improved (Li/Liu–Fan) 2D Fourier factorization** — DONE. Replaced the basic
+      Laurent 2D solver (which gave qualitatively WRONG transmittance, e.g. T≈0.07 where
+      truth is ≈0.96, and broke energy beyond M≈8) with the inverse-rule / Liu–Fan
+      eigenproblem (analytic directional ε_xx/ε_yy + ⟦1/ε⟧ for axis-aligned rectangles).
+      `validate`'s transmittance spread over M now 0.6 → **0.03**, energy = 1.000000 at
+      every M. Cross-checked against grcwa (see next): square pillar, asymmetric rect,
+      and subwavelength grating all match.
+- [x] Cross-check vs an external solver — DONE (grcwa, pip-installed, validated vs analytic
+      TMM). CELERIS 2D matches grcwa on the square pillar, asymmetric rect (0.964/0.977 vs
+      0.954/0.972, both pols), and subwavelength TE/TM. Baked into `selftest` [8].
+- [ ] **1D TE solver convergence** — NEW finding: the 1D solver's TE transmission for a
+      mid-period grating (Λ=0.3, λ=0.5) oscillates with M (0.973→0.887) instead of
+      converging to the grcwa-true 0.933 (1D TM is fine). Pre-existing; exposed by the
+      grcwa cross-check. Doesn't affect the metalens design path (pure 2D), but fix for
+      full credibility.
 - [x] Convergence studies documented (metric vs harmonics M, vs sampling) — `celeris
-      validate` §1 tabulates phase/transmittance/energy-conservation vs M; honest trust
-      signal (and it found the non-convergence above).
-- [ ] Cross-check vs an external solver (S4 / grcwa / Lumerical) on 1–2 benchmarks
+      validate` §1 tabulates phase/transmittance/energy-conservation vs M.
 - [ ] Auto-convergence helper (suggest M for a target accuracy)
 - [ ] Numerical edge cases hardened (Rayleigh anomalies, grazing orders, resonances)
 - [ ] Regression/unit test suite + CI (lock the validated numbers so nothing drifts)
