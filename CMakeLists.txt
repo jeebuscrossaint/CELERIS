@@ -129,6 +129,12 @@ if(_cel_cuda)
     # built as a separate CUDA static lib (so it keeps C++17, not the project's
     # C++23 which nvcc rejects) with the STATIC CUDA runtime, so it adds NO dynamic
     # CUDA DLL dependency -- GPU propagation runs with nothing on PATH.
+    # Hand CMake the detected nvcc explicitly so the probe doesn't depend on nvcc
+    # being on PATH in this particular shell (the #1 reason `cmake -B build` quietly
+    # fell back to CPU even though the toolkit was right here).
+    if(NOT CMAKE_CUDA_COMPILER AND EXISTS "${CELERIS_CUDA_DIR}/bin/nvcc.exe")
+        set(CMAKE_CUDA_COMPILER "${CELERIS_CUDA_DIR}/bin/nvcc.exe")
+    endif()
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
