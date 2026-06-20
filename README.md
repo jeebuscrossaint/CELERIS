@@ -88,6 +88,25 @@ cmake --build build-msvc --config Release --target celeris_gui
 ```
 GLFW and Dear ImGui (docking branch) are fetched automatically.
 
+### Speed: AVX2 (default) and the optional MKL turbo
+The build enables **AVX2/FMA by default** (`-DCELERIS_AVX2=ON`) — a ~2.7× speedup
+over the SSE2 baseline on any Haswell-or-newer CPU, since the RCWA hot path is
+dense complex linear algebra (operator assembly + S-matrix recursion, *not* the
+eigensolve). Set `-DCELERIS_AVX2=OFF` only for pre-2013 hardware.
+
+For maximum speed, route Eigen's dense BLAS/LAPACK **and** the eigensolve through
+Intel MKL (multithreaded) — up to ~11× over the SSE2 baseline at high harmonic
+counts:
+```sh
+pip install mkl-devel mkl-include            # provides <prefix>/Library/{include,lib,bin}
+cmake -B build-mkl -DCELERIS_USE_MKL=ON \
+      -DCMAKE_INCLUDE_PATH=".../Library/include" -DCMAKE_LIBRARY_PATH=".../Library/lib"
+cmake --build build-mkl --config Release --target celeris
+# run with the MKL DLLs on PATH (.../Library/bin)
+```
+This trades the single-self-contained-binary property (needs `mkl_rt` at runtime),
+so it is opt-in; the default AVX2 build stays dependency-free.
+
 ### With the CUDA GPU backend
 Requires the full NVIDIA CUDA Toolkit (the scoop package omits the CCCL headers
 cuSOLVER needs). The Visual Studio generator can't locate `nvcc` without the VS

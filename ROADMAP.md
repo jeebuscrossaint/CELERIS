@@ -139,11 +139,22 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Process/stack definition files
 
 ## 7. Performance & scale
+- [x] **AVX2/FMA build (default)** — `CELERIS_AVX2=ON` adds `/arch:AVX2`; MSVC's SSE2
+      x64 baseline left Eigen's dense complex matmuls badly under-vectorized. ~2.7x
+      free speedup (a 2D solve at M=10 went 44s -> 16s), no dependency.
+- [x] **Intel MKL turbo (opt-in)** — `CELERIS_USE_MKL=ON` routes ALL of Eigen's dense
+      BLAS/LAPACK through MKL (`EIGEN_USE_MKL_ALL`) *plus* the zgeev shim. KEY FINDING:
+      the eigensolve is only ~15% of a solve — the real cost is the dense matmuls /
+      inverses in operator assembly + the S-matrix recursion, which MKL multithreads.
+      On top of AVX2 this is up to ~11x over the SSE2 baseline at high M (M=10: 44s->3.9s,
+      M=12: ~120s->10.7s). Needs MKL on PATH (`pip install mkl-devel mkl-include`);
+      trades the single-self-contained-binary property, hence opt-in. (The old "only
+      MKL beats Eigen *for zgeev*" note was right about zgeev but missed that zgeev
+      wasn't the bottleneck.)
 - [ ] GPU-batch the whole library/wavelength sweep in one launch
 - [ ] Out-of-core / mm-scale apertures (millions of pillars), memory streaming
 - [ ] Library/result caching; incremental recompute (only what changed)
 - [ ] Cancellable long runs; multi-GPU (later)
-- [ ] (Optional) Intel MKL eigensolve plug-in — only real lever left for the library build
 
 ## 8. Ops / platform
 - [ ] Linux build + CI (engine is already portable); macOS optional

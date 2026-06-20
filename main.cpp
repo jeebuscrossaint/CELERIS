@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <format>
@@ -9,7 +10,6 @@
 #ifdef CELERIS_USE_CUDA
 #include <Eigen/Dense>
 #include <algorithm>
-#include <chrono>
 #include <future>
 #include <random>
 #include <thread>
@@ -1283,15 +1283,18 @@ static int cmd_shapeconv(int argc, char** argv) {
                                      : MetaShape::Cross;
     double fill = shape == "cross" ? 0.8 : 0.7;
     double param = shape == "cross" ? 0.4 : 0.5;
-    std::printf("shape=%s  (Λ=0.35 λ=0.532 TiO2/SiO2)\n  %3s  %10s  %8s  %10s\n",
-                shape.c_str(), "M", "T0", "phase°", "ΣDE");
+    std::printf("shape=%s  (Λ=0.35 λ=0.532 TiO2/SiO2)\n  %3s  %10s  %8s  %10s  %9s\n",
+                shape.c_str(), "M", "T0", "phase°", "ΣDE", "solve(ms)");
     std::fflush(stdout);
     for (int m : {6, 8, 10, 12}) {
         Rcwa2DStack s{0.35, 0.35, {RectCell2D{tio2, materials::air(), fill, fill, 0.6, ms, param}}};
+        auto t0 = std::chrono::steady_clock::now();
         auto r = solve_rcwa_2d(materials::air(), s, materials::fused_silica(), 0.532,
                                0.0, 0.0, 1.0, 0.0, m, m);
-        std::printf("  %3d  %10.4f  %8.1f  %10.6f\n", m, r.de_t0,
-                    std::arg(r.tx0) * 180.0 / pi, r.sum_de);
+        auto t1 = std::chrono::steady_clock::now();
+        double ms_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        std::printf("  %3d  %10.4f  %8.1f  %10.6f  %9.0f\n", m, r.de_t0,
+                    std::arg(r.tx0) * 180.0 / pi, r.sum_de, ms_);
         std::fflush(stdout);
     }
     return 0;

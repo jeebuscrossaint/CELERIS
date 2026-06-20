@@ -2,12 +2,16 @@
 // General complex eigendecomposition used by the RCWA per-layer solve.
 //
 // Default backend is Eigen's ComplexEigenSolver (header-only, zero dependency --
-// keeps CELERIS a single self-contained binary, and measured the fastest option
-// readily available on Windows here). When built with CELERIS_USE_LAPACK it
-// instead calls LAPACK's zgeev (statically linked, so still a single exe). NOTE:
-// only a *re-optimized* LAPACK (Intel MKL) actually beats Eigen for these sizes
-// -- reference LAPACK (CLAPACK/f2c) is ~1.5x slower, since the cost is the zgeev
-// algorithm itself, not the BLAS. The shim exists so MKL can be dropped in.
+// keeps CELERIS a single self-contained binary). With CELERIS_USE_LAPACK it
+// instead calls LAPACK's zgeev (the EIGEN_USE_MKL_ALL build routes this to MKL).
+//
+// MEASURED REALITY (don't be misled by "the eigensolve dominates"): for these
+// sizes zgeev is only ~15% of solve_rcwa_2d -- the real cost is the dense complex
+// matmuls / inverses in the operator assembly and S-matrix recursion. So the
+// speed levers, in order, are: (1) AVX2 (the default build; ~2.7x free over the
+// SSE2 baseline), (2) Intel MKL via EIGEN_USE_MKL_ALL, which multithreads ALL the
+// dense BLAS *and* zgeev (up to ~11x over SSE2 at high M). Reference LAPACK alone
+// is a wash. See CMakeLists CELERIS_USE_MKL.
 //
 // RCWA physics is invariant to per-eigenvector column scaling and to eigenvalue
 // ordering (both are absorbed into the modal coefficients), so the two backends

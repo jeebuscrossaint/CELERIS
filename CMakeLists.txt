@@ -13,6 +13,20 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+# Vectorization: MSVC defaults to the SSE2 x64 baseline, which leaves Eigen's
+# dense complex matmuls (the real RCWA hot path -- operator assembly + S-matrix
+# recursion, far more costly than the eigensolve) badly under-vectorized. Enable
+# AVX2+FMA, a big free speedup on any modern CPU. Opt out with -DCELERIS_AVX2=OFF
+# for portability to pre-2013 hardware.
+option(CELERIS_AVX2 "Build with AVX2/FMA (fast; needs a Haswell-or-newer CPU)" ON)
+if(CELERIS_AVX2)
+    if(MSVC)
+        add_compile_options(/arch:AVX2)
+    else()
+        add_compile_options(-mavx2 -mfma)
+    endif()
+endif()
+
 # --- External libraries -----------------------------------------------------
 include(FetchContent)
 
@@ -131,6 +145,24 @@ if(CELERIS_USE_OPENBLAS)
     endif()
     target_compile_definitions(celeris_core PUBLIC CELERIS_USE_LAPACK)
     message(STATUS "CELERIS: external LAPACK zgeev enabled -- ${CEL_LAPACK}")
+endif()
+
+# Intel MKL turbo (opt-in). MEASURED: the RCWA cost is dominated NOT by the
+# eigensolve but by Eigen's dense complex matmuls / inverses (operator assembly +
+# S-matrix recursion). So MKL-zgeev alone buys only ~15%; the real win is routing
+# ALL of Eigen's dense BLAS/LAPACK through MKL (EIGEN_USE_MKL_ALL) PLUS the zgeev
+# shim. Needs MKL on the include/lib path (e.g. `pip install mkl-devel mkl-include`
+# gives <prefix>/Library/{include,lib,bin}); the mkl_rt DLL must be on PATH at run.
+# Trades the single-self-contained-binary property for speed -- hence opt-in; the
+# default build is AVX2 Eigen (dependency-free, already ~2.7x over the SSE2 base).
+option(CELERIS_USE_MKL "Route Eigen BLAS/LAPACK + zgeev through Intel MKL (needs MKL on PATH)" OFF)
+if(CELERIS_USE_MKL)
+    find_path(MKL_INC mkl.h REQUIRED)
+    find_library(MKL_RT NAMES mkl_rt REQUIRED)
+    target_include_directories(celeris_core PUBLIC ${MKL_INC})
+    target_link_libraries(celeris_core PUBLIC ${MKL_RT})
+    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_LAPACK EIGEN_USE_MKL_ALL)
+    message(STATUS "CELERIS: Intel MKL backend enabled -- ${MKL_RT} (inc ${MKL_INC})")
 endif()
 # ---------------------------------------------------------------------------
 
