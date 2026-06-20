@@ -137,9 +137,16 @@ if(_cel_cuda)
     # (scripts/build-cuda.bat) instead of hard-failing the build. The kernel is one
     # self-contained TU (no -rdc) and links the STATIC CUDA runtime (cudart_static),
     # so the GPU build adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
+    # Help the probe FIND nvcc: it searches PATH / $CUDACXX, and nvcc usually
+    # isn't on PATH even when the toolkit is installed (we found it via CUDA_PATH).
+    # Pointing $CUDACXX at it lets check_language run + VALIDATE -- still soft, so a
+    # broken env soft-fails to NOTFOUND instead of hard-erroring the configure.
+    find_program(CELERIS_NVCC NAMES nvcc HINTS "${CELERIS_CUDA_DIR}/bin")
+    if(CELERIS_NVCC AND NOT DEFINED ENV{CUDACXX} AND NOT CMAKE_CUDA_COMPILER)
+        set(ENV{CUDACXX} "${CELERIS_NVCC}")
+    endif()
     include(CheckLanguage)
     check_language(CUDA)
-    find_program(CELERIS_NVCC NAMES nvcc HINTS "${CELERIS_CUDA_DIR}/bin")
     if(CMAKE_CUDA_COMPILER AND CELERIS_NVCC)
         get_filename_component(_cel_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(_cel_kobj "${CMAKE_BINARY_DIR}/celeris_propagate_cuda${CMAKE_CXX_OUTPUT_EXTENSION}")
