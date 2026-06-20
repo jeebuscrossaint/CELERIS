@@ -33,6 +33,7 @@
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
+#include "celeris/design/pb_metalens.hpp"
 #include "celeris/design/polar_metalens.hpp"
 #include "celeris/io/gds.hpp"
 #include "celeris/io/image.hpp"
@@ -852,6 +853,151 @@ int cmd_polardesign(int argc, char** argv) {
     return 0;
 }
 
+// celeris pbdesign: a Pancharatnam-Berry (geometric-phase) focusing metalens.
+// One fixed half-wave-plate meta-atom, ROTATED per site, imprints the focusing
+// phase as 2*theta on the spin-flipped (cross-circular) output. Geometric phase
+// is exact and amplitude is uniform -> phase-error-free, diffraction-limited,
+// capped only by the atom's polarization conversion. RCWA-verifies the 2*theta
+// relation and writes a rotated-pillar GDS.
+int cmd_pbdesign(int argc, char** argv) {
+    const double focal = std::atof(arg_value(argc, argv, "--focal", "50"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "20"));
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--samples", "12"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const int handedness = std::atoi(arg_value(argc, argv, "--handedness", "1")) >= 0 ? 1 : -1;
+    const std::string out = arg_value(argc, argv, "--out", "pb_metalens.gds");
+    const Material pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    std::println("CELERIS Pancharatnam-Berry (geometric-phase) metalens");
+    std::println("  f={}um  D={}um  lambda={}um  illumination={}",
+                 focal, diameter, lambda, handedness > 0 ? "RCP" : "LCP");
+
+    // 1. Find the half-wave-plate meta-atom (best spin-flip conversion).
+    std::println("  searching for the HWP atom ({0}x{0} fill grid, 2 solves each)...",
+                 samples);
+    HwpAtom atom = find_hwp_atom(pillar, materials::air(), materials::air(),
+                                 materials::bk7(), period, lambda, thickness,
+                                 0.10, 0.90, samples, M);
+    std::println("  HWP atom: fill_x={:.3f} fill_y={:.3f}  retardance={:.1f} deg  "
+                 "conversion eff={:.3f}",
+                 atom.fill_x, atom.fill_y, atom.retardance_deg,
+                 atom.conversion_efficiency);
+
+    // 2. Design: rotate the fixed atom per site.
+    PbMetalensDesign d = design_pb_metalens(atom, period, lambda, focal, diameter,
+                                            handedness);
+    std::println("  designed {0}x{0} rotated pillars  RMS phase error={1:.2e} deg "
+                 "(geometric phase is exact)",
+                 d.n_cells, d.rms_phase_error_deg);
+
+    // 3. RCWA-verify the geometric-phase relation: solve the ROTATED atom at a
+    //    few angles and confirm the spin-flip phase tracks -handedness*2*theta.
+    std::vector<double> test_rot;
+    for (int j = 0; j < 7; ++j) test_rot.push_back(j * (pi / 6.0));  // 0..180 deg
+    auto vpts = verify_pb_phase(pillar, materials::air(), materials::air(),
+                                materials::bk7(), period, lambda, atom, test_rot, M);
+    // The atom's absolute conversion phase is a global piston -- recover it as the
+    // circular mean of (measured + handedness*2*theta) so we test the SLOPE
+    // (-handedness*2*theta), not the irrelevant constant.
+    double sx = 0, sy = 0;
+    for (const auto& v : vpts) {
+        double resid = (v.cross_phase_deg + handedness * 2.0 * v.rotation_deg) * pi / 180.0;
+        sx += std::cos(resid); sy += std::sin(resid);
+    }
+    const double piston_deg = std::atan2(sy, sx) * 180.0 / pi;
+    std::println("  RCWA check (rotate the atom, measure spin-flip output; "
+                 "global piston {:.1f} deg removed):", piston_deg);
+    std::println("    theta(deg)   expected phase   measured phase   conv.eff   leakage");
+    double phase_track_err = 0;
+    for (const auto& v : vpts) {
+        double expected = std::remainder(-handedness * 2.0 * v.rotation_deg + piston_deg, 360.0);
+        double meas = std::remainder(v.cross_phase_deg, 360.0);
+        double e = std::remainder(meas - expected, 360.0);
+        phase_track_err += e * e;
+        std::println("    {:7.1f}     {:11.1f}      {:11.1f}       {:.3f}     {:.3f}",
+                     v.rotation_deg, expected, meas, v.conversion_eff, v.copol_leakage);
+    }
+    phase_track_err = std::sqrt(phase_track_err / vpts.size());
+    std::println("    -> geometric-phase tracking RMS = {:.2f} deg (RCWA vs -2*theta)",
+                 phase_track_err);
+
+    // 4. Optical proof: propagate the spin-flipped field and confirm focus at f.
+    const double pp = d.period_um;
+    const double cen = (d.n_cells - 1) / 2.0;
+    const double R_ap = diameter / 2.0;
+    std::vector<double> px, py;
+    std::vector<cdouble> tc;
+    for (int iy = 0; iy < d.n_cells; ++iy)
+        for (int ix = 0; ix < d.n_cells; ++ix) {
+            double x = (ix - cen) * pp, y = (iy - cen) * pp;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            std::size_t off = (std::size_t)iy * d.n_cells + ix;
+            px.push_back(x); py.push_back(y);
+            tc.push_back(d.t_cross[off]);
+        }
+    const double k = 2.0 * pi / lambda;
+    double zlo = 0.5 * focal, zhi = 1.5 * focal;
+    const int NZ = 240;
+    double best_z = zlo, best_I = -1.0;
+    for (int j = 0; j < NZ; ++j) {
+        double z = zlo + (zhi - zlo) * j / (NZ - 1);
+        cdouble E{0, 0};
+        for (std::size_t q = 0; q < px.size(); ++q) {
+            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
+            E += tc[q] * std::polar(1.0 / r, k * r);
+        }
+        double I = std::norm(E);
+        if (I > best_I) { best_I = I; best_z = z; }
+    }
+    std::println("  optical check: cross-pol focuses at z = {:.1f} um (target {:.1f}); "
+                 "focusing efficiency cap = {:.1f}%",
+                 best_z, focal, 100.0 * d.conversion_efficiency);
+
+    // 5. GDS: rotated pillars (the rotation IS the design).
+    int np = write_pb_gds(out, d.n_cells, d.period_um, atom.fill_x, atom.fill_y,
+                          d.rotation_rad);
+    if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
+    std::println("  wrote {} rotated pillars -> {}", np, out);
+
+    // --report <prefix>: metrics txt + focal PSF image + GDS.
+    const char* rp = arg_value(argc, argv, "--report", nullptr);
+    if (rp) {
+        std::string base = rp;
+        double dl = lambda * focal / diameter;
+        auto psf = propagate_pillars(px, py, tc, 0, 0, focal, lambda, 201,
+                                     std::max(5.0 * dl, 4.0));
+        bool ok = write_pgm(base + "_pb_psf.pgm", psf.n, psf.n, psf.intensity, 2.2);
+        std::ofstream f(base + "_pb_report.txt");
+        if (f) {
+            f << "CELERIS Pancharatnam-Berry (geometric-phase) metalens report\n";
+            f << "============================================================\n\n";
+            f << std::format("wavelength         : {} um\n", lambda);
+            f << std::format("aperture diameter  : {} um\n", diameter);
+            f << std::format("focal length       : {} um   measured focus: {:.1f} um\n",
+                             focal, best_z);
+            f << std::format("illumination       : {} (circular)\n\n",
+                             handedness > 0 ? "RCP" : "LCP");
+            f << std::format("HWP atom fill_x    : {:.3f}\n", atom.fill_x);
+            f << std::format("HWP atom fill_y    : {:.3f}\n", atom.fill_y);
+            f << std::format("HWP retardance     : {:.1f} deg (ideal 180)\n",
+                             atom.retardance_deg);
+            f << std::format("conversion eff     : {:.3f} (focusing-efficiency cap)\n",
+                             atom.conversion_efficiency);
+            f << std::format("array              : {0} x {0} rotated pillars\n", d.n_cells);
+            f << std::format("design phase error : {:.2e} deg (geometric phase is exact)\n",
+                             d.rms_phase_error_deg);
+            f << std::format("RCWA 2*theta track : {:.2f} deg RMS\n", phase_track_err);
+        } else ok = false;
+        std::println("  report bundle -> {0}_pb_report.txt (+ _pb_psf.pgm)  ok={1}",
+                     base, ok);
+    }
+    return 0;
+}
+
 // celeris validate: the credibility battery. Uses REAL tabulated TiO2 n,k
 // (amorphous ALD, Siefke 2016 — the deposition used in visible metalenses) on a
 // fused-silica substrate, and produces a reproducible validation report:
@@ -1104,7 +1250,14 @@ void print_help() {
         "                    --period --thickness --pillar-n --samples --out\n"
         "                    --report <prefix>]\n"
         "  polarization-multiplexed lens: X-pol and Y-pol focus at different\n"
-        "  distances; writes a rectangular-pillar GDS (+ report bundle)");
+        "  distances; writes a rectangular-pillar GDS (+ report bundle)\n"
+        "\n"
+        "celeris pbdesign [--focal 50] [--diameter --wavelength --period --thickness\n"
+        "                 --pillar-n --samples --harmonics --handedness 1 --out\n"
+        "                 --report <prefix>]\n"
+        "  Pancharatnam-Berry (geometric-phase) lens: one half-wave-plate atom\n"
+        "  rotated per site imprints 2*theta on circularly polarized light;\n"
+        "  RCWA-verifies the 2*theta relation, writes a rotated-pillar GDS");
 }
 
 } // namespace
@@ -1316,6 +1469,7 @@ int main(int argc, char** argv) {
     if (cmd == "design") return cmd_design(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);
     if (cmd == "polardesign") return cmd_polardesign(argc, argv);
+    if (cmd == "pbdesign") return cmd_pbdesign(argc, argv);
 #ifdef CELERIS_USE_CUDA
     if (cmd == "gpubench") return run_gpubench(argc, argv);
 #endif

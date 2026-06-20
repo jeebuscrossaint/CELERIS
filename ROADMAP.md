@@ -92,8 +92,23 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       a CROSS clears the 330° coverage target at ~half the pillar height of a square
       (h 0.56 vs 0.94, equal Strehl); circle ≈ square. REMAINING: shape-aware (polygon)
       GDS export — today the GDS writes square footprints regardless of `--shape`.
-- [ ] **Rotated pillars → Pancharatnam–Berry (geometric) phase** for circular
-      polarization optics
+- [x] **Rotated pillars → Pancharatnam–Berry (geometric) phase** for circular
+      polarization optics — DONE. `design --shape`/birefringence gave the building
+      blocks; added in-plane atom **rotation** to the 2D solver (`RectCell2D::rotation_rad`;
+      a rotated rectangle is non-separable so it takes the sampled-grid Laurent path),
+      the full **2×2 Jones matrix** (`solve_jones`, two RCWA solves), an **HWP-atom
+      finder** (max spin-flip conversion `|t_x−t_y|²/4`), and a PB design path
+      (`design_pb_metalens` + CLI `pbdesign`): one fixed half-wave-plate atom rotated
+      per site stamps the focusing phase as 2θ on the cross-circular output. Geometric
+      phase is EXACT (design phase error ~1e-15°) and amplitude is uniform → inherently
+      diffraction-limited, capped only by conversion efficiency (~0.64 for a TiO₂ square
+      atom). RCWA-VERIFIED: solving the rotated atom confirms the spin-flip phase tracks
+      −2θ to ~5° RMS (D=20, M=6). Writes a **rotated-pillar GDS** (`write_pb_gds`, true
+      rotated polygons — closes part of the shape-aware GDS gap). HONEST FINDING: the
+      ~5–7° residual is a method/discretization mismatch (θ=0 uses the analytic separable
+      path; rotated angles use grid-Laurent at finite resolution) — shrinks with grid/M.
+      REMAINING: achromatic design; vortex/OAM & arbitrary-profile PB (the focusing
+      profile is just one target — any φ(r) works through the same rotation map).
 - [ ] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
       hologram/CGH
 - [ ] Full Jones-matrix metasurfaces (arbitrary polarization transforms)

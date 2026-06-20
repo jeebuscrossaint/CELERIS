@@ -42,6 +42,12 @@ struct RectCell2D {
     double thickness_um;
     MetaShape shape = MetaShape::Rectangle;
     double shape_param = 0.5;  // Cross: arm width / fill; Ring: inner / outer radius
+    double rotation_rad = 0.0; // in-plane rotation of the meta-atom about the cell
+                               // center (CCW). Nonzero breaks the separable analytic
+                               // path -> the cell goes through the sampled-grid
+                               // factorization. The enabler for Pancharatnam-Berry
+                               // (geometric-phase) optics, where a fixed birefringent
+                               // atom is ROTATED per site to imprint phase 2*rotation.
 
     // 2D Fourier coefficient ε_{p,q} of the permittivity (Rectangle, analytic).
     cdouble eps_fourier(int p, int q, double wavelength_um) const;
@@ -51,7 +57,11 @@ struct RectCell2D {
     // material interface (what makes high-contrast cells converge). Analytic.
     cdouble inv_eps_fourier(int p, int q, double wavelength_um) const;
 
-    bool is_plain_rect() const { return shape == MetaShape::Rectangle; }
+    // A rotated cell is no longer separable, so even a Rectangle must take the
+    // sampled-grid (Laurent) path rather than the analytic inverse-rule path.
+    bool is_plain_rect() const {
+        return shape == MetaShape::Rectangle && rotation_rad == 0.0;
+    }
     // True if the sampled grid point (cell-fraction coords in [-0.5,0.5]) is
     // inside the pillar for this shape.
     bool inside(double xf, double yf) const;

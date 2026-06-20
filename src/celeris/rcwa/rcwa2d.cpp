@@ -35,6 +35,16 @@ cdouble RectCell2D::inv_eps_fourier(int p, int q, double wavelength_um) const {
 }
 
 bool RectCell2D::inside(double xf, double yf) const {
+    // Rotate the query point into the meta-atom's own frame (inverse rotation),
+    // then test against the un-rotated shape. (Assumes a square lattice, which is
+    // the metalens case; the fractional coords are isotropic only then.)
+    if (rotation_rad != 0.0) {
+        const double c = std::cos(rotation_rad), s = std::sin(rotation_rad);
+        const double xr = c * xf + s * yf;
+        const double yr = -s * xf + c * yf;
+        xf = xr;
+        yf = yr;
+    }
     const double ax = fill_x * 0.5, ay = fill_y * 0.5;
     switch (shape) {
         case MetaShape::Rectangle:

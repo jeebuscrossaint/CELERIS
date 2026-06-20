@@ -46,6 +46,15 @@ int write_rect_gds(const std::string& path, int n_cells, double period_um,
                    const std::vector<double>& fill_y, int layer = 1,
                    double min_fill = 0.05);
 
+// Write a Pancharatnam-Berry layout: every site holds the SAME rectangular
+// pillar (fill_x*period by fill_y*period) but ROTATED in-plane by rotation_rad
+// (n_cells^2 row-major, CCW about the cell center). Each pillar is emitted as a
+// rotated 4-vertex polygon -- the rotation IS the design, so a square footprint
+// would be wrong. Returns the number of pillars written, or -1 on error.
+int write_pb_gds(const std::string& path, int n_cells, double period_um,
+                 double fill_x, double fill_y,
+                 const std::vector<double>& rotation_rad, int layer = 1);
+
 // Re-read a GDSII file and count BOUNDARY (polygon) records. Used to validate
 // that an exported file is well-formed and has the expected element count.
 // Returns -1 on error.

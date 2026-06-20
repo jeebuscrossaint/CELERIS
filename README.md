@@ -158,6 +158,11 @@ celeris validate --report myvalidation
 # Polarization-multiplexed lens: X-pol @50um, Y-pol @80um -> rectangular GDS
 celeris polardesign --focal-x 50 --focal-y 80 --diameter 24 --report mypolar
 
+# Pancharatnam-Berry (geometric-phase) lens: one half-wave-plate atom rotated
+# per site imprints 2*theta on circularly polarized light. RCWA-verifies the
+# 2*theta relation; writes a rotated-pillar GDS.
+celeris pbdesign --focal 50 --diameter 20 --report mypb
+
 # Form-birefringence sweep (waveplate building block)
 celeris birefringence --fill-y 0.5
 
@@ -227,7 +232,7 @@ src/celeris/
   optics/              Fresnel equations, Transfer Matrix Method
   rcwa/                1D (TE/TM, multilayer) + 2D vectorial RCWA, S-matrix
   design/              unit-cell library, lens assembler, inverse-design + system optimizer,
-                       polarization-multiplexed design
+                       polarization-multiplexed + Pancharatnam-Berry (geometric-phase) design
   analysis/            focal, chromatic, wavefront, MTF, through-focus, field, polarization
   io/                  GDSII read/write, PGM image, material CSV
   cuda/                cuSOLVER eigensolve + GPU far-field propagation kernel
@@ -242,8 +247,8 @@ GPU-accelerated analysis path. Notable items still ahead:
 - Faster CPU eigensolve (OpenBLAS/LAPACK `zgeev`) — the remaining bottleneck is
   the RCWA library build, which the GPU eigensolve cannot accelerate.
 - Full-2π / thickness-swept libraries and broadband / achromatic optimization.
-- Geometric (Pancharatnam–Berry) phase from rotated pillars for circular-
-  polarization optics (the linear-birefringence path is already built).
+- Arbitrary geometric-phase profiles (vortex/OAM, deflectors) on the
+  Pancharatnam–Berry path — focusing is already built (`pbdesign`).
 - Validation against a published metalens; Linux/macOS GUI.
 
 ## License
