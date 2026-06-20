@@ -73,3 +73,12 @@ Testing/
 *.pgm
 celeris_report*
 metalens.celeris
+
+# Python bindings: build artifacts + example figure outputs
+__pycache__/
+*.pyc
+*.pyd
+*.egg-info/
+dist/
+wheelhouse/
+examples/python/*.png

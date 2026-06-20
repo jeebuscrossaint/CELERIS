@@ -1,0 +1,39 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "celeris"
+version = "0.1.0"
+description = "GPU-ready metalens / metasurface design via rigorous coupled-wave analysis (RCWA)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "CELERIS" }]
+keywords = ["metalens", "metasurface", "RCWA", "nanophotonics", "optics", "photonics"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = ["numpy>=1.21"]
+
+[project.optional-dependencies]
+examples = ["matplotlib>=3.5"]
+
+[project.urls]
+Homepage = "https://github.com/jeebuscrossaint/CELERIS"
+
+# scikit-build-core drives the existing CMakeLists. We build ONLY the Python
+# extension (no GUI/CLI) and let CMake's SKBUILD-gated install() rules place the
+# `celeris` package (the .pyd + __init__.py) into the wheel.
+[tool.scikit-build]
+cmake.version = ">=3.28"
+cmake.build-type = "Release"
+build.targets = ["_celeris"]
+wheel.packages = []          # contents come from CMake install(), not autodiscovery
+
+[tool.scikit-build.cmake.define]
+CELERIS_BUILD_PYTHON = "ON"
+CELERIS_BUILD_GUI = "OFF"

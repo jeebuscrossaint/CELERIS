@@ -170,6 +170,35 @@ celeris gpubench --n 242 --batch 32 # batched eigensolve (honest negative result
 pillar height/index, substrate, material CSV, library resolution, RCWA
 harmonics, tolerance/FOV/PSF/report outputs).
 
+## Python
+
+The same validated engine is scriptable from Python (numpy/matplotlib), the way
+the metasurface community actually works. Build the extension once, then `import
+celeris`:
+
+```sh
+cmake -B build -DCELERIS_BUILD_PYTHON=ON
+cmake --build build --config Release --target _celeris   # -> build/python/celeris
+# or:  pip install .        (scikit-build-core drives the same CMake build)
+```
+
+```python
+import celeris as cel
+
+tio2 = cel.Material.constant(2.40 + 0j, "TiO2")           # or Material.tabulated(...)
+lib  = cel.build_unit_cell_library(                       # phase library (RCWA sweep)
+    pillar=tio2, background=cel.materials.air(), incident=cel.materials.air(),
+    substrate=cel.materials.fused_silica(), period_um=0.35, wavelength_um=0.532,
+    thickness_um=0.6, fill_min=0.1, fill_max=0.9, n_samples=32, M=8)
+lens = cel.design_metalens(lib, focal_length_um=50.0, diameter_um=20.0)
+foc  = cel.analyze_focus(lens, lib, 50.0, 0.532, 20.0)
+print(foc.strehl, foc.fwhm_um)                            # diffraction-limited
+psf  = cel.compute_psf(lens, lib, 50.0, 0.532, 20.0, 128, 4.0)  # numpy maps
+```
+
+Runnable examples (focusing lens, RCWA convergence, real-material dispersion,
+full-2π height sweep) are in [`examples/python/`](examples/python/).
+
 ## Validation highlights
 
 These are produced by `celeris selftest`:
@@ -215,7 +244,7 @@ GPU-accelerated analysis path. Notable items still ahead:
 - Full-2π / thickness-swept libraries and broadband / achromatic optimization.
 - Geometric (Pancharatnam–Berry) phase from rotated pillars for circular-
   polarization optics (the linear-birefringence path is already built).
-- Validation against a published metalens; Python bindings; Linux/macOS GUI.
+- Validation against a published metalens; Linux/macOS GUI.
 
 ## License
 

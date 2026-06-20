@@ -102,8 +102,17 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Fab constraints baked into design (min feature, min gap, etch bias)
 
 ## 3. Productization  (makes it USABLE / SHIPPABLE)
-- [ ] **Python bindings (pybind11)** over celeris_core — scripting + numpy/matplotlib;
-      how this market actually works
+- [x] **Python bindings (pybind11)** over celeris_core — scripting + numpy/matplotlib;
+      how this market actually works. DONE: `_celeris` extension (pybind11 v3.0.4,
+      `bindings/python/celeris_module.cpp`) exposes the full workflow — Material
+      (+ builtins), 1D/2D RCWA solvers, UnitCellLibrary / build_unit_cell_library /
+      optimize_height_for_2pi, design_metalens, analyze_focus, compute_psf (maps
+      come back as numpy arrays). Opt-in `-DCELERIS_BUILD_PYTHON=ON` stages an
+      importable package at `build/python/celeris` (MKL/CUDA DLLs bundled beside the
+      .pyd); `pip install .` works via scikit-build-core (`pyproject.toml`). Four
+      runnable examples in `examples/python/` (focusing lens, RCWA convergence,
+      real-material dispersion, full-2π height sweep). Verified: import + end-to-end
+      design reproduces the engine's numbers (diffraction-limited FWHM, energy=1).
 - [ ] **Installer** (WiX/NSIS) + code signing → a thing people download, not a dev exe
 - [ ] **One build, auto CPU/GPU** at runtime (bundle CUDA runtime, fall back to CPU if
       no device) — today GPU is a separate build

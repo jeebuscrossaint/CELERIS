@@ -377,6 +377,58 @@ else()
     string(APPEND CELERIS_SUMMARY "  Desktop GUI   : off (enable with -DCELERIS_BUILD_GUI=ON)\n")
 endif()
 
+# --- Python bindings (pybind11) ---------------------------------------------
+# Opt-in: needs a Python with development headers. Enable with
+# -DCELERIS_BUILD_PYTHON=ON, or let `pip install .` (scikit-build-core) drive it.
+# Builds the `_celeris` extension over celeris_core and STAGES it next to the
+# pure-Python `celeris` package under build/python/celeris -- so
+# `PYTHONPATH=build/python python -c "import celeris"` works straight from the
+# build tree, no install step. The same MKL/CUDA runtime DLLs the exe bundles are
+# copied next to the .pyd (Windows resolves a module's deps from its own dir).
+option(CELERIS_BUILD_PYTHON "Build the Python bindings (pybind11)" OFF)
+if(CELERIS_BUILD_PYTHON)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+    FetchContent_Declare(pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG v3.0.4 GIT_SHALLOW ON)
+    FetchContent_MakeAvailable(pybind11)
+
+    set(_cel_pydir "${CMAKE_BINARY_DIR}/python/celeris")
+    pybind11_add_module(_celeris bindings/python/celeris_module.cpp)
+    target_link_libraries(_celeris PRIVATE celeris_core)
+    # Pin the extension's output dir across every config (VS multi-config would
+    # otherwise scatter it into Release/ Debug/ subfolders).
+    set_target_properties(_celeris PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${_cel_pydir}")
+    foreach(_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        set_target_properties(_celeris PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_${_cfg} "${_cel_pydir}")
+    endforeach()
+
+    # Stage the pure-Python package next to the extension (build-tree usable).
+    add_custom_command(TARGET _celeris POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/python/celeris" "${_cel_pydir}"
+        COMMENT "Staging the celeris Python package -> build/python/celeris")
+    if(CELERIS_DLLS AND WIN32)
+        list(REMOVE_DUPLICATES CELERIS_DLLS)
+        add_custom_command(TARGET _celeris POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CELERIS_DLLS} "${_cel_pydir}"
+            COMMAND_EXPAND_LISTS VERBATIM
+            COMMENT "Bundling MKL/CUDA runtime DLLs next to _celeris")
+    endif()
+
+    # scikit-build-core (`pip install .`) sets SKBUILD: install into the wheel.
+    if(DEFINED SKBUILD)
+        install(TARGETS _celeris LIBRARY DESTINATION celeris)
+        install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/python/celeris/"
+                DESTINATION celeris)
+    endif()
+
+    string(APPEND CELERIS_SUMMARY
+        "  Python bindings: ON (_celeris -> build/python/celeris)\n")
+endif()
+# ---------------------------------------------------------------------------
+
 # --- Bundle runtime DLLs next to the exe ------------------------------------
 # MKL/CUDA link to DLLs that must be found at load time. Windows searches the
 # executable's OWN directory before PATH, so copying them next to celeris.exe /
