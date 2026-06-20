@@ -53,7 +53,9 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
                                         const Material& substrate,
                                         double period_um, double wavelength_um,
                                         double thickness_um, double fill_min,
-                                        double fill_max, int n_samples, int M);
+                                        double fill_max, int n_samples, int M,
+                                        MetaShape shape = MetaShape::Rectangle,
+                                        double shape_param = 0.5);
 
 // Multi-layer "system" path: the unit cell is a STACK; the phase library is
 // built by sweeping the fill of layer `active_layer` through the whole stack
@@ -103,7 +105,9 @@ HeightOptResult optimize_height_for_2pi(const Material& pillar,
                                         double thick_lo, double thick_hi,
                                         int n_heights, double fill_min,
                                         double fill_max, int fill_samples, int M,
-                                        double coverage_target_deg = 330.0);
+                                        double coverage_target_deg = 330.0,
+                                        MetaShape shape = MetaShape::Rectangle,
+                                        double shape_param = 0.5);
 
 struct MetalensDesign {
     int n_cells;             // cells across the (square) aperture

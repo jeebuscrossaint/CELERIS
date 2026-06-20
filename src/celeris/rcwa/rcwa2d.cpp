@@ -2,9 +2,11 @@
 #include "celeris/rcwa/eig.hpp"
 
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace celeris {
@@ -30,6 +32,56 @@ cdouble RectCell2D::inv_eps_fourier(int p, int q, double wavelength_um) const {
     const double Sy = (q == 0) ? fill_y : std::sin(pi * q * fill_y) / (pi * q);
     const cdouble base = (p == 0 && q == 0) ? ibe : cdouble{0.0, 0.0};
     return base + (ipe - ibe) * (Sx * Sy);
+}
+
+bool RectCell2D::inside(double xf, double yf) const {
+    const double ax = fill_x * 0.5, ay = fill_y * 0.5;
+    switch (shape) {
+        case MetaShape::Rectangle:
+            return std::abs(xf) <= ax && std::abs(yf) <= ay;
+        case MetaShape::Ellipse: {
+            if (ax <= 0.0 || ay <= 0.0) return false;
+            const double u = xf / ax, v = yf / ay;
+            return u * u + v * v <= 1.0;
+        }
+        case MetaShape::Cross: {
+            const double hx = ax * shape_param, hy = ay * shape_param;  // half arm widths
+            const bool vbar = std::abs(xf) <= hx && std::abs(yf) <= ay;  // vertical bar
+            const bool hbar = std::abs(yf) <= hy && std::abs(xf) <= ax;  // horizontal bar
+            return vbar || hbar;
+        }
+        case MetaShape::Ring: {
+            if (ax <= 0.0 || ay <= 0.0) return false;
+            const double u = xf / ax, v = yf / ay;
+            const double r2 = u * u + v * v;
+            const double ri = shape_param;  // inner radius as fraction of outer
+            return r2 <= 1.0 && r2 >= ri * ri;
+        }
+    }
+    return false;
+}
+
+void RectCell2D::rasterize_eps(std::vector<cdouble>& out, int ngx, int ngy,
+                               double wavelength_um) const {
+    const cdouble ep = pillar.permittivity(wavelength_um);
+    const cdouble eb = background.permittivity(wavelength_um);
+    out.resize(static_cast<std::size_t>(ngx) * ngy);
+    // Supersample each pixel (S x S) and use the inside-fraction, so curved edges
+    // are anti-aliased -- with the Laurent factorization this smooths the sampled
+    // ε and improves the Fourier-series convergence for non-axis-aligned shapes.
+    constexpr int S = 4;
+    for (int iy = 0; iy < ngy; ++iy)
+        for (int ix = 0; ix < ngx; ++ix) {
+            int hit = 0;
+            for (int sy = 0; sy < S; ++sy)
+                for (int sx = 0; sx < S; ++sx) {
+                    const double xf = (ix + (sx + 0.5) / S) / ngx - 0.5;
+                    const double yf = (iy + (sy + 0.5) / S) / ngy - 0.5;
+                    if (inside(xf, yf)) ++hit;
+                }
+            const double frac = static_cast<double>(hit) / (S * S);
+            out[static_cast<std::size_t>(iy) * ngx + ix] = eb + (ep - eb) * frac;
+        }
 }
 
 namespace {
@@ -62,6 +114,85 @@ struct Region {
 // Branch choice (grcwa): keep Im(kz) >= 0 so exp(i kz z) decays for evanescent
 // orders and the scattering-matrix recursion stays stable.
 inline cdouble branch(cdouble q) { return q.imag() < 0.0 ? -q : q; }
+
+// The Fourier operators a patterned region needs: the in-plane permittivity
+// operator (here the same for Ex and Ey) and the normal-component operator.
+struct ShapeOps {
+    MatrixXcd Einv;  // normal-component operator: (Toeplitz of ε)^{-1}
+    MatrixXcd Exx;   // in-plane ε for Ex  (Laurent Toeplitz of ε)
+    MatrixXcd Eyy;   // in-plane ε for Ey  (Laurent Toeplitz of ε)
+};
+
+// Fourier factorization for an arbitrary two-material shape sampled as ε on an
+// ngx*ngy grid (row-major, cell-fraction sample centers). Uses the LAURENT (a.k.a.
+// classic Moharam-Gaylord) factorization, exactly as grcwa does for grid layers:
+// the in-plane ε is the direct convolution Toeplitz ⟦ε⟧, and the normal-component
+// term uses its matrix inverse (⟦ε⟧^{-1}). This is a single, mutually consistent
+// operator set, so it converges MONOTONICALLY for arbitrary non-separable shapes.
+// (We tried the directional inverse-rule / "two 1-D rules" factorization, which
+// converges faster for axis-aligned rectangles but is numerically UNSTABLE for
+// non-separable shapes -- it diverges above ~M=10. The rectangle path keeps the
+// fast analytic inverse rule; everything else uses this stable Laurent route.
+// Li's normal-vector FFF would recover fast convergence here -- a future item.)
+ShapeOps shape_operators(const std::vector<cdouble>& eps, int ngx, int ngy,
+                         int Mx, int My) {
+    const int nx = 2 * Mx + 1, ny = 2 * My + 1;
+    const int N = nx * ny;
+
+    // Centered-DFT phase tables. x_ix = (ix+0.5)/ng - 0.5 so a centered shape
+    // gives the same (real, symmetric) coefficients as the analytic rect.
+    auto phase_table = [](int ng, int mmax) {
+        std::vector<cdouble> t(static_cast<std::size_t>(2 * mmax + 1) * ng);
+        for (int m = -mmax; m <= mmax; ++m)
+            for (int i = 0; i < ng; ++i) {
+                const double xf = (i + 0.5) / ng - 0.5;
+                t[static_cast<std::size_t>(m + mmax) * ng + i] =
+                    std::exp(cdouble{0.0, -2.0 * pi * m * xf}) / static_cast<double>(ng);
+            }
+        return t;
+    };
+    const auto px = phase_table(ngx, 2 * Mx);  // need coeffs up to ±2Mx
+    const auto py = phase_table(ngy, 2 * My);
+    auto PX = [&](int m, int i) { return px[static_cast<std::size_t>(m + 2 * Mx) * ngx + i]; };
+    auto PY = [&](int m, int i) { return py[static_cast<std::size_t>(m + 2 * My) * ngy + i]; };
+
+    // Ge[Δp,Δq] = 2D Fourier coefficient of ε, via separated DFT (x then y).
+    std::vector<cdouble> G1(static_cast<std::size_t>(4 * Mx + 1) * ngy);
+    for (int iy = 0; iy < ngy; ++iy)
+        for (int dp = -2 * Mx; dp <= 2 * Mx; ++dp) {
+            cdouble s{0.0, 0.0};
+            for (int ix = 0; ix < ngx; ++ix)
+                s += eps[static_cast<std::size_t>(iy) * ngx + ix] * PX(dp, ix);
+            G1[static_cast<std::size_t>(dp + 2 * Mx) * ngy + iy] = s;
+        }
+    auto g1 = [&](int dp, int iy) { return G1[static_cast<std::size_t>(dp + 2 * Mx) * ngy + iy]; };
+    std::vector<cdouble> Ge(static_cast<std::size_t>(4 * Mx + 1) * (4 * My + 1));
+    for (int dp = -2 * Mx; dp <= 2 * Mx; ++dp)
+        for (int dq = -2 * My; dq <= 2 * My; ++dq) {
+            cdouble s{0.0, 0.0};
+            for (int iy = 0; iy < ngy; ++iy) s += g1(dp, iy) * PY(dq, iy);
+            Ge[static_cast<std::size_t>(dp + 2 * Mx) * (4 * My + 1) + (dq + 2 * My)] = s;
+        }
+    auto ge = [&](int dp, int dq) {
+        return Ge[static_cast<std::size_t>(dp + 2 * Mx) * (4 * My + 1) + (dq + 2 * My)];
+    };
+
+    // ⟦ε⟧ : Laurent convolution Toeplitz of the permittivity.
+    MatrixXcd epsT(N, N);
+    for (int p = -Mx; p <= Mx; ++p)
+        for (int q = -My; q <= My; ++q) {
+            const int row = order_index(p, q, Mx, My);
+            for (int pp = -Mx; pp <= Mx; ++pp)
+                for (int qq = -My; qq <= My; ++qq)
+                    epsT(row, order_index(pp, qq, Mx, My)) = ge(p - pp, q - qq);
+        }
+
+    ShapeOps ops;
+    ops.Exx = epsT;
+    ops.Eyy = epsT;
+    ops.Einv = epsT.inverse();  // (⟦ε⟧)^{-1} for the normal-component term
+    return ops;
+}
 
 } // namespace
 
@@ -130,62 +261,76 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
 
     // --- Patterned region: improved (Li) factorization + Liu-Fan eigsystem -
     auto patterned_region = [&](const RectCell2D& layer) -> Region {
-        const cdouble ep = layer.pillar.permittivity(wavelength_um);
-        const cdouble eb = layer.background.permittivity(wavelength_um);
-        const cdouble ipe = 1.0 / ep, ibe = 1.0 / eb;
-        const double fx = layer.fill_x, fy = layer.fill_y;
-        const int nx = 2 * Mx + 1, ny = 2 * My + 1;
+        // The three Fourier operators the eigenproblem needs. Axis-aligned
+        // rectangles use the closed-form separable factorization; every other
+        // shape goes through the numerical Li/FFF routine on a sampled grid.
+        MatrixXcd Einv(N, N), Exx(N, N), Eyy(N, N);
 
-        // ⟦1/ε⟧ : Toeplitz of the reciprocal permittivity (normal component).
-        MatrixXcd Einv(N, N);
-        for (int pi_ = -Mx; pi_ <= Mx; ++pi_)
-            for (int qi = -My; qi <= My; ++qi) {
-                const int row = order_index(pi_, qi, Mx, My);
-                for (int pj = -Mx; pj <= Mx; ++pj)
-                    for (int qj = -My; qj <= My; ++qj)
-                        Einv(row, order_index(pj, qj, Mx, My)) =
-                            layer.inv_eps_fourier(pi_ - pj, qi - qj, wavelength_um);
-            }
+        if (layer.is_plain_rect()) {
+            const cdouble ep = layer.pillar.permittivity(wavelength_um);
+            const cdouble eb = layer.background.permittivity(wavelength_um);
+            const cdouble ipe = 1.0 / ep, ibe = 1.0 / eb;
+            const double fx = layer.fill_x, fy = layer.fill_y;
+            const int nx = 2 * Mx + 1, ny = 2 * My + 1;
 
-        // Exx: inverse rule in x (invert the in-band 1D reciprocal Toeplitz),
-        // Laurent in y. Eyy: symmetric. These multiply Ex / Ey respectively.
-        MatrixXcd Hx(nx, nx);
-        for (int a = -Mx; a <= Mx; ++a)
-            for (int b = -Mx; b <= Mx; ++b)
-                Hx(a + Mx, b + Mx) =
-                    ((a == b) ? ibe : cdouble{0, 0}) + (ipe - ibe) * rect1d(a - b, fx);
-        const MatrixXcd Axb = Hx.inverse();
-        MatrixXcd Exx(N, N);
-        for (int p = -Mx; p <= Mx; ++p)
-            for (int q = -My; q <= My; ++q) {
-                const int row = order_index(p, q, Mx, My);
-                for (int pp = -Mx; pp <= Mx; ++pp)
-                    for (int qq = -My; qq <= My; ++qq) {
-                        const double sy = rect1d(q - qq, fy);
-                        cdouble v = Axb(p + Mx, pp + Mx) * sy;
-                        if (p == pp) v += eb * (((q == qq) ? 1.0 : 0.0) - sy);
-                        Exx(row, order_index(pp, qq, Mx, My)) = v;
-                    }
-            }
+            // ⟦1/ε⟧ : Toeplitz of the reciprocal permittivity (normal component).
+            for (int pi_ = -Mx; pi_ <= Mx; ++pi_)
+                for (int qi = -My; qi <= My; ++qi) {
+                    const int row = order_index(pi_, qi, Mx, My);
+                    for (int pj = -Mx; pj <= Mx; ++pj)
+                        for (int qj = -My; qj <= My; ++qj)
+                            Einv(row, order_index(pj, qj, Mx, My)) =
+                                layer.inv_eps_fourier(pi_ - pj, qi - qj, wavelength_um);
+                }
 
-        MatrixXcd Hy(ny, ny);
-        for (int a = -My; a <= My; ++a)
-            for (int b = -My; b <= My; ++b)
-                Hy(a + My, b + My) =
-                    ((a == b) ? ibe : cdouble{0, 0}) + (ipe - ibe) * rect1d(a - b, fy);
-        const MatrixXcd Ayb = Hy.inverse();
-        MatrixXcd Eyy(N, N);
-        for (int p = -Mx; p <= Mx; ++p)
-            for (int q = -My; q <= My; ++q) {
-                const int row = order_index(p, q, Mx, My);
-                for (int pp = -Mx; pp <= Mx; ++pp)
-                    for (int qq = -My; qq <= My; ++qq) {
-                        const double sx = rect1d(p - pp, fx);
-                        cdouble v = Ayb(q + My, qq + My) * sx;
-                        if (q == qq) v += eb * (((p == pp) ? 1.0 : 0.0) - sx);
-                        Eyy(row, order_index(pp, qq, Mx, My)) = v;
-                    }
-            }
+            // Exx: inverse rule in x (invert the in-band 1D reciprocal Toeplitz),
+            // Laurent in y. Eyy: symmetric. These multiply Ex / Ey respectively.
+            MatrixXcd Hx(nx, nx);
+            for (int a = -Mx; a <= Mx; ++a)
+                for (int b = -Mx; b <= Mx; ++b)
+                    Hx(a + Mx, b + Mx) =
+                        ((a == b) ? ibe : cdouble{0, 0}) + (ipe - ibe) * rect1d(a - b, fx);
+            const MatrixXcd Axb = Hx.inverse();
+            for (int p = -Mx; p <= Mx; ++p)
+                for (int q = -My; q <= My; ++q) {
+                    const int row = order_index(p, q, Mx, My);
+                    for (int pp = -Mx; pp <= Mx; ++pp)
+                        for (int qq = -My; qq <= My; ++qq) {
+                            const double sy = rect1d(q - qq, fy);
+                            cdouble v = Axb(p + Mx, pp + Mx) * sy;
+                            if (p == pp) v += eb * (((q == qq) ? 1.0 : 0.0) - sy);
+                            Exx(row, order_index(pp, qq, Mx, My)) = v;
+                        }
+                }
+
+            MatrixXcd Hy(ny, ny);
+            for (int a = -My; a <= My; ++a)
+                for (int b = -My; b <= My; ++b)
+                    Hy(a + My, b + My) =
+                        ((a == b) ? ibe : cdouble{0, 0}) + (ipe - ibe) * rect1d(a - b, fy);
+            const MatrixXcd Ayb = Hy.inverse();
+            for (int p = -Mx; p <= Mx; ++p)
+                for (int q = -My; q <= My; ++q) {
+                    const int row = order_index(p, q, Mx, My);
+                    for (int pp = -Mx; pp <= Mx; ++pp)
+                        for (int qq = -My; qq <= My; ++qq) {
+                            const double sx = rect1d(p - pp, fx);
+                            cdouble v = Ayb(q + My, qq + My) * sx;
+                            if (q == qq) v += eb * (((p == pp) ? 1.0 : 0.0) - sx);
+                            Eyy(row, order_index(pp, qq, Mx, My)) = v;
+                        }
+                }
+        } else {
+            // Sample the cell finely enough that the grid (not the harmonic
+            // count) resolves the Fourier coefficients up to ±2M.
+            const int ng = std::max(128, 8 * (2 * std::max(Mx, My) + 1));
+            std::vector<cdouble> eps_grid;
+            layer.rasterize_eps(eps_grid, ng, ng, wavelength_um);
+            ShapeOps ops = shape_operators(eps_grid, ng, ng, Mx, My);
+            Einv = std::move(ops.Einv);
+            Exx = std::move(ops.Exx);
+            Eyy = std::move(ops.Eyy);
+        }
 
         // kp = ω²I − Jk·⟦1/ε⟧·Jkᵀ   (Jk = [−Ky; Kx])
         MatrixXcd kp(N2, N2);

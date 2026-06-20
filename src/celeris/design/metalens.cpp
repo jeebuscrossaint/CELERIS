@@ -125,7 +125,8 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
                                         const Material& substrate,
                                         double period_um, double wavelength_um,
                                         double thickness_um, double fill_min,
-                                        double fill_max, int n_samples, int M) {
+                                        double fill_max, int n_samples, int M,
+                                        MetaShape shape, double shape_param) {
     UnitCellLibrary lib;
     lib.period_um = period_um;
     lib.wavelength_um = wavelength_um;
@@ -140,7 +141,8 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
     auto solve_one = [&](int i) {
         double f = fill_min + (fill_max - fill_min) * i / (n_samples - 1);
         Rcwa2DStack cell{period_um, period_um,
-                         {RectCell2D{pillar, background, f, f, thickness_um}}};
+                         {RectCell2D{pillar, background, f, f, thickness_um,
+                                     shape, shape_param}}};
         auto r = solve_rcwa_2d(incident, cell, substrate, wavelength_um, 0.0,
                                0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
         lib.fill[i] = f;
@@ -168,7 +170,8 @@ HeightOptResult optimize_height_for_2pi(const Material& pillar,
                                         double thick_lo, double thick_hi,
                                         int n_heights, double fill_min,
                                         double fill_max, int fill_samples, int M,
-                                        double coverage_target_deg) {
+                                        double coverage_target_deg,
+                                        MetaShape shape, double shape_param) {
     n_heights = std::max(2, n_heights);
     HeightOptResult res{};
     res.coverage_target_deg = coverage_target_deg;
@@ -188,7 +191,7 @@ HeightOptResult optimize_height_for_2pi(const Material& pillar,
         double h = thick_lo + (thick_hi - thick_lo) * i / (n_heights - 1);
         auto lib = build_unit_cell_library(pillar, background, incident, substrate,
                                            period_um, wavelength_um, h, fill_min,
-                                           fill_max, fill_samples, M);
+                                           fill_max, fill_samples, M, shape, shape_param);
         double cov_deg = lib.coverage() * 180.0 / pi;
         res.sweep.push_back({h, cov_deg, mean_T(lib)});
         best_cov = std::max(best_cov, cov_deg);

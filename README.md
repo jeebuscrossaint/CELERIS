@@ -32,7 +32,10 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
   then map an ideal focusing profile onto pillars (amplitude-aware selection).
   `--auto-height` sweeps the etch depth and picks the height with the best phase
   coverage at the highest transmittance — full-2π control without guessing the
-  pillar height (still a single fab etch).
+  pillar height (still a single fab etch). `--shape` selects the meta-atom
+  cross-section (square / circle / ellipse / cross / ring); non-rectangular
+  shapes are solved with a sampled-grid (Laurent) Fourier factorization that
+  cross-checks against grcwa.
 - **Inverse design** — gradient-based optimizer (Adam) finds the pillar
   geometry meeting a target phase with maximum transmission; plus a
   period × height system optimizer.
@@ -103,6 +106,11 @@ celeris design --focal 50 --diameter 20 --wavelength 0.532 \
 # phase coverage at the highest transmittance (still a single etch), no guessing
 celeris design --focal 50 --diameter 20 --pillar-csv data/TiO2_Siefke.csv \
                --substrate sio2 --auto-height --out lens.gds
+
+# Non-square meta-atom shapes (circle/cross/ring), solved with the grid
+# (Laurent) factorization; combine with --auto-height to compare coverage
+celeris design --focal 50 --diameter 20 --shape cross --shape-param 0.45 \
+               --pillar-csv data/TiO2_Siefke.csv --substrate sio2 --auto-height
 
 # Write a full deliverable bundle (metrics .txt + PSF & caustic PGM + GDS)
 celeris design --focal 50 --diameter 40 --report mylens

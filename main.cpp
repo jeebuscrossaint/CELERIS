@@ -281,6 +281,27 @@ static int run_selftest() {
                                 0.532, 0.0, 0.0, 0.0, 1.0, 12, 12);
         std::println("        x-pol T0={:.4f} (grcwa 0.954)   y-pol T0={:.4f} "
                      "(grcwa 0.972)   ΣDE={:.6f}", rx.de_t0, ry.de_t0, rx.sum_de);
+
+        // (d) Non-separable shapes via the grid (Laurent) factorization. These
+        // route through the sampled-grid path; energy must be conserved, and the
+        // cross (matched to grcwa's same Laurent scheme) must agree with it.
+        std::println("    (d) shaped meta-atoms (grid Laurent factorization, M=8):");
+        auto solve_shape = [&](MetaShape sh, double fill, double param) {
+            Rcwa2DStack s{0.35, 0.35,
+                          {RectCell2D{tio2, materials::air(), fill, fill, 0.6, sh, param}}};
+            return solve_rcwa_2d(materials::air(), s, materials::fused_silica(),
+                                 0.532, 0.0, 0.0, 1.0, 0.0, 8, 8);
+        };
+        auto shc = solve_shape(MetaShape::Ellipse, 0.7, 0.5);
+        auto shp = solve_shape(MetaShape::Cross, 0.8, 0.4);
+        auto shr = solve_shape(MetaShape::Ring, 0.9, 0.5);
+        std::println("        circle(d0.7): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
+                     shc.de_t0, std::arg(shc.tx0) * 180.0 / pi, shc.sum_de);
+        std::println("        cross(arm0.4): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}   "
+                     "(grcwa cross @nG201 = 0.977)", shp.de_t0,
+                     std::arg(shp.tx0) * 180.0 / pi, shp.sum_de);
+        std::println("        ring(in0.5):  T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
+                     shr.de_t0, std::arg(shr.tx0) * 180.0 / pi, shr.sum_de);
     }
 
     // ---- Demo 9: end-to-end metalens design -------------------------------
@@ -517,6 +538,20 @@ int cmd_design(int argc, char** argv) {
     for (int i = 2; i < argc; ++i)
         if (std::string(argv[i]) == "--auto-height") auto_height = true;
 
+    // --shape: meta-atom cross-section. square (default, analytic & fastest),
+    // circle/ellipse, cross, or ring -- the non-rectangular ones use the grid
+    // (Laurent) factorization. --shape-param tunes cross arm width / ring inner-r.
+    const std::string shape_name = arg_value(argc, argv, "--shape", "square");
+    const double shape_param = std::atof(arg_value(argc, argv, "--shape-param", "0.5"));
+    const MetaShape shape = shape_name == "circle" || shape_name == "ellipse"
+                                ? MetaShape::Ellipse
+                            : shape_name == "cross" ? MetaShape::Cross
+                            : shape_name == "ring"  ? MetaShape::Ring
+                                                    : MetaShape::Rectangle;
+    if (shape != MetaShape::Rectangle)
+        std::println("  meta-atom shape: {} (param {}) -- grid Laurent factorization",
+                     shape_name, shape_param);
+
     double used_thickness = thickness;
     UnitCellLibrary lib;
     if (auto_height) {
@@ -531,7 +566,8 @@ int cmd_design(int argc, char** argv) {
                      n_h, h_lo, h_hi, sweep_fills);
         auto opt = optimize_height_for_2pi(pillar, materials::air(), materials::air(),
                                            substrate, period, lambda, h_lo, h_hi,
-                                           n_h, 0.08, 0.92, sweep_fills, M);
+                                           n_h, 0.08, 0.92, sweep_fills, M, 330.0,
+                                           shape, shape_param);
         std::println("      {:>10}  {:>12}  {:>14}", "height(µm)", "coverage", "mean |t|²");
         for (auto& e : opt.sweep)
             std::println("      {:>10.3f}  {:>11.0f}°  {:>14.3f}",
@@ -545,9 +581,10 @@ int cmd_design(int argc, char** argv) {
         std::println("  building unit-cell library ({} pillars, M={})...", samples, M);
         lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
                                       substrate, period, lambda, thickness,
-                                      0.08, 0.92, samples, M);
+                                      0.08, 0.92, samples, M, shape, shape_param);
     }
-    std::println("  library phase coverage: {:.0f}°", lib.phase_span() * 180.0 / pi);
+    std::println("  library phase coverage: {:.0f}°  (effective {:.0f}°)",
+                 lib.phase_span() * 180.0 / pi, lib.coverage() * 180.0 / pi);
 
     auto lens = design_metalens(lib, focal, diameter);
     std::println("  designed {0}x{0} pillars, RMS phase error {1:.1f}°, mean |t| {2:.3f}",
@@ -556,6 +593,10 @@ int cmd_design(int argc, char** argv) {
     int np = write_metalens_gds(lens, out);
     if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
     std::println("  wrote {} pillars -> {}", np, out);
+    if (shape != MetaShape::Rectangle)
+        std::println("  NOTE: the {} library was used for the PHYSICS, but the GDS writes "
+                     "square footprints; shape-aware (polygon) GDS export is a TODO.",
+                     shape_name);
 
     auto foc = analyze_focus(lens, lib, focal, lambda, diameter);
     std::println("  focal: Strehl {:.3f}, FWHM {:.2f}µm (diffraction limit {:.2f}µm), "
@@ -1036,6 +1077,8 @@ void print_help() {
         "  --thickness <µm=0.6>   pillar height\n"
         "  --auto-height          sweep height for full-2π coverage, ignore --thickness\n"
         "    --height-lo/-hi/-steps <0.30/1.20/12>  the height sweep range\n"
+        "  --shape <square|circle|cross|ring=square>  meta-atom cross-section\n"
+        "    --shape-param <0.5>  cross arm width / ring inner-radius (fraction)\n"
         "  --pillar-n <2.4>       pillar refractive index (constant)\n"
         "  --pillar-csv <file>    load pillar n,k from CSV (overrides --pillar-n)\n"
         "  --substrate <bk7|air|sio2=bk7>\n"
@@ -1228,9 +1271,36 @@ static int run_psfbench(int argc, char** argv) {
 }
 #endif
 
+// Fast shape-convergence diagnostic: sweep M for one shape and print each row as
+// soon as it is computed (flushed), so a heavy eigensolve sweep shows progress
+// instead of buffering to exit. Usage: celeris shapeconv [circle|cross|square|ring]
+static int cmd_shapeconv(int argc, char** argv) {
+    const std::string shape = argc > 2 ? argv[2] : "cross";
+    const auto tio2 = Material::constant(cdouble{2.45, 0.0}, "TiO2~");
+    MetaShape ms = shape == "circle" ? MetaShape::Ellipse
+                 : shape == "ring"   ? MetaShape::Ring
+                 : shape == "square" ? MetaShape::Rectangle
+                                     : MetaShape::Cross;
+    double fill = shape == "cross" ? 0.8 : 0.7;
+    double param = shape == "cross" ? 0.4 : 0.5;
+    std::printf("shape=%s  (Λ=0.35 λ=0.532 TiO2/SiO2)\n  %3s  %10s  %8s  %10s\n",
+                shape.c_str(), "M", "T0", "phase°", "ΣDE");
+    std::fflush(stdout);
+    for (int m : {6, 8, 10, 12}) {
+        Rcwa2DStack s{0.35, 0.35, {RectCell2D{tio2, materials::air(), fill, fill, 0.6, ms, param}}};
+        auto r = solve_rcwa_2d(materials::air(), s, materials::fused_silica(), 0.532,
+                               0.0, 0.0, 1.0, 0.0, m, m);
+        std::printf("  %3d  %10.4f  %8.1f  %10.6f\n", m, r.de_t0,
+                    std::arg(r.tx0) * 180.0 / pi, r.sum_de);
+        std::fflush(stdout);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     const std::string cmd = argc > 1 ? argv[1] : "help";
     if (cmd == "selftest") return run_selftest();
+    if (cmd == "shapeconv") return cmd_shapeconv(argc, argv);
     if (cmd == "validate") return cmd_validate(argc, argv);
     if (cmd == "design") return cmd_design(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);

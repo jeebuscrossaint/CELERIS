@@ -78,8 +78,20 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       shape variety (cross/H, holes) or a higher-index material (REMAINING below).
 - [ ] **Achromatic / broadband** design (group-delay + dispersion engineering) — the
       highest-value application
-- [ ] More meta-atom shapes: circular, elliptical, cross/H (needs non-separable
-      Fourier or Li factorization)
+- [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
+      solver now handles arbitrary two-material shapes via a sampled-grid Fourier
+      factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
+      rcwa2d.cpp); CLI `design --shape circle|cross|ring [--shape-param]`. Uses the
+      stable LAURENT factorization (the same scheme grcwa uses for grid layers): the
+      cross matches grcwa to ~1e-3 and energy is conserved. HONEST FINDINGS: (1) the
+      faster *directional inverse-rule* factorization is numerically UNSTABLE for
+      non-separable shapes (diverges above ~M=10), so shapes use Laurent (slower
+      convergence, needs higher M); Li's normal-vector FFF would recover speed (TODO).
+      (2) Curved shapes (circle/ellipse) converge slowly in BOTH CELERIS and grcwa
+      (staircase of a curved interface) — confirmed independently. (3) At Λ=0.35/λ=0.532
+      a CROSS clears the 330° coverage target at ~half the pillar height of a square
+      (h 0.56 vs 0.94, equal Strehl); circle ≈ square. REMAINING: shape-aware (polygon)
+      GDS export — today the GDS writes square footprints regardless of `--shape`.
 - [ ] **Rotated pillars → Pancharatnam–Berry (geometric) phase** for circular
       polarization optics
 - [ ] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
