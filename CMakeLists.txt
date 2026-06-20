@@ -125,19 +125,22 @@ if(_cel_cuda)
         CACHE PATH "CUDA toolkit directory (contains include/ and lib/x64/)" FORCE)
     target_include_directories(celeris_core PRIVATE "${CELERIS_CUDA_DIR}/include")
 
-    # Far-field propagation KERNEL -- the real GPU win (600-700x). We compile it
-    # by invoking nvcc DIRECTLY (a custom command) rather than via CMake's CUDA
-    # language / enable_language(). That deliberately sidesteps the whole fragile
-    # Visual-Studio-generator CUDA path: no compiler-id probe that hard-errors the
-    # configure, no MSBuild "CUDA <ver>.targets" integration, and no `vcpkg
-    # integrate` user-wide MSBuild import leaking vcpkg includes into the build.
-    # nvcc just uses the MSVC cl the generator already found (-ccbin), so this works
-    # the same under the VS generator, Ninja, or Makefiles -- one `cmake -B build`.
-    # The kernel is one self-contained TU (no -rdc), so no separate device link is
-    # needed; the CUDA runtime is linked STATICALLY (cudart_static.lib) so the GPU
-    # build adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
+    # Far-field propagation KERNEL -- the real GPU win (600-700x). We COMPILE it by
+    # invoking nvcc DIRECTLY (a custom command), NOT via enable_language(CUDA):
+    # that avoids enable_language's hard configure error and the MSBuild "CUDA
+    # <ver>.targets" integration at build time. But we still GATE on the soft
+    # check_language(CUDA) probe -- it cleanly reports whether this environment can
+    # build CUDA at all and sets CMAKE_CUDA_COMPILER (or NOTFOUND) WITHOUT erroring.
+    # On a setup where CUDA-under-this-generator is broken (e.g. a `vcpkg integrate`
+    # user-wide MSBuild import that poisons the probe, or a CUDA-vs-MSVC version
+    # clash) the probe soft-fails and we degrade gracefully to CPU + the Ninja path
+    # (scripts/build-cuda.bat) instead of hard-failing the build. The kernel is one
+    # self-contained TU (no -rdc) and links the STATIC CUDA runtime (cudart_static),
+    # so the GPU build adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
+    include(CheckLanguage)
+    check_language(CUDA)
     find_program(CELERIS_NVCC NAMES nvcc HINTS "${CELERIS_CUDA_DIR}/bin")
-    if(CELERIS_NVCC)
+    if(CMAKE_CUDA_COMPILER AND CELERIS_NVCC)
         get_filename_component(_cel_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(_cel_kobj "${CMAKE_BINARY_DIR}/celeris_propagate_cuda${CMAKE_CXX_OUTPUT_EXTENSION}")
         add_custom_command(
@@ -164,7 +167,8 @@ if(_cel_cuda)
             "  GPU backend   : CUDA far-field kernel (direct nvcc, static cudart, any generator)\n")
     else()
         string(APPEND CELERIS_SUMMARY
-            "  GPU backend   : CUDA toolkit found but no nvcc -- CPU propagation\n")
+            "  GPU backend   : CUDA toolkit found but this generator/env can't build it\n"
+            "                  (CPU propagation; use scripts/build-cuda.bat for the GPU kernel)\n")
     endif()
 
     # cuSOLVER GPU eigensolve: OPT-IN (default OFF). It is a recorded DEAD END (no
