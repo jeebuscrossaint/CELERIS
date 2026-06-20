@@ -117,9 +117,11 @@ GPU far-field kernel links the **static** CUDA runtime, so it needs no CUDA DLLs
   `std::println` links `stdc++exp` automatically.
 - **MSVC**: the default generator works; `cmake -B build` then
   `cmake --build build --config Release`.
-- **CUDA without VS integration**: if `nvcc` can't be driven by your generator,
-  the summary says so and you use the Ninja path — `scripts/build-cuda.bat`, then
-  `scripts/run-gui-cuda.bat` (puts the CUDA `bin/x64` DLLs on `PATH`).
+- **CUDA**: `cmake -B build` builds the GPU kernel automatically when the toolkit
+  and the NVIDIA Visual Studio integration are installed (it points CMake at the
+  detected `nvcc`). If your generator genuinely can't drive `nvcc` (no VS
+  integration), the summary says so and you use the Ninja path —
+  `scripts/build-cuda.bat`.
 
 ## Usage
 
