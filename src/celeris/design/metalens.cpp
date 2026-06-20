@@ -27,6 +27,21 @@ double UnitCellLibrary::phase_span() const {
     return *hi - *lo;
 }
 
+double UnitCellLibrary::coverage() const {
+    const int n = static_cast<int>(phase.size());
+    if (n < 2) return 0.0;
+    std::vector<double> p(phase.begin(), phase.end());
+    for (double& v : p) {  // normalize to [0, 2pi)
+        while (v < 0.0) v += 2.0 * pi;
+        while (v >= 2.0 * pi) v -= 2.0 * pi;
+    }
+    std::sort(p.begin(), p.end());
+    double max_gap = 0.0;
+    for (int i = 1; i < n; ++i) max_gap = std::max(max_gap, p[i] - p[i - 1]);
+    max_gap = std::max(max_gap, (p[0] + 2.0 * pi) - p[n - 1]);  // wrap-around gap
+    return 2.0 * pi - max_gap;
+}
+
 int UnitCellLibrary::lookup(double target_phase_rad) const {
     int best = 0;
     double best_err = std::abs(angle_diff(phase[0], target_phase_rad));
@@ -143,6 +158,70 @@ UnitCellLibrary build_unit_cell_library(const Material& pillar,
     }
     for (auto& j : jobs) j.get();
     return lib;
+}
+
+HeightOptResult optimize_height_for_2pi(const Material& pillar,
+                                        const Material& background,
+                                        const Material& incident,
+                                        const Material& substrate,
+                                        double period_um, double wavelength_um,
+                                        double thick_lo, double thick_hi,
+                                        int n_heights, double fill_min,
+                                        double fill_max, int fill_samples, int M,
+                                        double coverage_target_deg) {
+    n_heights = std::max(2, n_heights);
+    HeightOptResult res{};
+    res.coverage_target_deg = coverage_target_deg;
+
+    auto mean_T = [](const UnitCellLibrary& l) {
+        double s = 0.0;
+        for (double a : l.amplitude) s += a * a;
+        return l.amplitude.empty() ? 0.0 : s / l.amplitude.size();
+    };
+
+    // Build a library at each height; keep them all so selection can be a clean
+    // two-phase decision (the libraries are tiny -- a few dozen doubles each).
+    std::vector<UnitCellLibrary> libs;
+    libs.reserve(n_heights);
+    double best_cov = 0.0;
+    for (int i = 0; i < n_heights; ++i) {
+        double h = thick_lo + (thick_hi - thick_lo) * i / (n_heights - 1);
+        auto lib = build_unit_cell_library(pillar, background, incident, substrate,
+                                           period_um, wavelength_um, h, fill_min,
+                                           fill_max, fill_samples, M);
+        double cov_deg = lib.coverage() * 180.0 / pi;
+        res.sweep.push_back({h, cov_deg, mean_T(lib)});
+        best_cov = std::max(best_cov, cov_deg);
+        libs.push_back(std::move(lib));
+    }
+
+    // Selection. Candidate heights are those whose coverage is "good enough":
+    // either they clear the absolute target, or -- if nothing does -- they sit
+    // within a tolerance of the best coverage achieved. Among the candidates the
+    // winner is the HIGHEST transmittance, the lever on transmission-weighted
+    // Strehl. (The old "just take max coverage" fallback could pick a high-
+    // coverage / low-transmittance height, which is exactly wrong.)
+    const double tol = 12.0;  // degrees
+    bool any_clears = best_cov >= coverage_target_deg - 1e-9;
+    double floor_deg = any_clears ? coverage_target_deg : best_cov - tol;
+
+    int best_idx = 0;
+    double best_T = -1.0;
+    for (int i = 0; i < n_heights; ++i) {
+        if (res.sweep[i].coverage_deg < floor_deg - 1e-9) continue;
+        if (res.sweep[i].mean_transmittance > best_T + 1e-12) {
+            best_T = res.sweep[i].mean_transmittance;
+            best_idx = i;
+        }
+    }
+
+    const auto& b = res.sweep[best_idx];
+    res.best_thickness_um = b.thickness_um;
+    res.coverage_deg = b.coverage_deg;
+    res.mean_transmittance = b.mean_transmittance;
+    res.reached_target = b.coverage_deg >= coverage_target_deg - 1e-9;
+    res.best_library = std::move(libs[best_idx]);
+    return res;
 }
 
 MetalensDesign design_metalens(const UnitCellLibrary& lib,

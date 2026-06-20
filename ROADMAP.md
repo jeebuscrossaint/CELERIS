@@ -38,9 +38,12 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       on fused silica. DONE: a real-TiO₂ focusing lens is **diffraction-limited**
       — phase Strehl 0.97, FWHM exactly at λf/D, NA 0.20 — and the meta-atom
       transmittance now **converges** (Li factorization landed) and matches an external
-      solver (grcwa). Absolute efficiency is trustworthy. REMAINING for a full
-      paper reproduction: a specific published device + (for K2016) the PB-phase
-      design path; and full-2π libraries to push the focusing efficiency higher.
+      solver (grcwa). Absolute efficiency is trustworthy. `validate`'s prose now
+      reflects the post-Li convergence (the old "does NOT converge / swings ~0.6"
+      finding was stale and is corrected), and a new [4] section demonstrates the
+      etch-depth (`--auto-height`) optimization. REMAINING for a full paper
+      reproduction: a specific published device + (for K2016) the PB-phase design
+      path; and shaped / higher-index meta-atoms to push focusing efficiency higher.
 - [x] **Improved (Li/Liu–Fan) 2D Fourier factorization** — DONE. Replaced the basic
       Laurent 2D solver (which gave qualitatively WRONG transmittance, e.g. T≈0.07 where
       truth is ≈0.96, and broke energy beyond M≈8) with the inverse-rule / Liu–Fan
@@ -63,8 +66,16 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Regression/unit test suite + CI (lock the validated numbers so nothing drifts)
 
 ## 2. Design quality & breadth  (makes it GOOD, not a toy)
-- [ ] **Full-2π libraries** via height/thickness sweep (multi-parameter) → lift Strehl
-      from ~0.55 toward diffraction-limited. Biggest quality win.
+- [~] **Full-2π libraries** via height/thickness sweep (multi-parameter) → lift Strehl
+      from ~0.55 toward diffraction-limited. Biggest quality win. DONE so far:
+      `design --auto-height` (and `optimize_height_for_2pi`) sweeps the etch depth,
+      measures each height's effective phase coverage (new `coverage()` = 2π minus the
+      largest gap on the circle — the honest "can I hit any target phase" metric, robust
+      to phase wrapping where the old max-min `phase_span` was not) and mean transmittance,
+      and picks the best coverage at the highest |t| (still a single etch). Demonstrated
+      in `validate` [4]. HONEST FINDING: a TiO₂ *square* pillar at Λ=0.35/λ=0.532 caps
+      coverage ~325–345°, not a clean 360° — closing the last gap with high |t| needs
+      shape variety (cross/H, holes) or a higher-index material (REMAINING below).
 - [ ] **Achromatic / broadband** design (group-delay + dispersion engineering) — the
       highest-value application
 - [ ] More meta-atom shapes: circular, elliptical, cross/H (needs non-separable

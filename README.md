@@ -30,6 +30,9 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
   CSV import of real `n,k` (refractiveindex.info format).
 - **Metalens design** — sweep pillar geometry into a phase/amplitude library,
   then map an ideal focusing profile onto pillars (amplitude-aware selection).
+  `--auto-height` sweeps the etch depth and picks the height with the best phase
+  coverage at the highest transmittance — full-2π control without guessing the
+  pillar height (still a single fab etch).
 - **Inverse design** — gradient-based optimizer (Adam) finds the pillar
   geometry meeting a target phase with maximum transmission; plus a
   period × height system optimizer.
@@ -95,6 +98,11 @@ integration, so the GPU build uses **Ninja**: run `scripts/build-cuda.bat`
 # Design a focusing metalens -> GDSII + performance report
 celeris design --focal 50 --diameter 20 --wavelength 0.532 \
                --pillar-n 2.4 --thickness 0.6 --out lens.gds
+
+# Let the etch depth be chosen automatically: sweep pillar height for the best
+# phase coverage at the highest transmittance (still a single etch), no guessing
+celeris design --focal 50 --diameter 20 --pillar-csv data/TiO2_Siefke.csv \
+               --substrate sio2 --auto-height --out lens.gds
 
 # Write a full deliverable bundle (metrics .txt + PSF & caustic PGM + GDS)
 celeris design --focal 50 --diameter 40 --report mylens

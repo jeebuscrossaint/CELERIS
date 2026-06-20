@@ -26,7 +26,16 @@ struct UnitCellLibrary {
     std::vector<double> amplitude;  // |t| of the zeroth order
 
     // Phase coverage actually achievable (max - min over the sweep), radians.
+    // NOTE: this is max-min of the wrapped phases; it is only meaningful when the
+    // phase-vs-fill curve does not wrap across +/-pi. For the honest "can I hit
+    // any target phase" measure use coverage() below.
     double phase_span() const;
+    // Effective phase coverage on the circle = 2*pi minus the largest angular gap
+    // between consecutive available phases (radians). This is the metric that
+    // governs design fidelity: a small largest-gap means any target phase has a
+    // near match, regardless of where the wrapped phases sit. Equals the span for
+    // a monotonic non-wrapping sweep, but stays correct when the phase wraps.
+    double coverage() const;
     // Index of the library entry whose phase best matches target (circularly).
     int lookup(double target_phase_rad) const;
     // Like lookup, but trades off phase error against transmission: minimizes
@@ -55,6 +64,46 @@ UnitCellLibrary build_unit_cell_library_stack(Rcwa2DStack stack, int active_laye
                                               const Material& substrate,
                                               double wavelength_um, double fill_min,
                                               double fill_max, int n_samples, int M);
+
+// One height tried by the full-2pi sweep: its achievable phase coverage and the
+// mean power transmittance (mean |t|^2) over the fill sweep at that height.
+struct HeightSweepEntry {
+    double thickness_um;
+    double coverage_deg;        // effective circular coverage (360 - largest gap)
+    double mean_transmittance;  // mean |t|^2 across the fill sweep
+};
+
+// Result of searching pillar height for full-2pi phase coverage. Selection rule:
+// among heights whose effective coverage clears `coverage_target_deg` (so any
+// target phase has a near match), pick the HIGHEST transmittance -- that is the
+// lever that lifts the transmission-weighted Strehl. If no height clears the
+// target, the one with the largest coverage is returned.
+struct HeightOptResult {
+    double best_thickness_um;
+    double coverage_deg;
+    double mean_transmittance;
+    bool reached_target;        // did the winner clear coverage_target_deg?
+    double coverage_target_deg;
+    std::vector<HeightSweepEntry> sweep;  // every height tried (for reporting)
+    UnitCellLibrary best_library;         // ready to feed design_metalens
+};
+
+// Full-2pi library builder. A single-height fill sweep can cap phase coverage
+// short of 2pi (or hit it only at a low-transmittance height), which limits the
+// transmission-weighted Strehl. Sweep the pillar HEIGHT over [thick_lo,thick_hi]
+// (one fill-library per height, single-etch so still fabricable), measure each
+// height's effective coverage and mean transmittance, and pick the height that
+// clears the coverage target with the highest transmittance. Returns the full
+// table plus the winning library, ready for design_metalens.
+HeightOptResult optimize_height_for_2pi(const Material& pillar,
+                                        const Material& background,
+                                        const Material& incident,
+                                        const Material& substrate,
+                                        double period_um, double wavelength_um,
+                                        double thick_lo, double thick_hi,
+                                        int n_heights, double fill_min,
+                                        double fill_max, int fill_samples, int M,
+                                        double coverage_target_deg = 330.0);
 
 struct MetalensDesign {
     int n_cells;             // cells across the (square) aperture
