@@ -128,26 +128,31 @@ if(_cel_cuda)
     # Far-field propagation KERNEL -- the real GPU win (600-700x). We COMPILE it by
     # invoking nvcc DIRECTLY (a custom command), NOT via enable_language(CUDA):
     # that avoids enable_language's hard configure error and the MSBuild "CUDA
-    # <ver>.targets" integration at build time. But we still GATE on the soft
-    # check_language(CUDA) probe -- it cleanly reports whether this environment can
-    # build CUDA at all and sets CMAKE_CUDA_COMPILER (or NOTFOUND) WITHOUT erroring.
-    # On a setup where CUDA-under-this-generator is broken (e.g. a `vcpkg integrate`
-    # user-wide MSBuild import that poisons the probe, or a CUDA-vs-MSVC version
-    # clash) the probe soft-fails and we degrade gracefully to CPU + the Ninja path
-    # (scripts/build-cuda.bat) instead of hard-failing the build. The kernel is one
-    # self-contained TU (no -rdc) and links the STATIC CUDA runtime (cudart_static),
-    # so the GPU build adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
-    # Help the probe FIND nvcc: it searches PATH / $CUDACXX, and nvcc usually
-    # isn't on PATH even when the toolkit is installed (we found it via CUDA_PATH).
-    # Pointing $CUDACXX at it lets check_language run + VALIDATE -- still soft, so a
-    # broken env soft-fails to NOTFOUND instead of hard-erroring the configure.
+    # <ver>.targets" integration at build time. The kernel is one self-contained TU
+    # (no -rdc) and links the STATIC CUDA runtime (cudart_static), so the GPU build
+    # adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
+    #
+    # GATE: we DELIBERATELY do NOT use check_language(CUDA). Under the VS generator
+    # that GENERATES AND BUILDS a throwaway CUDA probe project (CheckCUDA.sln /
+    # CompilerIdCUDA.vcxproj) -- and on this setup building that probe pops a Windows
+    # "How do you want to open this .vcxproj?" shell-association dialog on every
+    # (re)configure (ZERO_CHECK reruns configure at build time, so it recurs per
+    # build -- annoying enough to burn into an OLED), and the probe is also flaky
+    # (intermittent NOTFOUND -> silent CPU fallback). Instead, probe nvcc the cheap,
+    # deterministic, GUI-free way: run `nvcc --version`. It confirms the compiler is
+    # invokable WITHOUT building any project. nvcc --version needs no host-compiler
+    # env, so it never false-negatives on a bare (no-vcvars) shell; the kernel TU is
+    # compiled at BUILD time by the custom command below, inside MSBuild's VC env.
     find_program(CELERIS_NVCC NAMES nvcc HINTS "${CELERIS_CUDA_DIR}/bin")
-    if(CELERIS_NVCC AND NOT DEFINED ENV{CUDACXX} AND NOT CMAKE_CUDA_COMPILER)
-        set(ENV{CUDACXX} "${CELERIS_NVCC}")
+    set(_cel_nvcc_ok OFF)
+    if(CELERIS_NVCC)
+        execute_process(COMMAND "${CELERIS_NVCC}" --version
+                        RESULT_VARIABLE _cel_nvcc_rc OUTPUT_QUIET ERROR_QUIET)
+        if(_cel_nvcc_rc EQUAL 0)
+            set(_cel_nvcc_ok ON)
+        endif()
     endif()
-    include(CheckLanguage)
-    check_language(CUDA)
-    if(CMAKE_CUDA_COMPILER AND CELERIS_NVCC)
+    if(_cel_nvcc_ok)
         get_filename_component(_cel_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(_cel_kobj "${CMAKE_BINARY_DIR}/celeris_propagate_cuda${CMAKE_CXX_OUTPUT_EXTENSION}")
         add_custom_command(
