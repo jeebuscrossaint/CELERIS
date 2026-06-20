@@ -129,12 +129,15 @@ if(_cel_cuda)
     # built as a separate CUDA static lib (so it keeps C++17, not the project's
     # C++23 which nvcc rejects) with the STATIC CUDA runtime, so it adds NO dynamic
     # CUDA DLL dependency -- GPU propagation runs with nothing on PATH.
-    # Hand CMake the detected nvcc explicitly so the probe doesn't depend on nvcc
-    # being on PATH in this particular shell (the #1 reason `cmake -B build` quietly
-    # fell back to CPU even though the toolkit was right here).
-    if(NOT CMAKE_CUDA_COMPILER AND EXISTS "${CELERIS_CUDA_DIR}/bin/nvcc.exe")
-        set(CMAKE_CUDA_COMPILER "${CELERIS_CUDA_DIR}/bin/nvcc.exe")
-    endif()
+    # check_language(CUDA) is a SOFT probe: it tries to find/verify a CUDA compiler
+    # and sets CMAKE_CUDA_COMPILER to NOTFOUND on failure (no hard error). We must
+    # gate enable_language() on it -- enable_language() HARD-ERRORS the whole
+    # configure if the compiler-id test fails, and under the Visual Studio generator
+    # that test is fragile (CUDA-vs-MSVC version support, an active vcpkg toolchain
+    # injecting includes, the Debug device-build probe...). When it can't, we fall
+    # back to CPU + the Ninja path (scripts/build-cuda.bat), which drives nvcc
+    # directly and reliably. Do NOT force CMAKE_CUDA_COMPILER here: that bypasses the
+    # soft probe and turns a non-fatal "no CUDA" into a fatal configure error.
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
