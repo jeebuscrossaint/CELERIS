@@ -125,39 +125,46 @@ if(_cel_cuda)
         CACHE PATH "CUDA toolkit directory (contains include/ and lib/x64/)" FORCE)
     target_include_directories(celeris_core PRIVATE "${CELERIS_CUDA_DIR}/include")
 
-    # Far-field propagation KERNEL -- the real GPU win (600-700x). Needs nvcc;
-    # built as a separate CUDA static lib (so it keeps C++17, not the project's
-    # C++23 which nvcc rejects) with the STATIC CUDA runtime, so it adds NO dynamic
-    # CUDA DLL dependency -- GPU propagation runs with nothing on PATH.
-    # check_language(CUDA) is a SOFT probe: it tries to find/verify a CUDA compiler
-    # and sets CMAKE_CUDA_COMPILER to NOTFOUND on failure (no hard error). We must
-    # gate enable_language() on it -- enable_language() HARD-ERRORS the whole
-    # configure if the compiler-id test fails, and under the Visual Studio generator
-    # that test is fragile (CUDA-vs-MSVC version support, an active vcpkg toolchain
-    # injecting includes, the Debug device-build probe...). When it can't, we fall
-    # back to CPU + the Ninja path (scripts/build-cuda.bat), which drives nvcc
-    # directly and reliably. Do NOT force CMAKE_CUDA_COMPILER here: that bypasses the
-    # soft probe and turns a non-fatal "no CUDA" into a fatal configure error.
-    include(CheckLanguage)
-    check_language(CUDA)
-    if(CMAKE_CUDA_COMPILER)
-        enable_language(CUDA)
-        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-            set(CMAKE_CUDA_ARCHITECTURES 75 86 89)  # Turing/Ampere/Ada
-        endif()
-        add_library(celeris_cuda STATIC src/celeris/cuda/propagate.cu)
-        target_include_directories(celeris_cuda PRIVATE src "${CELERIS_CUDA_DIR}/include")
-        set_target_properties(celeris_cuda PROPERTIES
-            CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
-            CUDA_RUNTIME_LIBRARY Static
-            CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
-        target_link_libraries(celeris_core PUBLIC celeris_cuda)
+    # Far-field propagation KERNEL -- the real GPU win (600-700x). We compile it
+    # by invoking nvcc DIRECTLY (a custom command) rather than via CMake's CUDA
+    # language / enable_language(). That deliberately sidesteps the whole fragile
+    # Visual-Studio-generator CUDA path: no compiler-id probe that hard-errors the
+    # configure, no MSBuild "CUDA <ver>.targets" integration, and no `vcpkg
+    # integrate` user-wide MSBuild import leaking vcpkg includes into the build.
+    # nvcc just uses the MSVC cl the generator already found (-ccbin), so this works
+    # the same under the VS generator, Ninja, or Makefiles -- one `cmake -B build`.
+    # The kernel is one self-contained TU (no -rdc), so no separate device link is
+    # needed; the CUDA runtime is linked STATICALLY (cudart_static.lib) so the GPU
+    # build adds ZERO CUDA DLLs -- nothing to bundle, nothing on PATH.
+    find_program(CELERIS_NVCC NAMES nvcc HINTS "${CELERIS_CUDA_DIR}/bin")
+    if(CELERIS_NVCC)
+        get_filename_component(_cel_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        set(_cel_kobj "${CMAKE_BINARY_DIR}/celeris_propagate_cuda${CMAKE_CXX_OUTPUT_EXTENSION}")
+        add_custom_command(
+            OUTPUT "${_cel_kobj}"
+            COMMAND "${CELERIS_NVCC}" -c
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/celeris/cuda/propagate.cu"
+                    -o "${_cel_kobj}" -std=c++17 -O3 --cudart static --use-local-env
+                    -allow-unsupported-compiler  # tolerate a cl newer than the toolkit
+                    -ccbin "${_cel_cl_dir}"
+                    -gencode=arch=compute_75,code=sm_75
+                    -gencode=arch=compute_86,code=sm_86
+                    -gencode=arch=compute_89,code=sm_89
+                    -I "${CMAKE_CURRENT_SOURCE_DIR}/src" -I "${CELERIS_CUDA_DIR}/include"
+                    -Xcompiler=/MD,/EHsc,/O2,/DNDEBUG
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/celeris/cuda/propagate.cu"
+            COMMENT "Compiling CUDA far-field kernel via nvcc (generator-agnostic)"
+            VERBATIM)
+        set_source_files_properties("${_cel_kobj}" PROPERTIES
+            EXTERNAL_OBJECT TRUE GENERATED TRUE)
+        target_sources(celeris_core PRIVATE "${_cel_kobj}")
+        target_link_libraries(celeris_core PUBLIC "${CELERIS_CUDA_DIR}/lib/x64/cudart_static.lib")
         target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA_KERNELS)
-        string(APPEND CELERIS_SUMMARY "  GPU backend   : CUDA far-field kernel (nvcc OK)\n")
+        string(APPEND CELERIS_SUMMARY
+            "  GPU backend   : CUDA far-field kernel (direct nvcc, static cudart, any generator)\n")
     else()
         string(APPEND CELERIS_SUMMARY
-            "  GPU backend   : CUDA found, but nvcc not drivable by this generator --\n"
-            "                  use scripts/build-cuda.bat (Ninja) for the GPU kernel\n")
+            "  GPU backend   : CUDA toolkit found but no nvcc -- CPU propagation\n")
     endif()
 
     # cuSOLVER GPU eigensolve: OPT-IN (default OFF). It is a recorded DEAD END (no
