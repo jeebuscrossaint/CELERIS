@@ -17,6 +17,10 @@ echo [2/3] build (celeris + celeris_gui, Release)...
 "%CMAKE%" --build build-msvc --config Release --target celeris celeris_gui || (echo   BUILD FAILED & exit /b 1)
 
 echo [3/3] physics selftest...
+REM MKL/CUDA builds need their DLLs on PATH; CMake writes the dirs here.
+set "RTPATH="
+if exist "build-msvc\runtime_path.txt" set /p RTPATH=<"build-msvc\runtime_path.txt"
+if defined RTPATH set "PATH=%RTPATH%;%PATH%"
 echo ----------------------------------------------------------------------
 build-msvc\Release\celeris.exe selftest
 echo ----------------------------------------------------------------------
