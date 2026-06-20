@@ -81,8 +81,8 @@ covers every machine instead of one per backend. It prints a summary like:
   Vectorization : AVX2/FMA
   GPU backend   : CUDA cuSOLVER + far-field kernel (nvcc OK)
   Eigensolve+BLAS: Intel MKL (multithreaded)
-                  at runtime add to PATH: .../Library/bin
-  Desktop GUI   : off (enable with -DCELERIS_BUILD_GUI=ON)
+  Desktop GUI   : ON (celeris_gui)
+  Runtime DLLs  : bundled next to the exe (runs with no PATH setup)
 =============================================================
 ```
 
@@ -91,7 +91,7 @@ What it detects, and the graceful fallback when a piece is missing:
 | Capability | Detected from | If absent |
 |---|---|---|
 | **AVX2/FMA** | on by default (`-DCELERIS_AVX2=OFF` for pre-2013 CPUs) | SSE2 baseline |
-| **CUDA** GPU (far-field kernel, 600–700×) | `CUDA_PATH`/`CUDA_HOME`/scoop toolkit + `nvcc` | CPU propagation |
+| **CUDA** GPU (far-field kernel, 600–700×; static runtime, no DLLs) | `CUDA_PATH`/`CUDA_HOME`/scoop toolkit + `nvcc` | CPU propagation |
 | **Intel MKL** (multithreaded BLAS + eigensolve) | `$MKLROOT`, conda, oneAPI, or a `pip install mkl-devel` prefix | header-only Eigen (AVX2) |
 
 Override any of these explicitly: `-DCELERIS_USE_CUDA=ON|OFF|AUTO`,
@@ -103,9 +103,14 @@ turn it off for CLI-only / headless / CI builds with `-DCELERIS_BUILD_GUI=OFF`.
 **Speed**, in order: AVX2 (free, default) is ~2.7× over the SSE2 baseline; adding
 MKL reaches up to ~11× at high harmonic counts. The hot path is dense complex
 linear algebra (operator assembly + S-matrix recursion), *not* the eigensolve.
-MKL needs `mkl_rt` on `PATH` at runtime (the summary prints the directory), so it
-trades the single-self-contained-binary property — hence the dependency-free AVX2
-build is the fallback.
+
+**Deployment**: when MKL is used, the build bundles its runtime DLLs (~470 MB)
+next to the executables, so the build folder is self-contained — `celeris.exe`
+and `celeris_gui.exe` run with no PATH setup and no launcher (Windows resolves
+DLLs from the exe's own directory). Ship the `Release/` folder as one unit. The
+GPU far-field kernel links the **static** CUDA runtime, so it needs no CUDA DLLs.
+(The cuSOLVER GPU eigensolve is a separate opt-in, `-DCELERIS_USE_CUDA_EIGENSOLVE=ON`
+— it's a measured dead-end and would drag in ~630 MB of cuSOLVER/cuBLAS DLLs.)
 
 ### Notes per toolchain
 - **MinGW/GCC**: `cmake -B build -G "Unix Makefiles" -DCMAKE_CXX_COMPILER=g++`;

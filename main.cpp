@@ -7,17 +7,21 @@
 #include <string>
 #include <vector>
 
-#ifdef CELERIS_USE_CUDA
+// Either GPU path (cuSOLVER eigensolve = CELERIS_USE_CUDA, or the far-field
+// kernel = CELERIS_USE_CUDA_KERNELS) needs these; the headers are independent so
+// the kernel can build without the (dead-end, opt-in) cuSOLVER eigensolve.
+#if defined(CELERIS_USE_CUDA) || defined(CELERIS_USE_CUDA_KERNELS)
 #include <Eigen/Dense>
 #include <algorithm>
 #include <future>
 #include <random>
 #include <thread>
-
+#endif
+#ifdef CELERIS_USE_CUDA
 #include "celeris/cuda/eigensolve.hpp"
+#endif
 #ifdef CELERIS_USE_CUDA_KERNELS
 #include "celeris/cuda/propagate.hpp"
-#endif
 #endif
 
 #include "celeris/analysis/chromatic.hpp"
@@ -1209,7 +1213,11 @@ static int run_psfbench(int argc, char** argv) {
         else if (a == "--focal") focal = nd();
         else if (a == "--grid") grid = ni();
     }
+    // cuda::available() lives in the (opt-in) cuSOLVER header; without it the
+    // propagation kernel just falls back to CPU internally if there's no device.
+#ifdef CELERIS_USE_CUDA
     if (!cuda::available()) { std::println("psfbench: no CUDA device available"); return 1; }
+#endif
 
     std::println("PSF propagation benchmark (building lens...)");
     auto pillar = Material::constant(cdouble{2.40, 0.0}, "TiO2~");

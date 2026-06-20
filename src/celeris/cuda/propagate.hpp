@@ -15,6 +15,11 @@
 
 namespace celeris::cuda {
 
+// GPU presence / identity (cudart only, no cuSOLVER). Defined here in the kernel
+// TU so the kernel build has them without the opt-in cuSOLVER eigensolve unit.
+bool available();
+const char* device_name();
+
 // Fill `out` (n*n doubles, row-major) with |E|^2 on an n x n focal-plane grid
 // spanning [cx-W, cx+W] x [cy-W, cy+W] at axial distance z, summing over `npil`
 // pillars (px,py in microns, pt complex transmission). Returns false if no CUDA

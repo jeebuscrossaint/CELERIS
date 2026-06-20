@@ -11,6 +11,25 @@
 
 namespace celeris::cuda {
 
+// GPU presence / identity. Live here (compiled by nvcc, static CUDA runtime) so
+// the kernel build provides them with NO dynamic cudart DLL dependency. The
+// opt-in cuSOLVER unit (eigensolve.cpp) defines them only when this kernel TU is
+// absent (#ifndef CELERIS_USE_CUDA_KERNELS there), so there's never a clash.
+bool available() {
+    int count = 0;
+    return cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
+}
+
+const char* device_name() {
+    static char name[256] = {0};
+    int count = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) return "";
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, 0) != cudaSuccess) return "";
+    for (int i = 0; i < 255 && prop.name[i]; ++i) name[i] = prop.name[i];
+    return name;
+}
+
 namespace {
 constexpr int kBlock = 256;  // threads per block == shared-memory tile size
 

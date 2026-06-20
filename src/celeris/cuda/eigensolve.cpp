@@ -17,6 +17,10 @@
 
 namespace celeris::cuda {
 
+// available()/device_name() are provided by the kernel TU (propagate.cu) when it
+// is built. Define them here only for the cuSOLVER-without-kernel configuration,
+// so the two TUs never both define them.
+#ifndef CELERIS_USE_CUDA_KERNELS
 bool available() {
     int count = 0;
     return cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
@@ -31,6 +35,7 @@ const char* device_name() {
     std::strncpy(name, prop.name, sizeof(name) - 1);
     return name;
 }
+#endif
 
 // General complex eigendecomposition via cuSOLVER Xgeev (right eigenvectors).
 // std::complex<double> and cuDoubleComplex are layout-compatible (two doubles).

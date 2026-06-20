@@ -42,7 +42,7 @@
 #include "celeris/io/material_csv.hpp"
 #include "celeris/materials/database.hpp"
 #ifdef CELERIS_USE_CUDA_KERNELS
-#include "celeris/cuda/eigensolve.hpp"
+#include "celeris/cuda/propagate.hpp"  // cuda::available / device_name (+ kernel)
 #endif
 
 using namespace celeris;

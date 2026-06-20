@@ -24,8 +24,8 @@ set(CELERIS_USE_CUDA AUTO CACHE STRING "GPU backend: AUTO, ON, or OFF")
 set(CELERIS_USE_MKL  AUTO CACHE STRING "Intel MKL backend: AUTO, ON, or OFF")
 set_property(CACHE CELERIS_USE_CUDA PROPERTY STRINGS AUTO ON OFF)
 set_property(CACHE CELERIS_USE_MKL  PROPERTY STRINGS AUTO ON OFF)
-set(CELERIS_SUMMARY "")       # appended to as features resolve; printed at the end
-set(CELERIS_RUNTIME_DIRS "")  # dirs that must be on PATH at runtime (MKL/CUDA DLLs)
+set(CELERIS_SUMMARY "")  # appended to as features resolve; printed at the end
+set(CELERIS_DLLS "")     # MKL/CUDA runtime DLLs to bundle next to the exe
 
 # Vectorization: MSVC defaults to the SSE2 x64 baseline, which leaves Eigen's
 # dense complex matmuls (the real RCWA hot path -- operator assembly + S-matrix
@@ -123,21 +123,12 @@ endif()
 if(_cel_cuda)
     set(CELERIS_CUDA_DIR "${_cel_cuda_dir}"
         CACHE PATH "CUDA toolkit directory (contains include/ and lib/x64/)" FORCE)
-    list(APPEND CELERIS_RUNTIME_DIRS "${CELERIS_CUDA_DIR}/bin")  # cudart/cusolver DLLs
-    # The GPU eigensolve is pure HOST code (cuSOLVER host API), so we compile it
-    # with the normal C++ compiler and just link the CUDA import libs. No nvcc,
-    # no CUDA language, no CCCL headers (which scoop's CUDA package omits), and
-    # it builds with the plain Visual Studio generator.
-    target_sources(celeris_core PRIVATE src/celeris/cuda/eigensolve.cpp)
-    target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA)
     target_include_directories(celeris_core PRIVATE "${CELERIS_CUDA_DIR}/include")
-    target_link_libraries(celeris_core PUBLIC
-        "${CELERIS_CUDA_DIR}/lib/x64/cusolver.lib"
-        "${CELERIS_CUDA_DIR}/lib/x64/cudart.lib")
 
-    # Device kernels (the far-field propagation) need nvcc. Build them in a
-    # SEPARATE CUDA-only static library so they don't inherit the project's
-    # C++23 dialect (nvcc would reject "CUDA23"); the kernel only needs C++17.
+    # Far-field propagation KERNEL -- the real GPU win (600-700x). Needs nvcc;
+    # built as a separate CUDA static lib (so it keeps C++17, not the project's
+    # C++23 which nvcc rejects) with the STATIC CUDA runtime, so it adds NO dynamic
+    # CUDA DLL dependency -- GPU propagation runs with nothing on PATH.
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
@@ -149,15 +140,34 @@ if(_cel_cuda)
         target_include_directories(celeris_cuda PRIVATE src "${CELERIS_CUDA_DIR}/include")
         set_target_properties(celeris_cuda PROPERTIES
             CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+            CUDA_RUNTIME_LIBRARY Static
             CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
         target_link_libraries(celeris_core PUBLIC celeris_cuda)
         target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA_KERNELS)
-        string(APPEND CELERIS_SUMMARY
-            "  GPU backend   : CUDA cuSOLVER + far-field kernel (nvcc OK)\n")
+        string(APPEND CELERIS_SUMMARY "  GPU backend   : CUDA far-field kernel (nvcc OK)\n")
     else()
         string(APPEND CELERIS_SUMMARY
-            "  GPU backend   : CUDA cuSOLVER only -- kernel needs nvcc; this\n"
-            "                  generator can't drive it, use scripts/build-cuda.bat (Ninja)\n")
+            "  GPU backend   : CUDA found, but nvcc not drivable by this generator --\n"
+            "                  use scripts/build-cuda.bat (Ninja) for the GPU kernel\n")
+    endif()
+
+    # cuSOLVER GPU eigensolve: OPT-IN (default OFF). It is a recorded DEAD END (no
+    # faster than the CPU path) and it drags in cusolver + cublasLt as a load-time
+    # dependency (~630 MB of DLLs). Only the `gpubench` command uses it.
+    option(CELERIS_USE_CUDA_EIGENSOLVE "Build the (dead-end) cuSOLVER GPU eigensolve + gpubench" OFF)
+    if(CELERIS_USE_CUDA_EIGENSOLVE)
+        target_sources(celeris_core PRIVATE src/celeris/cuda/eigensolve.cpp)
+        target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA)
+        target_link_libraries(celeris_core PUBLIC
+            "${CELERIS_CUDA_DIR}/lib/x64/cusolver.lib"
+            "${CELERIS_CUDA_DIR}/lib/x64/cudart.lib")
+        file(GLOB _cuda_dll
+            "${CELERIS_CUDA_DIR}/bin/x64/cudart64*.dll"
+            "${CELERIS_CUDA_DIR}/bin/x64/cusolver64*.dll"
+            "${CELERIS_CUDA_DIR}/bin/x64/cublas64*.dll"
+            "${CELERIS_CUDA_DIR}/bin/x64/cublasLt64*.dll")
+        list(APPEND CELERIS_DLLS ${_cuda_dll})
+        string(APPEND CELERIS_SUMMARY "  GPU eigensolve: cuSOLVER (opt-in; bundles ~630 MB of DLLs)\n")
     endif()
 endif()
 # ---------------------------------------------------------------------------
@@ -244,7 +254,21 @@ if(_cel_mkl)
     get_filename_component(_mkl_libdir "${MKL_RT}" DIRECTORY)
     get_filename_component(_mkl_root "${_mkl_libdir}" DIRECTORY)
     set(CELERIS_MKL_BINDIR "${_mkl_root}/bin")
-    list(APPEND CELERIS_RUNTIME_DIRS "${CELERIS_MKL_BINDIR}")  # mkl_rt + kernels
+    # Bundle the MKL runtime next to the exe (no PATH at runtime). mkl_rt loads,
+    # at runtime, core + the threading layer (intel_thread + libiomp5) + the ISA
+    # kernels it dispatches to: both the BLAS/LAPACK kernels (mkl_avx2/avx512/def)
+    # AND the vector-math kernels (mkl_vml_*). Miss the vml ones and mkl_rt aborts
+    # with "cannot load mkl_vml_avx2.dll". Glob the families so it's version-proof.
+    file(GLOB _mkl_dll
+        "${CELERIS_MKL_BINDIR}/mkl_rt.*.dll"
+        "${CELERIS_MKL_BINDIR}/mkl_core.*.dll"
+        "${CELERIS_MKL_BINDIR}/mkl_intel_thread.*.dll"
+        "${CELERIS_MKL_BINDIR}/mkl_def.*.dll"
+        "${CELERIS_MKL_BINDIR}/mkl_avx*.dll"       # avx2 / avx512 BLAS kernels
+        "${CELERIS_MKL_BINDIR}/mkl_vml_*.dll"      # vector-math kernels (all ISAs)
+        "${CELERIS_MKL_BINDIR}/mkl_mc*.dll"        # pre-AVX fallback kernels
+        "${CELERIS_MKL_BINDIR}/libiomp5md.dll")
+    list(APPEND CELERIS_DLLS ${_mkl_dll})
     string(APPEND CELERIS_SUMMARY "  Eigensolve+BLAS: Intel MKL (multithreaded)\n")
 elseif(CELERIS_USE_OPENBLAS)
     string(APPEND CELERIS_SUMMARY "  Eigensolve+BLAS: external LAPACK (CELERIS_USE_OPENBLAS)\n")
@@ -326,27 +350,21 @@ else()
     string(APPEND CELERIS_SUMMARY "  Desktop GUI   : off (enable with -DCELERIS_BUILD_GUI=ON)\n")
 endif()
 
-# --- Runtime DLL path (MKL / CUDA) ------------------------------------------
-# MKL and CUDA link to DLLs that must be on PATH at runtime. Rather than copy
-# ~300 MB of MKL DLLs into every build dir, emit (a) runtime_path.txt -- the
-# semicolon-joined dirs, read by scripts/check.bat -- and (b) a celeris-run.bat
-# launcher that prepends them to PATH and forwards to celeris.exe, so the exe
-# "just works" without the user managing PATH.
-if(CELERIS_RUNTIME_DIRS)
-    list(REMOVE_DUPLICATES CELERIS_RUNTIME_DIRS)
-    set(_rt_join "${CELERIS_RUNTIME_DIRS}")  # quoted list -> "dir1;dir2"
-    file(WRITE "${CMAKE_BINARY_DIR}/runtime_path.txt" "${_rt_join}")
-    if(WIN32)
-        string(REPLACE "/" "\\" _rt_win "${_rt_join}")
-        file(WRITE "${CMAKE_BINARY_DIR}/celeris-run.bat"
-            "@echo off\r\n"
-            "set \"PATH=${_rt_win};%PATH%\"\r\n"
-            "set \"EXE=%~dp0Release\\celeris.exe\"\r\n"
-            "if not exist \"%EXE%\" set \"EXE=%~dp0celeris.exe\"\r\n"
-            "\"%EXE%\" %*\r\n")
-    endif()
+# --- Bundle runtime DLLs next to the exe ------------------------------------
+# MKL/CUDA link to DLLs that must be found at load time. Windows searches the
+# executable's OWN directory before PATH, so copying them next to celeris.exe /
+# celeris_gui.exe makes the build self-contained -- no PATH, no launcher script,
+# no per-lab setup. This is the deployment model: ship the exe + its DLLs as one
+# folder. (Both exes share a directory, so a single copy onto celeris's dir
+# serves both.) copy_if_different => only re-copies when a DLL actually changes.
+if(CELERIS_DLLS AND WIN32)
+    list(REMOVE_DUPLICATES CELERIS_DLLS)
+    add_custom_command(TARGET celeris POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CELERIS_DLLS} "$<TARGET_FILE_DIR:celeris>"
+        COMMAND_EXPAND_LISTS VERBATIM
+        COMMENT "Bundling MKL/CUDA runtime DLLs next to the executables")
     string(APPEND CELERIS_SUMMARY
-        "  Runtime PATH  : auto via celeris-run.bat (or `call`-set from runtime_path.txt)\n")
+        "  Runtime DLLs  : bundled next to the exe (runs with no PATH setup)\n")
 endif()
 # ---------------------------------------------------------------------------
 
