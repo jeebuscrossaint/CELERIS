@@ -21,7 +21,11 @@
 #include "celeris/rcwa/rcwa1d.hpp"
 #include "celeris/rcwa/rcwa2d.hpp"
 #include "celeris/design/metalens.hpp"
+#include "celeris/design/phase_profile.hpp"
+#include "celeris/design/pb_metalens.hpp"
 #include "celeris/analysis/focal.hpp"
+
+#include <stdexcept>
 
 namespace py = pybind11;
 using namespace celeris;
@@ -32,6 +36,17 @@ static py::array_t<double> to_2d_array(const std::vector<double>& v, int n_rows,
     py::array_t<double> a({n_rows, n_cols});
     std::copy(v.begin(), v.end(), a.mutable_data());
     return a;
+}
+
+// Flatten a square 2D numpy array (row-major) into a vector<double>, returning the
+// side length n. Used to load a freeform phase map from numpy.
+static std::vector<double> from_square_2d(const py::array_t<double>& arr, int& n) {
+    auto buf = py::array_t<double, py::array::c_style | py::array::forcecast>(arr);
+    if (buf.ndim() != 2 || buf.shape(0) != buf.shape(1))
+        throw std::runtime_error("freeform phase map must be a square 2D array");
+    n = static_cast<int>(buf.shape(0));
+    const double* p = buf.data();
+    return std::vector<double>(p, p + static_cast<size_t>(n) * n);
 }
 
 PYBIND11_MODULE(_celeris, m) {
@@ -48,6 +63,15 @@ PYBIND11_MODULE(_celeris, m) {
         .value("Ellipse", MetaShape::Ellipse)
         .value("Cross", MetaShape::Cross)
         .value("Ring", MetaShape::Ring);
+
+    py::enum_<PhaseProfileKind>(m, "PhaseProfileKind",
+        "Target wavefront phi(x,y) a metasurface imprints.")
+        .value("Focusing", PhaseProfileKind::Focusing, "hyperbolic lens -> focal spot")
+        .value("Vortex", PhaseProfileKind::Vortex, "OAM plate -> donut / OAM beam")
+        .value("Deflector", PhaseProfileKind::Deflector, "blazed grating -> tilted beam")
+        .value("Axicon", PhaseProfileKind::Axicon, "conical phase -> Bessel / line focus")
+        .value("Freeform", PhaseProfileKind::Freeform,
+               "arbitrary loaded phi(x,y) map (hologram / CGH), bilinearly sampled");
 
     // ---- Material ----------------------------------------------------------
     py::class_<Material>(m, "Material",
@@ -262,11 +286,107 @@ PYBIND11_MODULE(_celeris, m) {
             },
             "n_cells x n_cells numpy array of pillar fills (row-major).");
 
-    m.def("design_metalens", &design_metalens, py::arg("lib"),
-          py::arg("focal_length_um"), py::arg("diameter_um"),
+    m.def("design_metalens",
+          py::overload_cast<const UnitCellLibrary&, double, double, double>(
+              &design_metalens),
+          py::arg("lib"), py::arg("focal_length_um"), py::arg("diameter_um"),
           py::arg("amplitude_weight") = 0.25,
           "Design a hyperbolic focusing metalens from a library: at each lattice "
           "site pick the pillar whose phase best matches the ideal profile.");
+
+    // ---- phase profiles (shared by both design paths) ----------------------
+    py::class_<PhaseProfile>(m, "PhaseProfile",
+        "Target phase profile phi(x,y) a metasurface imprints. The SAME profile "
+        "drives both the propagation-phase (design_metalens) and geometric-phase "
+        "(design_pb_metalens) paths. Use the static factories or set fields directly.")
+        .def(py::init<>())
+        .def_readwrite("kind", &PhaseProfile::kind)
+        .def_readwrite("focal_length_um", &PhaseProfile::focal_length_um,
+                       "Focusing/Vortex: focal length (<=0 => pure OAM for Vortex).")
+        .def_readwrite("topological_charge", &PhaseProfile::topological_charge,
+                       "Vortex: OAM charge l (winds 2*pi*l around the axis).")
+        .def_readwrite("deflect_deg", &PhaseProfile::deflect_deg,
+                       "Deflector: beam deflection angle from normal.")
+        .def_readwrite("deflect_azimuth_deg", &PhaseProfile::deflect_azimuth_deg,
+                       "Deflector: in-plane direction of the deflection.")
+        .def_readwrite("axicon_deg", &PhaseProfile::axicon_deg,
+                       "Axicon: cone half-angle.")
+        .def_readwrite("freeform_n", &PhaseProfile::freeform_n)
+        .def_readwrite("freeform_extent_um", &PhaseProfile::freeform_extent_um,
+                       "Freeform: full physical width the map spans (centered).")
+        .def_property("freeform_phase",
+            [](const PhaseProfile& p) {
+                return to_2d_array(p.freeform_phase_rad, p.freeform_n, p.freeform_n);
+            },
+            [](PhaseProfile& p, const py::array_t<double>& arr) {
+                int n = 0;
+                p.freeform_phase_rad = from_square_2d(arr, n);
+                p.freeform_n = n;
+            },
+            "Freeform: the n x n target phase grid (radians), as a numpy 2D array.")
+        // -- factories mirroring the CLI --
+        .def_static("focusing",
+            [](double focal_length_um) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Focusing;
+                p.focal_length_um = focal_length_um;
+                return p;
+            }, py::arg("focal_length_um"), "Hyperbolic focusing lens.")
+        .def_static("vortex",
+            [](int charge, double focal_length_um) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Vortex;
+                p.topological_charge = charge;
+                p.focal_length_um = focal_length_um;
+                return p;
+            }, py::arg("charge"), py::arg("focal_length_um") = 0.0,
+            "OAM vortex of charge l (focal_length_um>0 => focused vortex / donut).")
+        .def_static("deflector",
+            [](double deflect_deg, double azimuth_deg) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Deflector;
+                p.deflect_deg = deflect_deg;
+                p.deflect_azimuth_deg = azimuth_deg;
+                return p;
+            }, py::arg("deflect_deg"), py::arg("azimuth_deg") = 0.0,
+            "Blazed-grating beam deflector.")
+        .def_static("axicon",
+            [](double axicon_deg) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Axicon;
+                p.axicon_deg = axicon_deg;
+                return p;
+            }, py::arg("axicon_deg"), "Conical (axicon) phase -> Bessel/line focus.")
+        .def_static("freeform",
+            [](const py::array_t<double>& phase_rad, double extent_um) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Freeform;
+                int n = 0;
+                p.freeform_phase_rad = from_square_2d(phase_rad, n);
+                p.freeform_n = n;
+                p.freeform_extent_um = extent_um;
+                return p;
+            }, py::arg("phase_rad"), py::arg("extent_um"),
+            "Arbitrary loaded phi(x,y) (CGH/hologram) from a square numpy array "
+            "(radians) spanning extent_um in x and y, bilinearly sampled.");
+
+    m.def("phase_profile_value", &phase_profile_value, py::arg("profile"),
+          py::arg("x"), py::arg("y"), py::arg("wavelength_um"),
+          "Target phase phi(x,y) [rad] at a lattice point for the given profile.");
+
+    m.def("load_freeform_phase", &load_freeform_phase, py::arg("path"),
+          py::arg("extent_um"),
+          "Load a freeform phase map from a whitespace text grid (radians, "
+          "perfect-square count -> n x n) spanning extent_um, centered on origin.");
+
+    m.def("design_metalens",
+          py::overload_cast<const UnitCellLibrary&, const PhaseProfile&, double,
+                            double>(&design_metalens),
+          py::arg("lib"), py::arg("profile"), py::arg("diameter_um"),
+          py::arg("amplitude_weight") = 0.25,
+          "Design a metalens for an ARBITRARY phase profile on the propagation-phase "
+          "path: at each site pick the library pillar whose phase best matches "
+          "phi(x,y). Carries a finite residual phase error (discrete library).");
 
     // ---- focal analysis ----------------------------------------------------
     py::class_<FocalAnalysis>(m, "FocalAnalysis", "Standard focal-plane metrics.")
@@ -294,4 +414,85 @@ PYBIND11_MODULE(_celeris, m) {
           py::arg("focal_length_um"), py::arg("wavelength_um"), py::arg("diameter_um"),
           py::arg("n"), py::arg("half_window_um"),
           "Full 2D PSF on an n x n window (GPU kernel when built with CUDA, else CPU).");
+
+    // ---- Pancharatnam-Berry (geometric-phase) path -------------------------
+    py::class_<JonesMatrix>(m, "JonesMatrix",
+        "Zeroth-order 2x2 linear-basis Jones transmission matrix.")
+        .def_readonly("xx", &JonesMatrix::xx)
+        .def_readonly("xy", &JonesMatrix::xy)
+        .def_readonly("yx", &JonesMatrix::yx)
+        .def_readonly("yy", &JonesMatrix::yy);
+
+    m.def("solve_jones", &solve_jones, py::arg("incident"), py::arg("stack"),
+          py::arg("substrate"), py::arg("wavelength_um"), py::arg("M"),
+          "Zeroth-order Jones matrix of a 2D cell at normal incidence (two RCWA solves).");
+
+    py::class_<HwpAtom>(m, "HwpAtom",
+        "The half-wave-plate meta-atom PB optics rotates per site (max spin-flip "
+        "conversion). Ideal HWP: |t_x|=|t_y|=1, retardance=180 deg.")
+        .def_readonly("fill_x", &HwpAtom::fill_x)
+        .def_readonly("fill_y", &HwpAtom::fill_y)
+        .def_readonly("thickness_um", &HwpAtom::thickness_um)
+        .def_readonly("t_x", &HwpAtom::t_x)
+        .def_readonly("t_y", &HwpAtom::t_y)
+        .def_readonly("retardance_deg", &HwpAtom::retardance_deg)
+        .def_readonly("conversion_efficiency", &HwpAtom::conversion_efficiency,
+                      "|t_x - t_y|^2 / 4 (spin-flip, in [0,1])");
+
+    m.def("find_hwp_atom", &find_hwp_atom, py::arg("pillar"), py::arg("background"),
+          py::arg("incident"), py::arg("substrate"), py::arg("period_um"),
+          py::arg("wavelength_um"), py::arg("thickness_um"), py::arg("fill_min"),
+          py::arg("fill_max"), py::arg("n_samples"), py::arg("M"),
+          "Search a (fill_x, fill_y) grid for the best HWP atom (max spin-flip "
+          "conversion efficiency).");
+
+    py::class_<PbVerifyPoint>(m, "PbVerifyPoint",
+        "One RCWA-measured sample of the geometric-phase relation (RCP input).")
+        .def_readonly("rotation_deg", &PbVerifyPoint::rotation_deg)
+        .def_readonly("cross_phase_deg", &PbVerifyPoint::cross_phase_deg,
+                      "phase of the spin-flipped output (tracks -2*theta)")
+        .def_readonly("conversion_eff", &PbVerifyPoint::conversion_eff)
+        .def_readonly("copol_leakage", &PbVerifyPoint::copol_leakage);
+
+    m.def("verify_pb_phase", &verify_pb_phase, py::arg("pillar"),
+          py::arg("background"), py::arg("incident"), py::arg("substrate"),
+          py::arg("period_um"), py::arg("wavelength_um"), py::arg("atom"),
+          py::arg("rotations_rad"), py::arg("M"),
+          "RCWA-verify the PB relation: solve the ROTATED atom at each angle and "
+          "report the spin-flip phase/efficiency (the proof of the 2*theta map).");
+
+    py::class_<PbMetalensDesign>(m, "PbMetalensDesign",
+        "A PB metasurface: one HWP atom rotated per site (geometric phase is exact).")
+        .def_readonly("n_cells", &PbMetalensDesign::n_cells)
+        .def_readonly("period_um", &PbMetalensDesign::period_um)
+        .def_readonly("atom", &PbMetalensDesign::atom)
+        .def_readonly("rms_phase_error_deg", &PbMetalensDesign::rms_phase_error_deg,
+                      "~0: geometric phase is exact")
+        .def_readonly("conversion_efficiency", &PbMetalensDesign::conversion_efficiency,
+                      "spin-flip efficiency (focusing-efficiency cap)")
+        .def_property_readonly("rotation_deg",
+            [](const PbMetalensDesign& d) {
+                std::vector<double> deg(d.rotation_rad.size());
+                for (size_t i = 0; i < d.rotation_rad.size(); ++i)
+                    deg[i] = d.rotation_rad[i] * 180.0 / 3.14159265358979323846;
+                return to_2d_array(deg, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of per-site atom rotation (degrees).");
+
+    m.def("design_pb_metalens",
+          py::overload_cast<const HwpAtom&, double, double, const PhaseProfile&,
+                            double, int>(&design_pb_metalens),
+          py::arg("atom"), py::arg("period_um"), py::arg("wavelength_um"),
+          py::arg("profile"), py::arg("diameter_um"), py::arg("handedness") = 1,
+          "Design a PB metasurface for an ARBITRARY phase profile: a fixed HWP atom "
+          "rotated per site so the cross-circular output carries phi(x,y). "
+          "handedness=+1 for RCP illumination (cross phase = -2*theta), -1 for LCP.");
+
+    m.def("design_pb_metalens",
+          py::overload_cast<const HwpAtom&, double, double, double, double, int>(
+              &design_pb_metalens),
+          py::arg("atom"), py::arg("period_um"), py::arg("wavelength_um"),
+          py::arg("focal_length_um"), py::arg("diameter_um"),
+          py::arg("handedness") = 1,
+          "Convenience overload: a PB focusing lens of the given focal length.");
 }
