@@ -32,15 +32,31 @@
 namespace celeris {
 
 // One meta-atom characterized across a wavelength band: its phase/amplitude at
-// every band sample plus the derived center phase and group delay.
+// every band sample plus the derived center phase and group delay. The full
+// in-plane geometry is carried so a single-etch (shape-diverse) library can
+// report what mix of shapes it spans the (phase, group-delay) plane with.
 struct DispersiveAtom {
-    double fill = 0;
+    double fill = 0;              // representative fill (== fill_x for a square atom)
     double thickness_um = 0;
+    MetaShape shape = MetaShape::Rectangle;
+    double fill_x = 0, fill_y = 0;
+    double shape_param = 0.5;     // Cross: arm width / fill; Ring: inner / outer radius
     double phase0_rad = 0;        // transmission phase at the center wavelength (wrapped)
     double group_delay_fs = 0;    // d(phi)/d(omega) at center, least-squares over the band [fs]
     double mean_amplitude = 0;    // mean |t| over the band (efficiency proxy)
     std::vector<double> phase_rad;   // phi(lambda) at each band sample
     std::vector<double> amplitude;   // |t|(lambda) at each band sample
+};
+
+// One meta-atom geometry to characterize. The dispersive library is just a list
+// of these solved across the band -- a fill x height grid (default), or a single
+// height with varied SHAPES (the single-etch path).
+struct MetaAtomSpec {
+    MetaShape shape = MetaShape::Rectangle;
+    double fill_x = 0.5;
+    double fill_y = 0.5;
+    double thickness_um = 0.6;
+    double shape_param = 0.5;
 };
 
 // A meta-atom library characterized over a wavelength band, ready for the
@@ -68,6 +84,30 @@ DispersiveLibrary build_dispersive_library(
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
     double fill_min, double fill_max, int n_fills, double thick_lo, double thick_hi,
     int n_heights, int M);
+
+// The general builder: characterize an ARBITRARY list of meta-atom geometries
+// across the band. Both the fill x height grid (above) and the single-etch
+// shape-diverse set (below) are thin wrappers over this. `n_fill`/`n_height` on
+// the returned library are informational only here (the grid wrapper sets them).
+DispersiveLibrary build_dispersive_library_from_specs(
+    const Material& pillar, const Material& background, const Material& incident,
+    const Material& substrate, double period_um,
+    const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
+    const std::vector<MetaAtomSpec>& specs, int M);
+
+// Build a SINGLE-ETCH dispersive library: every atom shares one pillar height
+// (`thickness_um`), and the (phase, group-delay) plane is spanned by varying the
+// in-plane SHAPE instead of the depth -- a square + circle fill sweep, plus
+// cross (fill x arm-width) and ring (fill x inner-radius) families. This is the
+// fabricable state of the art: one lithography step / one etch depth, no
+// grayscale. The honest tradeoff vs the fill x height library is a SMALLER group-
+// delay span (taller pillars accumulate more delay), so it is achromatic over a
+// smaller aperture x bandwidth -- reported via AchromaticDesign::gd_coverage.
+DispersiveLibrary build_single_etch_library(
+    const Material& pillar, const Material& background, const Material& incident,
+    const Material& substrate, double period_um,
+    const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
+    double fill_min, double fill_max, int n_fills, double thickness_um, int M);
 
 struct AchromaticDesign {
     int n_cells = 0;

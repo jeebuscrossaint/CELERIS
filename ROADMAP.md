@@ -93,9 +93,20 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       depth); (2) the GD span (hence achromatic band×aperture) is bounded by the library —
       small apertures here have GD coverage »1, but a large aperture needs taller/coupled
       atoms; (3) low-Fresnel focal shift moves the absolute focus below target (both
-      designs equally). REMAINING: single-etch achromatic via coupled/free-form atoms;
-      a published achromatic device reproduction; PB+dispersion (geometric phase is
-      dispersionless) for the modern recipe; expose in Python/GUI.
+      designs equally). **SINGLE-ETCH achromatic — DONE** (`celeris achromatic --single-etch`):
+      the multi-height limitation (1) is the real fab blocker (grayscale lithography), so
+      the fabricable variant spans the (phase, group-delay) plane with **SHAPE variety at
+      ONE height** (square/circle/cross/ring × fill) instead of by depth — new
+      `build_single_etch_library` + `MetaAtomSpec` + a spec-driven `build_dispersive_library_
+      from_specs` (the fill×height builder is now a thin wrapper over it). RESULT (D=10,f=30,
+      20% BW, ONE 1.1µm etch): drift **4.0µm → 1.27µm (3.2× tighter)**, GD RMS 1.88→0.79 fs,
+      mean |t| 0.75 — nearly the multi-height 4.2× but fabricable in a single standard etch
+      (the design leans on cross/ring shapes). HONEST: the etch DEPTH is the key knob — taller
+      pillars accumulate more group delay (h=0.6→1.3×, h=1.1→3.2×); the GD span (hence
+      achromatic aperture×BW) is still smaller than the multi-height grid. selftest **[15b]**
+      locks it (genuinely single-height + GD-RMS reduced; gated on GD RMS not the noisy low-
+      Fresnel drift). REMAINING: a published achromatic device reproduction; PB+dispersion
+      (geometric phase is dispersionless) for the modern recipe; expose in Python/GUI.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in

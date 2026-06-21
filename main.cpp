@@ -474,6 +474,36 @@ static int run_selftest() {
                                                                 : "FAIL");
     }
 
+    // ---- Validation 15b: SINGLE-ETCH achromatic (shape-diverse, one height) --
+    // The fabricable variant: every atom shares ONE etch depth and the (phase,
+    // group-delay) plane is spanned by SHAPE variety (square/circle/cross/ring)
+    // instead of by depth. The robust signal that dispersion engineering works
+    // here (the low-Fresnel focal-drift metric is noisy at this small aperture)
+    // is that adding the group-delay objective REDUCES the group-delay RMS while
+    // every chosen atom keeps the single height -- one lithography step.
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        const double l0 = 0.532, bw = 0.20, D = 6.0, fl = 20.0, h = 0.80;
+        std::vector<double> band = {l0 * (1 - 0.5 * bw), l0, l0 * (1 + 0.5 * bw)};
+        std::println("[15b] Single-etch achromatic (shape-diverse @ one height {:.2f}µm):", h);
+        auto dl = build_single_etch_library(tio2, materials::air(), materials::air(),
+                                            materials::fused_silica(), 0.35, band, l0,
+                                            0.08, 0.92, /*n_fills=*/5, h, /*M=*/5);
+        auto sd = design_achromatic_metalens(dl, fl, D, /*gd_weight=*/0.0);
+        auto ad = design_achromatic_metalens(dl, fl, D, /*gd_weight=*/1.0);
+        std::println("    GD library span = {:.2f} fs ({} atoms, all @ {:.2f}µm); "
+                     "base-phase RMS: standard {:.1f}°, achromatic {:.1f}°",
+                     dl.gd_max_fs - dl.gd_min_fs, static_cast<int>(dl.atoms.size()), h,
+                     sd.rms_phase_error_deg, ad.rms_phase_error_deg);
+        bool single = sd.single_height && ad.single_height;
+        bool gd_better = ad.rms_group_delay_error_fs < sd.rms_group_delay_error_fs;
+        std::println("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
+                     sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
+                     (single && gd_better && ad.rms_phase_error_deg < 25.0)
+                         ? "✓ (GD-matched in ONE etch)"
+                         : "FAIL");
+    }
+
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
     // Instead of looking a pillar up from the discrete library, SOLVE for the
     // geometry hitting a target phase with maximum transmission.
@@ -1378,6 +1408,17 @@ int cmd_achromatic(int argc, char** argv) {
     const double h_hi = std::atof(arg_value(argc, argv, "--height-hi", "1.40"));
     const int n_h = std::atoi(arg_value(argc, argv, "--height-steps", "10"));
 
+    // --single-etch: span the (phase, group-delay) plane with SHAPE variety at ONE
+    // height instead of a fill x height grid -- fabricable in a single etch (no
+    // grayscale lithography). The honest tradeoff is a smaller group-delay span.
+    bool single_etch = false;
+    for (int i = 2; i < argc; ++i)
+        if (std::string(argv[i]) == "--single-etch") single_etch = true;
+    // Single-etch wants a TALLER pillar: group delay accumulates with optical path,
+    // so a higher-aspect atom widens the GD span each shape can supply (h~1.1µm at
+    // Λ=0.35 ~ AR 4, fabricable). 3.2× drift flattening here vs 1.3× at 0.6µm.
+    const double etch_height = std::atof(arg_value(argc, argv, "--height", "1.10"));
+
     const Material& substrate = sub_name == "air"  ? materials::air()
                                 : sub_name == "bk7" ? materials::bk7()
                                                     : materials::fused_silica();
@@ -1396,14 +1437,26 @@ int cmd_achromatic(int argc, char** argv) {
     std::println("CELERIS achromatic (broadband) metalens design");
     std::println("  f={}µm  D={}µm  λ0={}µm  band=[{:.3f},{:.3f}]µm ({:.0f}% BW, {} samples)",
                  focal, diameter, lambda0, lam_lo, lam_hi, frac_bw * 100.0, nb);
-    std::println("  Λ={}µm  n_pillar={}  substrate={}  height grid [{:.2f},{:.2f}]µm × {}",
-                 period, pillar_n, sub_name, h_lo, h_hi, n_h);
-    std::println("  building dispersive library ({} fills × {} heights × {} wavelengths, M={})...",
-                 samples, n_h, nb, M);
 
-    auto dlib = build_dispersive_library(pillar, materials::air(), materials::air(),
+    DispersiveLibrary dlib;
+    if (single_etch) {
+        std::println("  Λ={}µm  n_pillar={}  substrate={}  SINGLE-ETCH (one height "
+                     "{:.2f}µm, shape-diverse)", period, pillar_n, sub_name, etch_height);
+        std::println("  building single-etch dispersive library ({} fills × "
+                     "7 shapes (square+circle+3 cross+2 ring) × {} wavelengths, M={})...",
+                     samples, nb, M);
+        dlib = build_single_etch_library(pillar, materials::air(), materials::air(),
                                          substrate, period, band, lambda0, 0.08, 0.92,
-                                         samples, h_lo, h_hi, n_h, M);
+                                         samples, etch_height, M);
+    } else {
+        std::println("  Λ={}µm  n_pillar={}  substrate={}  height grid [{:.2f},{:.2f}]µm × {}",
+                     period, pillar_n, sub_name, h_lo, h_hi, n_h);
+        std::println("  building dispersive library ({} fills × {} heights × {} wavelengths, M={})...",
+                     samples, n_h, nb, M);
+        dlib = build_dispersive_library(pillar, materials::air(), materials::air(),
+                                        substrate, period, band, lambda0, 0.08, 0.92,
+                                        samples, h_lo, h_hi, n_h, M);
+    }
     std::println("  group-delay range supplied by the library: [{:.2f}, {:.2f}] fs "
                  "(span {:.2f} fs, {} atoms)",
                  dlib.gd_min_fs, dlib.gd_max_fs, dlib.gd_max_fs - dlib.gd_min_fs,
@@ -1434,6 +1487,23 @@ int cmd_achromatic(int argc, char** argv) {
         std::println("  NOTE: the achromatic design uses MULTIPLE pillar heights -> a multi-"
                      "level / grayscale etch (a single GDS layer encodes only the in-plane "
                      "footprints, not the per-site depth).");
+    else if (single_etch) {
+        // Confirm the single-etch property and show which shapes the design leaned
+        // on -- shape diversity (not depth) is what supplied the group delay.
+        int n_sq = 0, n_ci = 0, n_cr = 0, n_ri = 0;
+        for (int q : ach_des.atom_index) {
+            switch (dlib.atoms[q].shape) {
+                case MetaShape::Rectangle: ++n_sq; break;
+                case MetaShape::Ellipse:   ++n_ci; break;
+                case MetaShape::Cross:     ++n_cr; break;
+                case MetaShape::Ring:      ++n_ri; break;
+            }
+        }
+        std::println("  SINGLE-ETCH: every pillar shares one height ({:.2f}µm) -> one "
+                     "lithography step, no grayscale.", ach_des.min_height_um);
+        std::println("  shape mix chosen (achromatic): {} square, {} circle, {} cross, "
+                     "{} ring", n_sq, n_ci, n_cr, n_ri);
+    }
 
     // Rigorous chromatic response of BOTH designs from the library's stored per-
     // atom band data (each atom's true dispersion; no extra RCWA solves).
@@ -1476,7 +1546,11 @@ int cmd_achromatic(int argc, char** argv) {
             f << std::format("focal length      : {} um\n", focal);
             f << std::format("aperture diameter : {} um\n", diameter);
             f << std::format("period            : {} um\n", period);
-            f << std::format("height grid       : [{:.2f}, {:.2f}] um x {}\n", h_lo, h_hi, n_h);
+            if (single_etch)
+                f << std::format("library           : single-etch, shape-diverse @ {:.2f} um\n",
+                                 etch_height);
+            else
+                f << std::format("height grid       : [{:.2f}, {:.2f}] um x {}\n", h_lo, h_hi, n_h);
             f << std::format("library atoms     : {}\n", static_cast<int>(dlib.atoms.size()));
             f << std::format("array             : {0} x {0} pillars\n\n", ach_des.n_cells);
             f << std::format("base-phase RMS    : {:.1f} deg (standard {:.1f})\n",
@@ -1779,6 +1853,7 @@ void print_help() {
         "celeris achromatic [--focal 30] [--diameter 10] [--wavelength 0.532]\n"
         "                 [--bandwidth 0.20] [--band-samples 7] [--period 0.35]\n"
         "                 [--height-lo 0.4 --height-hi 1.4 --height-steps 10]\n"
+        "                 [--single-etch [--height 1.10]]\n"
         "                 [--pillar-n 2.4 | --pillar-csv <f>] [--fill-samples 24]\n"
         "                 [--harmonics 6] [--gd-weight 1.0]\n"
         "                 [--substrate sio2|bk7|air] [--out --report <prefix>]\n"
@@ -1786,7 +1861,9 @@ void print_help() {
         "  characterizes a fill x height meta-atom library across the band (phase +\n"
         "  group delay per atom), then picks per site the atom matching BOTH the\n"
         "  base phase and the radius-dependent group delay. Reports the group-delay\n"
-        "  budget and the chromatic focal drift vs a dispersion-blind baseline");
+        "  budget and the chromatic focal drift vs a dispersion-blind baseline.\n"
+        "  --single-etch spans (phase, group delay) with SHAPE variety at ONE height\n"
+        "  (square/circle/cross/ring) -> fabricable in a single etch, no grayscale");
 }
 
 } // namespace

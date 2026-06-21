@@ -51,18 +51,15 @@ double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y) {
 
 } // namespace
 
-DispersiveLibrary build_dispersive_library(
+DispersiveLibrary build_dispersive_library_from_specs(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
-    double fill_min, double fill_max, int n_fills, double thick_lo, double thick_hi,
-    int n_heights, int M) {
+    const std::vector<MetaAtomSpec>& specs, int M) {
     DispersiveLibrary lib;
     lib.wavelengths_um = band_wavelengths_um;
     lib.center_wavelength_um = center_wavelength_um;
     lib.period_um = period_um;
-    lib.n_fill = n_fills;
-    lib.n_height = std::max(1, n_heights);
     const int nb = static_cast<int>(band_wavelengths_um.size());
 
     // Center sample = the band wavelength nearest the requested center.
@@ -78,28 +75,31 @@ DispersiveLibrary build_dispersive_library(
     for (int j = 0; j < nb; ++j)
         omega[j] = 2.0 * pi * c_um_per_fs / band_wavelengths_um[j];
 
-    const int n_atoms = n_fills * lib.n_height;
+    const int n_atoms = static_cast<int>(specs.size());
     lib.atoms.resize(n_atoms);
 
-    // Each (fill, height) atom is independent: solve it at every band wavelength,
-    // then derive the center phase and the group delay. Parallel over atoms.
+    // Each atom is independent: solve its geometry at every band wavelength, then
+    // derive the center phase and the group delay. Parallel over atoms. The shape
+    // (rectangle vs circle/cross/ring) sets which factorization path the 2D solver
+    // takes -- a rectangle is analytic/separable; the rest go through the sampled-
+    // grid factorization, so a shape-diverse library wants a higher M.
     auto solve_one = [&](int idx) {
-        const int ih = idx / n_fills;
-        const int iff = idx % n_fills;
-        double f = fill_min + (fill_max - fill_min) * iff / (n_fills - 1);
-        double h = lib.n_height == 1
-                       ? thick_lo
-                       : thick_lo + (thick_hi - thick_lo) * ih / (lib.n_height - 1);
+        const MetaAtomSpec& s = specs[idx];
         DispersiveAtom a;
-        a.fill = f;
-        a.thickness_um = h;
+        a.fill = std::max(s.fill_x, s.fill_y);
+        a.thickness_um = s.thickness_um;
+        a.shape = s.shape;
+        a.fill_x = s.fill_x;
+        a.fill_y = s.fill_y;
+        a.shape_param = s.shape_param;
         a.phase_rad.resize(nb);
         a.amplitude.resize(nb);
         double amp_sum = 0.0;
         for (int j = 0; j < nb; ++j) {
-            Rcwa2DStack cell{period_um, period_um,
-                             {RectCell2D{pillar, background, f, f, h}}};
-            auto r = solve_rcwa_2d(incident, cell, substrate, band_wavelengths_um[j],
+            RectCell2D cell{pillar, background, s.fill_x, s.fill_y, s.thickness_um,
+                            s.shape, s.shape_param};
+            Rcwa2DStack stack{period_um, period_um, {cell}};
+            auto r = solve_rcwa_2d(incident, stack, substrate, band_wavelengths_um[j],
                                    0.0, 0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
             a.phase_rad[j] = std::arg(r.tx0);
             a.amplitude[j] = std::abs(r.tx0);
@@ -115,7 +115,7 @@ DispersiveLibrary build_dispersive_library(
     };
 
     unsigned hw = std::max(1u, std::thread::hardware_concurrency());
-    int workers = std::min<int>(static_cast<int>(hw), n_atoms);
+    int workers = std::min<int>(static_cast<int>(hw), std::max(1, n_atoms));
     std::vector<std::future<void>> jobs;
     for (int w = 0; w < workers; ++w)
         jobs.push_back(std::async(std::launch::async, [&, w] {
@@ -128,6 +128,66 @@ DispersiveLibrary build_dispersive_library(
         lib.gd_min_fs = std::min(lib.gd_min_fs, a.group_delay_fs);
         lib.gd_max_fs = std::max(lib.gd_max_fs, a.group_delay_fs);
     }
+    return lib;
+}
+
+DispersiveLibrary build_dispersive_library(
+    const Material& pillar, const Material& background, const Material& incident,
+    const Material& substrate, double period_um,
+    const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
+    double fill_min, double fill_max, int n_fills, double thick_lo, double thick_hi,
+    int n_heights, int M) {
+    // Generate a square-pillar fill x height grid of specs, then characterize them.
+    const int nh = std::max(1, n_heights);
+    std::vector<MetaAtomSpec> specs;
+    specs.reserve(static_cast<std::size_t>(n_fills) * nh);
+    for (int ih = 0; ih < nh; ++ih) {
+        double h = nh == 1 ? thick_lo
+                           : thick_lo + (thick_hi - thick_lo) * ih / (nh - 1);
+        for (int iff = 0; iff < n_fills; ++iff) {
+            double f = fill_min + (fill_max - fill_min) * iff / (n_fills - 1);
+            specs.push_back({MetaShape::Rectangle, f, f, h, 0.5});
+        }
+    }
+    DispersiveLibrary lib = build_dispersive_library_from_specs(
+        pillar, background, incident, substrate, period_um, band_wavelengths_um,
+        center_wavelength_um, specs, M);
+    lib.n_fill = n_fills;
+    lib.n_height = nh;
+    return lib;
+}
+
+DispersiveLibrary build_single_etch_library(
+    const Material& pillar, const Material& background, const Material& incident,
+    const Material& substrate, double period_um,
+    const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
+    double fill_min, double fill_max, int n_fills, double thickness_um, int M) {
+    // One height; the (phase, group-delay) plane is spanned by SHAPE variety.
+    // Four families, each at the same etch depth:
+    //   * square  fill sweep                  (the analytic baseline shape)
+    //   * circle  fill sweep                  (lower fill factor at equal width)
+    //   * cross   fill x arm-width            (two confinement scales -> extra GD)
+    //   * ring    fill x inner-radius          (hollow guide -> distinct dispersion)
+    // Shape diversity at fixed depth is what makes a one-etch achromat possible.
+    std::vector<MetaAtomSpec> specs;
+    auto fill_at = [&](int i) {
+        return n_fills <= 1 ? fill_min
+                            : fill_min + (fill_max - fill_min) * i / (n_fills - 1);
+    };
+    for (int i = 0; i < n_fills; ++i) {
+        double f = fill_at(i);
+        specs.push_back({MetaShape::Rectangle, f, f, thickness_um, 0.5});
+        specs.push_back({MetaShape::Ellipse, f, f, thickness_um, 0.5});
+        for (double arm : {0.3, 0.5, 0.7})
+            specs.push_back({MetaShape::Cross, f, f, thickness_um, arm});
+        for (double inner : {0.4, 0.6})
+            specs.push_back({MetaShape::Ring, f, f, thickness_um, inner});
+    }
+    DispersiveLibrary lib = build_dispersive_library_from_specs(
+        pillar, background, incident, substrate, period_um, band_wavelengths_um,
+        center_wavelength_um, specs, M);
+    lib.n_fill = n_fills;
+    lib.n_height = 1;
     return lib;
 }
 
