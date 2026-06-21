@@ -125,7 +125,12 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       + a per-site rotated-rectangle GDS writer `write_pb_rect_gds` (single mask layer).
       RESULT (D=10,f=30,20% BW, ONE 1.10µm etch): base-phase RMS ~5e-15° (exact), GD RMS
       1.12→0.18 fs, chromatic focal drift 4.64→1.90 µm (2.4× tighter), conversion cap 0.52.
-      REMAINING: a published achromatic device reproduction; expose in the GUI.
+      **Exposed in the Python bindings** — `build_dispersive_pb_library`,
+      `design_pb_achromatic_metalens`, `verify_pb_achromatic_focus` + the Dispersive
+      Pb{Atom,Library} / PbAchromaticDesign classes (rotation_deg / fill_x_map / fill_y_map
+      → numpy 2D); example `examples/python/07_achromatic_pb.py` (GD RMS 6.4× flatter,
+      base-phase RMS ~5e-15°). REMAINING: a published achromatic device reproduction;
+      expose in the GUI.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
