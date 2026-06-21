@@ -20,6 +20,7 @@ std::atomic<bool> g_fov_pending{false};
 std::atomic<bool> g_spot_pending{false};
 std::atomic<bool> g_polar_pending{false};
 std::atomic<bool> g_opt_pending{false};
+std::atomic<bool> g_achro_pending{false};
 std::atomic<float> g_progress{0.0f};
 std::mutex g_mtx;
 std::string g_status = "Ready — set parameters and click Design.";
@@ -35,6 +36,10 @@ double g_polar_fx = 0, g_polar_fy = 0, g_polar_zx = 0, g_polar_zy = 0,
 PsfMap g_polar_psf_x, g_polar_psf_y;
 
 SystemOptResult g_opt;
+
+AchromaticDesign g_achro;
+AchroSummary g_achro_sum;
+std::vector<float> g_achro_wl, g_achro_focus_std, g_achro_focus_ach;
 
 // --- model helpers ----------------------------------------------------------
 Material make_pillar(const Params& p) {

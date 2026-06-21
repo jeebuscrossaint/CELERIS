@@ -14,6 +14,7 @@
 #include "celeris/analysis/throughfocus.hpp"
 #include "celeris/analysis/tolerance.hpp"
 #include "celeris/analysis/wavefront.hpp"
+#include "celeris/design/achromatic.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/polar_metalens.hpp"
 #include "celeris/design/system_opt.hpp"
@@ -31,6 +32,8 @@ struct Params {
     float focal = 50, diameter = 20, wavelength = 0.532f, period = 0.35f;
     float focal_y = 80;  // Y-polarization focal length (polarization-multiplexed mode)
     float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
+    float band_frac = 0.20f;  // achromatic: fractional bandwidth about lambda
+    float gd_weight = 1.0f;   // achromatic: group-delay objective weight
     int harmonics = 6, fill_samples = 18;
     int pillar_mat = 3;     // index into kPillarMats (default: TiO2 approx)
     int substrate_mat = 0;  // 0 = N-BK7, 1 = air, 2 = fused silica
@@ -62,7 +65,7 @@ extern std::optional<Material> g_loaded_material;
 extern std::string g_loaded_name;
 
 extern std::atomic<bool> g_running, g_pending, g_tol_pending, g_fov_pending,
-    g_spot_pending, g_polar_pending, g_opt_pending;
+    g_spot_pending, g_polar_pending, g_opt_pending, g_achro_pending;
 extern std::atomic<float> g_progress;
 extern std::mutex g_mtx;
 extern std::string g_status;
@@ -79,6 +82,22 @@ extern PsfMap g_polar_psf_x, g_polar_psf_y;
 
 extern SystemOptResult g_opt;
 
+// Achromatic (broadband) design results: focal-vs-wavelength for the standard
+// (dispersion-blind) and the achromatic design built from the SAME library, plus
+// the headline metrics. The achromatic design itself is kept for GDS export.
+struct AchroSummary {
+    double drift_std = 0, drift_ach = 0;       // chromatic focal drift (max-min), um
+    double gd_rms_std = 0, gd_rms_ach = 0;     // group-delay residual RMS, fs
+    double base_rms_std = 0, base_rms_ach = 0; // base-phase residual, deg
+    double gd_coverage = 0, meanT = 0;         // library GD coverage; mean |t|
+    double center_wl = 0, focal = 0;           // design wavelength (um), focal (um)
+    bool single_height = true;
+    int n_cells = 0;
+};
+extern AchromaticDesign g_achro;
+extern AchroSummary g_achro_sum;
+extern std::vector<float> g_achro_wl, g_achro_focus_std, g_achro_focus_ach;
+
 // --- model helpers + worker entry points ------------------------------------
 Material make_pillar(const Params& p);
 const Material& make_substrate(const Params& p);
@@ -91,6 +110,7 @@ void run_tolerance();
 void run_fov();
 void run_spotgrid();
 void run_polardesign(Params p);
+void run_achromatic(Params p);
 void run_optimize(Params p);
 
 } // namespace celeris::gui

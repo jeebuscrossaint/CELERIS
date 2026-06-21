@@ -216,6 +216,65 @@ void run_polardesign(Params p) {
     g_running = false;
 }
 
+void run_achromatic(Params p) {
+    g_running = true;
+    set_phase("Building dispersive library (fill x height, RCWA per band)...", 0.05f);
+    // Band samples about the design wavelength (ascending), and a fill x height
+    // grid so the (phase, group-delay) plane is covered (a single DOF can't set
+    // both). Kept modest for GUI responsiveness -- the CLI exposes finer control.
+    const double l0 = p.wavelength;
+    const double bw = std::clamp(p.band_frac, 0.02f, 0.6f);
+    const int nb = 5;
+    std::vector<double> band;
+    for (int i = 0; i < nb; ++i) {
+        double t = (nb > 1) ? static_cast<double>(i) / (nb - 1) : 0.5;
+        band.push_back(l0 * (1.0 - bw / 2.0 + bw * t));
+    }
+    auto dl = build_dispersive_library(
+        make_pillar(p), materials::air(), materials::air(), make_substrate(p),
+        p.period, band, l0, 0.08, 0.92, /*n_fills=*/10, /*thick_lo=*/0.40,
+        /*thick_hi=*/1.40, /*n_heights=*/5, p.harmonics);
+
+    set_phase("Two-objective atom selection (standard + achromatic)...", 0.75f);
+    auto sd = design_achromatic_metalens(dl, p.focal, p.diameter, /*gd_weight=*/0.0);
+    auto ad = design_achromatic_metalens(dl, p.focal, p.diameter, p.gd_weight);
+
+    set_phase("Verifying chromatic focus (stored band response)...", 0.9f);
+    auto cs = verify_achromatic_focus(dl, sd);
+    auto ca = verify_achromatic_focus(dl, ad);
+    auto drift = [](const std::vector<AchromaticFocalPoint>& c) {
+        double mn = 1e300, mx = -1e300;
+        for (const auto& q : c) { mn = std::min(mn, q.focal_length_um); mx = std::max(mx, q.focal_length_um); }
+        return (mx > mn) ? mx - mn : 0.0;
+    };
+
+    AchroSummary s;
+    s.drift_std = drift(cs); s.drift_ach = drift(ca);
+    s.gd_rms_std = sd.rms_group_delay_error_fs; s.gd_rms_ach = ad.rms_group_delay_error_fs;
+    s.base_rms_std = sd.rms_phase_error_deg; s.base_rms_ach = ad.rms_phase_error_deg;
+    s.gd_coverage = ad.gd_coverage; s.meanT = ad.mean_amplitude;
+    s.center_wl = l0; s.focal = p.focal;
+    s.single_height = ad.single_height; s.n_cells = ad.n_cells;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_achro = ad;
+        g_achro_sum = s;
+        g_achro_wl.clear(); g_achro_focus_std.clear(); g_achro_focus_ach.clear();
+        for (const auto& q : cs) {
+            g_achro_wl.push_back(static_cast<float>(q.wavelength_um * 1000.0));
+            g_achro_focus_std.push_back(static_cast<float>(q.focal_length_um));
+        }
+        for (const auto& q : ca)
+            g_achro_focus_ach.push_back(static_cast<float>(q.focal_length_um));
+        g_status = std::format("Achromatic: focal drift {:.2f}->{:.2f} um, "
+                               "group-delay RMS {:.2f}->{:.2f} fs",
+                               s.drift_std, s.drift_ach, s.gd_rms_std, s.gd_rms_ach);
+        g_progress = 1.0f;
+    }
+    g_achro_pending = true;
+    g_running = false;
+}
+
 void run_optimize(Params p) {
     g_running = true;
     set_phase("Optimizing design (period x height search)...", 0.0f);

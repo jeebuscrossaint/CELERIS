@@ -135,7 +135,7 @@ int main() {
     int layout_mode = 0, layout_built_mode = -1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
-    bool have_polar = false;
+    bool have_polar = false, have_achro = false;
     bool gds_need_fit = false;  // refit the GDS viewer when a new design lands
     char gds_name[256] = "metalens.gds";
     double run_start = 0.0;  // ImGui time when the current run was launched
@@ -172,6 +172,7 @@ int main() {
             params.period = static_cast<float>(g_opt.period_um);
             params.thickness = static_cast<float>(g_opt.thickness_um);
         }
+        if (g_achro_pending.exchange(false)) have_achro = true;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -193,7 +194,7 @@ int main() {
                     win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
                     win_mats = true, win_layout = true, win_spot = true,
                     win_gds = true, win_polar = true, win_lib = true,
-                    win_perf = false;
+                    win_achro = true, win_perf = false;
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -213,6 +214,9 @@ int main() {
                     std::thread(run_fov).detach();
                 if (ImGui::MenuItem("Spot vs Field Diagram", nullptr, false, can_act))
                     std::thread(run_spotgrid).detach();
+                ImGui::Separator();
+                if (ImGui::MenuItem("Achromatic Design", nullptr, false, !running))
+                    std::thread(run_achromatic, params).detach();
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
@@ -230,6 +234,7 @@ int main() {
                 ImGui::MenuItem("Through Focus", nullptr, &win_tf);
                 ImGui::MenuItem("Spot vs Field", nullptr, &win_spot);
                 ImGui::MenuItem("Polarization", nullptr, &win_polar);
+                ImGui::MenuItem("Achromatic", nullptr, &win_achro);
                 ImGui::MenuItem("Chromatic", nullptr, &win_chr);
                 ImGui::MenuItem("Tolerance", nullptr, &win_tol);
                 ImGui::MenuItem("Field of View", nullptr, &win_fov);
@@ -316,6 +321,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Lens Layout", ctr);
             ImGui::DockBuilderDockWindow("GDS Layout", ctr);
             ImGui::DockBuilderDockWindow("Polarization", ctr);
+            ImGui::DockBuilderDockWindow("Achromatic", ctr);
             ImGui::DockBuilderDockWindow("Wavefront", ctr);
             ImGui::DockBuilderDockWindow("Chromatic", ctr);
             ImGui::DockBuilderDockWindow("MTF", cbottom);
@@ -770,6 +776,119 @@ int main() {
                     dl->PopClipRect();
                     ImGui::SetCursorScreenPos(ImVec2(q0.x + 6, q0.y + 6));
                     ImGui::Text("%d x %d rectangular pillars   aperture %.1f um", n, n, ext);
+                }
+            }
+            ImGui::End();
+        }
+
+        // ---- Achromatic (broadband dispersion-engineered design) ----
+        if (win_achro) {
+            if (ImGui::Begin("Achromatic", &win_achro)) {
+                ImGui::TextWrapped("Broadband metalens by dispersion engineering: each "
+                                   "site matches BOTH the focusing phase and the radius-"
+                                   "dependent group delay, so a whole band focuses at one "
+                                   "plane. Compared against a dispersion-blind design from "
+                                   "the same library.");
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputFloat("Focal (um)", &params.focal, 0, 0, "%.1f");
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputFloat("Diameter (um)", &params.diameter, 0, 0, "%.1f");
+                ImGui::SetNextItemWidth(120);
+                ImGui::SliderFloat("Bandwidth (frac)", &params.band_frac, 0.05f, 0.40f, "%.2f");
+                ImGui::SetNextItemWidth(120);
+                ImGui::SliderFloat("GD weight", &params.gd_weight, 0.0f, 2.0f, "%.2f");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Group-delay objective weight. 0 = dispersion-blind "
+                                      "baseline; ~1 balances center vs band-edge focus.");
+                bool busy = g_running.load();
+                if (busy) ImGui::BeginDisabled();
+                if (ImGui::Button("Run Achromatic Design", ImVec2(-FLT_MIN, 28)))
+                    std::thread(run_achromatic, params).detach();
+                if (busy) ImGui::EndDisabled();
+                ImGui::TextDisabled("Builds a fill x height library (10 x 5) across a 5-"
+                                    "sample band -- takes a moment.");
+
+                if (!have_achro)
+                    ImGui::TextDisabled("Set the band + GD weight and run.");
+                else {
+                    std::lock_guard<std::mutex> lk(g_mtx);
+                    const AchroSummary& s = g_achro_sum;
+                    ImGui::Separator();
+                    ImGui::Text("Band: %.0f - %.0f nm   (design %.0f nm, f = %.1f um)",
+                                g_achro_wl.empty() ? 0.0f : g_achro_wl.front(),
+                                g_achro_wl.empty() ? 0.0f : g_achro_wl.back(),
+                                s.center_wl * 1000.0, s.focal);
+                    // Headline: chromatic focal drift, standard vs achromatic.
+                    double fac = (s.drift_ach > 1e-9) ? s.drift_std / s.drift_ach : 0.0;
+                    ImGui::Text("Chromatic focal drift:  standard %.2f um  ->", s.drift_std);
+                    ImGui::SameLine();
+                    ImGui::TextColored(rgb(40, 170, 90), "achromatic %.2f um", s.drift_ach);
+                    if (fac > 1.0) { ImGui::SameLine();
+                        ImGui::TextColored(rgb(40, 170, 90), "(%.1fx flatter)", fac); }
+                    ImGui::Text("Group-delay residual RMS:  standard %.2f fs  ->  "
+                                "achromatic %.2f fs", s.gd_rms_std, s.gd_rms_ach);
+                    ImGui::Text("Base-phase RMS:  standard %.1f deg,  achromatic %.1f deg",
+                                s.base_rms_std, s.base_rms_ach);
+                    ImGui::Text("Library GD coverage: %.2f  (>=1 = sufficient)   mean |t| %.3f",
+                                s.gd_coverage, s.meanT);
+                    if (!s.single_height)
+                        ImGui::TextColored(rgb(170, 120, 0),
+                            "Multi-height design -> grayscale/multi-level etch (a single "
+                            "GDS layer encodes footprints only, not per-site depth).");
+
+                    // Overlaid focus-vs-wavelength: standard (orange) vs achromatic
+                    // (green). A flat achromatic curve = the broadband fix working.
+                    const auto& wl = g_achro_wl;
+                    const auto& fs = g_achro_focus_std;
+                    const auto& fa = g_achro_focus_ach;
+                    if (wl.size() >= 2 && fs.size() == wl.size() && fa.size() == wl.size()) {
+                        float ymn = fs[0], ymx = fs[0];
+                        for (float v : fs) { ymn = std::min(ymn, v); ymx = std::max(ymx, v); }
+                        for (float v : fa) { ymn = std::min(ymn, v); ymx = std::max(ymx, v); }
+                        float pad = std::max(0.05f * (ymx - ymn), 0.2f);
+                        ymn -= pad; ymx += pad;
+                        ImVec2 av = ImGui::GetContentRegionAvail();
+                        float ph = std::clamp(av.y - 150.0f, 110.0f, 240.0f);
+                        ImVec2 c0 = ImGui::GetCursorScreenPos();
+                        ImVec2 c1 = ImVec2(c0.x + av.x, c0.y + ph);
+                        ImGui::InvisibleButton("achrocanvas", ImVec2(av.x, ph));
+                        ImDrawList* dl = ImGui::GetWindowDrawList();
+                        dl->AddRectFilled(c0, c1, canvas_bg);
+                        dl->AddRect(c0, c1, dark_mode ? IM_COL32(80, 80, 84, 255)
+                                                      : IM_COL32(180, 180, 184, 255));
+                        auto X = [&](int i) {
+                            return c0.x + (c1.x - c0.x) * (float)i / (wl.size() - 1);
+                        };
+                        auto Y = [&](float v) {
+                            return c1.y - (c1.y - c0.y) * (v - ymn) / (ymx - ymn);
+                        };
+                        // target focal reference line
+                        float yt = Y((float)s.focal);
+                        dl->AddLine(ImVec2(c0.x, yt), ImVec2(c1.x, yt),
+                                    IM_COL32(140, 140, 140, 140), 1.0f);
+                        const ImU32 col_std = IM_COL32(230, 140, 40, 255);
+                        const ImU32 col_ach = IM_COL32(40, 190, 110, 255);
+                        for (std::size_t i = 1; i < wl.size(); ++i) {
+                            dl->AddLine(ImVec2(X(i - 1), Y(fs[i - 1])), ImVec2(X(i), Y(fs[i])), col_std, 2.0f);
+                            dl->AddLine(ImVec2(X(i - 1), Y(fa[i - 1])), ImVec2(X(i), Y(fa[i])), col_ach, 2.0f);
+                        }
+                        dl->AddText(ImVec2(c0.x + 6, c0.y + 4), col_std, "standard");
+                        dl->AddText(ImVec2(c0.x + 6, c0.y + 20), col_ach, "achromatic");
+                        ImGui::Dummy(ImVec2(0, 2));
+                        ImGui::TextDisabled("focal length (um) vs wavelength; grey = target f");
+                    }
+
+                    static char apath[256] = "achromatic.gds";
+                    ImGui::SetNextItemWidth(-110);
+                    ImGui::InputText("##apath", apath, sizeof(apath)); ImGui::SameLine();
+                    if (ImGui::Button("Save GDS", ImVec2(-FLT_MIN, 0))) {
+                        auto lens = to_metalens_design(g_achro);
+                        int np = write_metalens_gds(lens, apath);
+                        g_status = np >= 0
+                            ? std::format("Wrote {} pillars -> {}{}", np, apath,
+                                          s.single_height ? "" : " (footprints only; multi-height)")
+                            : std::string("ERROR: GDS write failed");
+                    }
                 }
             }
             ImGui::End();

@@ -33,17 +33,27 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 ---
 
 ## 1. Credibility & correctness  (makes it TRUSTED)
-- [~] **Validation vs a published, fabricated metalens** — `celeris validate` runs the
-      credibility battery on REAL tabulated TiO₂ n,k (Siefke 2016 ALD, in `data/`)
-      on fused silica. DONE: a real-TiO₂ focusing lens is **diffraction-limited**
-      — phase Strehl 0.97, FWHM exactly at λf/D, NA 0.20 — and the meta-atom
-      transmittance now **converges** (Li factorization landed) and matches an external
-      solver (grcwa). Absolute efficiency is trustworthy. `validate`'s prose now
-      reflects the post-Li convergence (the old "does NOT converge / swings ~0.6"
-      finding was stale and is corrected), and a new [4] section demonstrates the
-      etch-depth (`--auto-height`) optimization. REMAINING for a full paper
-      reproduction: a specific published device + (for K2016) the PB-phase design
-      path; and shaped / higher-index meta-atoms to push focusing efficiency higher.
+- [x] **Validation vs a published, fabricated metalens** — DONE. Two prongs:
+      (a) `celeris validate` runs the credibility battery on REAL tabulated TiO₂ n,k
+      (Siefke 2016 ALD, in `data/`) on fused silica — a real-TiO₂ focusing lens is
+      **diffraction-limited** (phase Strehl 0.97, FWHM exactly at λf/D, NA 0.20), the
+      meta-atom transmittance **converges** (Li factorization) and matches grcwa.
+      (b) **`celeris reproduce`** reproduces the canonical visible device,
+      **Khorasaninejad et al., Science 352, 1190 (2016)** — NA=0.80 PB-phase TiO₂
+      nanofins, H=600 nm, designed at 405/532/660 nm (reported focusing efficiency
+      86/73/66 %). Solves the PUBLISHED nanofin geometry (W,L,U from the paper) with
+      the exact ALD-amorphous-TiO₂ n,k they deposited, and reports three efficiency
+      numbers: transmittance (reflection-limited ~62–66 %), absolute spin-conversion
+      (~60–66 %), and **transmitted-normalized conversion = HWP quality (96–99 %)** —
+      near-ideal half-wave plates whose transmitted-normalized conversion correctly
+      brackets the paper's focusing efficiency from ABOVE in all three; the absolute
+      number sits lower only by the Fresnel reflection the paper's transmission-
+      referenced efficiency normalizes out. RCWA-verifies the 2θ geometric phase
+      (~4–5° RMS) and a diffraction-limited focal spot (FWHM ~ 0.514·λ/NA). HONEST
+      FINDING: the 660 nm nanofin (fill_y=0.95, a 20 nm gap) needs M≥10 to converge
+      (default bumped to 10). selftest **[16]** locks the 532 nm device. REMAINING
+      (lower value): a published ACHROMATIC device (K2016 is monochromatic); shaped /
+      higher-index meta-atoms to push absolute (reflection-limited) efficiency higher.
 - [x] **Improved (Li/Liu–Fan) 2D Fourier factorization** — DONE. Replaced the basic
       Laurent 2D solver (which gave qualitatively WRONG transmittance, e.g. T≈0.07 where
       truth is ≈0.96, and broke energy beyond M≈8) with the inverse-rule / Liu–Fan
@@ -143,8 +153,15 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       `design_pb_achromatic_metalens`, `verify_pb_achromatic_focus` + the Dispersive
       Pb{Atom,Library} / PbAchromaticDesign classes (rotation_deg / fill_x_map / fill_y_map
       → numpy 2D); example `examples/python/07_achromatic_pb.py` (GD RMS 6.4× flatter,
-      base-phase RMS ~5e-15°). REMAINING: a published achromatic device reproduction;
-      expose in the GUI.
+      base-phase RMS ~5e-15°). **Exposed in the GUI** — an **Achromatic** panel
+      (`gui/`, `run_achromatic` worker) builds a fill×height dispersive library
+      (10×5, 5-band) and designs standard (gd_weight=0) vs achromatic from the SAME
+      library, showing the headline chromatic focal drift (e.g. 10.2→2.8 µm, 3.6×
+      flatter at f=50/D=20), group-delay RMS, GD coverage, and an overlaid focus-vs-λ
+      plot (standard orange vs achromatic green); writes GDS via `to_metalens_design`
+      and honestly flags the multi-height (grayscale-etch) case. REMAINING: a
+      published achromatic device reproduction (K2016 reproduced above is
+      monochromatic); the single-etch/`pbachromatic` paths in the GUI panel too.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
