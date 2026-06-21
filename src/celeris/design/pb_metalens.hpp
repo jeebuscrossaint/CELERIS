@@ -20,6 +20,7 @@
 // Khorasaninejad & Capasso, Science 352, 1190 (2016).
 
 #include "celeris/core.hpp"
+#include "celeris/design/phase_profile.hpp"
 #include "celeris/materials/material.hpp"
 #include "celeris/rcwa/rcwa2d.hpp"
 
@@ -74,30 +75,10 @@ std::vector<PbVerifyPoint> verify_pb_phase(
     const HwpAtom& atom, const std::vector<double>& rotations_rad, int M);
 
 // A PB metasurface stamps ANY target phase profile phi(x,y) -- the rotation map
-// theta = -handedness * phi / 2 is profile-agnostic. These are the canonical
-// geometric-phase profiles; each maps to a different optical element.
-enum class PbProfileKind {
-    Focusing,   // hyperbolic lens: phi = -k(sqrt(r^2+f^2) - f)            -> focal spot
-    Vortex,     // OAM plate:       phi = l*atan2(y,x) [+ focusing if f>0]  -> donut / OAM beam
-    Deflector,  // blazed grating:  phi = k*sin(a)*(x*cos(az)+y*sin(az))    -> tilted beam
-    Axicon,     // conical phase:   phi = -k*sin(b)*r                       -> Bessel / line focus
-};
-
-// Parameters for a PB phase profile. Only the fields relevant to `kind` are used.
-struct PbProfile {
-    PbProfileKind kind = PbProfileKind::Focusing;
-    double focal_length_um = 50.0;     // Focusing; Vortex (focused vortex; <=0 => pure OAM)
-    int topological_charge = 1;        // Vortex: OAM charge l (winds 2*pi*l around the axis)
-    double deflect_deg = 10.0;         // Deflector: beam deflection angle from normal
-    double deflect_azimuth_deg = 0.0;  // Deflector: in-plane direction of the deflection
-    double axicon_deg = 5.0;           // Axicon: cone half-angle (ray bend toward the axis)
-};
-
-// Target geometric phase phi(x,y) [rad] for a PB profile at lattice point (x,y),
-// using the engine's exp(+i*k*r) propagator sign convention (so Focusing matches
-// the hyperbolic-lens phase the propagation check focuses at z=f).
-double pb_profile_phase(const PbProfile& profile, double x, double y,
-                        double wavelength_um);
+// theta = -handedness * phi / 2 is profile-agnostic, so the canonical profiles
+// (focusing / vortex / deflector / axicon / freeform) all flow through the same
+// design path. The profile type lives in design/phase_profile.hpp (shared with
+// the propagation-phase `design_metalens` path).
 
 struct PbMetalensDesign {
     int n_cells = 0;
@@ -113,7 +94,7 @@ struct PbMetalensDesign {
 // rotated per site so the spin-flipped (cross-circular) output carries phi(x,y).
 // handedness = +1 for RCP illumination (cross phase = -2*theta), -1 for LCP.
 PbMetalensDesign design_pb_metalens(const HwpAtom& atom, double period_um,
-                                    double wavelength_um, const PbProfile& profile,
+                                    double wavelength_um, const PhaseProfile& profile,
                                     double diameter_um, int handedness = +1);
 
 // Convenience overload: a PB focusing lens (the original signature).

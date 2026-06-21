@@ -228,7 +228,7 @@ HeightOptResult optimize_height_for_2pi(const Material& pillar,
 }
 
 MetalensDesign design_metalens(const UnitCellLibrary& lib,
-                               double focal_length_um, double diameter_um,
+                               const PhaseProfile& profile, double diameter_um,
                                double amplitude_weight) {
     const double p = lib.period_um;
     const double lambda = lib.wavelength_um;
@@ -247,12 +247,7 @@ MetalensDesign design_metalens(const UnitCellLibrary& lib,
         for (int ix = 0; ix < n; ++ix) {
             const double x = (ix - center) * p;
             const double y = (iy - center) * p;
-            const double r = std::sqrt(x * x + y * y);
-            // Ideal focusing (hyperbolic) phase profile.
-            const double target =
-                -(2.0 * pi / lambda) * (std::sqrt(r * r + focal_length_um *
-                                                          focal_length_um) -
-                                        focal_length_um);
+            const double target = phase_profile_value(profile, x, y, lambda);
             const int idx = lib.lookup_weighted(target, amplitude_weight);
             d.fill_map[static_cast<std::size_t>(iy) * n + ix] = lib.fill[idx];
 
@@ -265,6 +260,15 @@ MetalensDesign design_metalens(const UnitCellLibrary& lib,
     d.rms_phase_error_deg = std::sqrt(sq_err / count) * 180.0 / pi;
     d.mean_amplitude = amp_sum / count;
     return d;
+}
+
+MetalensDesign design_metalens(const UnitCellLibrary& lib,
+                               double focal_length_um, double diameter_um,
+                               double amplitude_weight) {
+    PhaseProfile profile;
+    profile.kind = PhaseProfileKind::Focusing;
+    profile.focal_length_um = focal_length_um;
+    return design_metalens(lib, profile, diameter_um, amplitude_weight);
 }
 
 } // namespace celeris

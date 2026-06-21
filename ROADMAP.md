@@ -109,17 +109,23 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       path; rotated angles use grid-Laurent at finite resolution) — shrinks with grid/M.
       REMAINING: achromatic design; vortex/OAM & arbitrary-profile PB (the focusing
       profile is just one target — any φ(r) works through the same rotation map).
-- [~] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
-      hologram/CGH. DONE on the PB (geometric-phase) path: `design_pb_metalens` now takes
-      a `PbProfile` (focusing | vortex/OAM | deflector | axicon) — the rotation map
-      θ=−handedness·φ/2 is profile-agnostic, so only the target φ(x,y) changes
-      (`pb_profile_phase` in pb_metalens.cpp). CLI `pbdesign --profile vortex|deflector|
-      axicon` (+ `--charge`, `--deflect-deg`, `--deflect-azimuth`, `--axicon-deg`), each
-      with its own optical-proof check: vortex → focal-plane donut (on-axis null 0.000,
-      bright ring); deflector 10° → beam lands at 9.93° (target 10°); axicon → extended
-      on-axis line focus (Bessel). Geometric phase still exact (RMS ~1e-15°), RCWA 2θ
-      tracking 4.69°. REMAINING: freeform/hologram (CGH) phase from an arbitrary map,
-      and the same profiles on the propagation-phase (`design`) path.
+- [x] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
+      hologram/CGH. DONE. The profile machinery was lifted into a neutral `PhaseProfile`
+      (focusing | vortex/OAM | deflector | axicon | **freeform**) + `phase_profile_value()`
+      in `design/phase_profile.hpp` — the rotation map θ=−handedness·φ/2 (PB path) and the
+      library lookup (propagation path) are both profile-agnostic, so the SAME profiles now
+      drive BOTH design paths. CLI: `pbdesign --profile …` (geometric phase, exact) AND
+      `design --profile …` (propagation phase) share `--charge`, `--deflect-deg`,
+      `--deflect-azimuth`, `--axicon-deg`, and the **freeform** map via
+      `--freeform-file <grid.txt> --freeform-extent <µm>` (a whitespace phase grid → an
+      arbitrary loaded CGH/hologram, bilinearly sampled) + `--recon-z`. Per-profile optical
+      proofs are now a SHARED helper (`profile_optical_proof`): focusing → on-axis z-peak;
+      vortex → focal-plane donut (null + ring); deflector 10° → beam lands at ~10°; axicon →
+      extended on-axis line focus; freeform → reconstruction at z. selftest [14] locks the
+      freeform reproduction (a linear ramp is bilinear-exact, max |Δφ|~1e-13; focusing exact
+      at nodes). HONEST: the propagation path carries the library's finite phase error
+      (~34° for a deflector) + non-uniform |t|; the PB path stamps the same profiles exactly
+      (RMS ~1e-14°). REMAINING (lower value): same profiles in the Python bindings + GUI.
 - [ ] Full Jones-matrix metasurfaces (arbitrary polarization transforms)
 - [ ] Wide-FOV / off-axis designs (quadratic phase, doublets, aplanatic)
 - [ ] Topology / freeform meta-atom inverse design (research-grade)

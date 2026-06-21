@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <print>
 #include <string>
 #include <vector>
@@ -369,6 +370,71 @@ static int run_selftest() {
                          50.0 * 0.532 / c.wavelength_um, c.rel_peak);
     }
 
+    // ---- Validation 14: phase profiles + freeform (hologram) reproduction --
+    // The analytic profiles (focusing/vortex/deflector/axicon) and an arbitrary
+    // loaded phi(x,y) map flow through the SAME phase_profile_value() used by both
+    // design paths. Sample an analytic deflector onto a grid, treat it as a
+    // Freeform map, and confirm the bilinear sampler reproduces the analytic phase.
+    // A linear ramp (the deflector) is reproduced EXACTLY by bilinear interpolation
+    // at every point; a curved profile (focusing) is exact at the grid nodes.
+    {
+        std::println("[14] Phase profiles + freeform (CGH) reproduction:");
+        const double lambda = 0.532, extent = 14.0;
+        const int n = 64;
+
+        auto sample_to_freeform = [&](const PhaseProfile& src) {
+            PhaseProfile ff;
+            ff.kind = PhaseProfileKind::Freeform;
+            ff.freeform_n = n;
+            ff.freeform_extent_um = extent;
+            ff.freeform_phase_rad.resize((std::size_t)n * n);
+            for (int iy = 0; iy < n; ++iy)
+                for (int ix = 0; ix < n; ++ix) {
+                    double x = (ix / (double)(n - 1) - 0.5) * extent;
+                    double y = (iy / (double)(n - 1) - 0.5) * extent;
+                    ff.freeform_phase_rad[(std::size_t)iy * n + ix] =
+                        phase_profile_value(src, x, y, lambda);
+                }
+            return ff;
+        };
+
+        PhaseProfile defl;
+        defl.kind = PhaseProfileKind::Deflector;
+        defl.deflect_deg = 10.0;
+        PhaseProfile defl_ff = sample_to_freeform(defl);
+
+        // Bilinear interp of a linear ramp is exact -> compare at off-node points too.
+        double max_err_ramp = 0.0;
+        for (int iy = 0; iy < 40; ++iy)
+            for (int ix = 0; ix < 40; ++ix) {
+                double x = (ix / 39.0 - 0.5) * extent * 0.98;
+                double y = (iy / 39.0 - 0.5) * extent * 0.98;
+                max_err_ramp = std::max(max_err_ramp,
+                    std::abs(phase_profile_value(defl_ff, x, y, lambda) -
+                             phase_profile_value(defl, x, y, lambda)));
+            }
+        std::println("    deflector ramp via loaded map: max |Δφ| = {:.2e} rad "
+                     "(bilinear is exact for a linear ramp) {}",
+                     max_err_ramp, max_err_ramp < 1e-9 ? "✓" : "FAIL");
+
+        // Curved (focusing) profile: exact at the grid nodes.
+        PhaseProfile foc;
+        foc.kind = PhaseProfileKind::Focusing;
+        foc.focal_length_um = 50.0;
+        PhaseProfile foc_ff = sample_to_freeform(foc);
+        double max_err_node = 0.0;
+        for (int iy = 0; iy < n; ++iy)
+            for (int ix = 0; ix < n; ++ix) {
+                double x = (ix / (double)(n - 1) - 0.5) * extent;
+                double y = (iy / (double)(n - 1) - 0.5) * extent;
+                max_err_node = std::max(max_err_node,
+                    std::abs(phase_profile_value(foc_ff, x, y, lambda) -
+                             phase_profile_value(foc, x, y, lambda)));
+            }
+        std::println("    focusing map at grid nodes: max |Δφ| = {:.2e} rad {}",
+                     max_err_node, max_err_node < 1e-9 ? "✓" : "FAIL");
+    }
+
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
     // Instead of looking a pillar up from the discrete library, SOLVE for the
     // geometry hitting a target phase with maximum transmission.
@@ -510,6 +576,166 @@ const char* arg_value(int argc, char** argv, const std::string& key,
     return fallback;
 }
 
+// Parse --profile (+ its parameters) into a PhaseProfile, shared by the
+// propagation-phase (`design`) and geometric-phase (`pbdesign`) paths. Returns
+// nullopt and prints an error on a bad spec. `focal`/`diameter` supply the
+// defaults for the focusing term and the freeform map extent.
+static std::optional<PhaseProfile> parse_phase_profile(int argc, char** argv,
+                                                       double focal, double diameter) {
+    const std::string name = arg_value(argc, argv, "--profile", "focusing");
+    PhaseProfile p;
+    if (name == "focusing") {
+        p.kind = PhaseProfileKind::Focusing;
+        p.focal_length_um = focal;
+    } else if (name == "vortex") {
+        p.kind = PhaseProfileKind::Vortex;
+        p.focal_length_um = focal;  // focused vortex (donut focal spot); <=0 => collimated
+        p.topological_charge = std::atoi(arg_value(argc, argv, "--charge", "1"));
+    } else if (name == "deflector") {
+        p.kind = PhaseProfileKind::Deflector;
+        p.deflect_deg = std::atof(arg_value(argc, argv, "--deflect-deg", "10"));
+        p.deflect_azimuth_deg = std::atof(arg_value(argc, argv, "--deflect-azimuth", "0"));
+    } else if (name == "axicon") {
+        p.kind = PhaseProfileKind::Axicon;
+        p.axicon_deg = std::atof(arg_value(argc, argv, "--axicon-deg", "5"));
+    } else if (name == "freeform") {
+        // Arbitrary loaded phi(x,y) map (a computer-generated hologram). The map
+        // spans --freeform-extent um (default: the full aperture diameter).
+        const char* ff = arg_value(argc, argv, "--freeform-file", nullptr);
+        if (!ff) {
+            std::println("ERROR: --profile freeform needs --freeform-file <grid.txt>");
+            return std::nullopt;
+        }
+        const double extent = std::atof(arg_value(argc, argv, "--freeform-extent",
+                                                  std::to_string(diameter).c_str()));
+        try {
+            p = load_freeform_phase(ff, extent);
+        } catch (const std::exception& e) {
+            std::println("ERROR: {}", e.what());
+            return std::nullopt;
+        }
+    } else {
+        std::println("ERROR: unknown --profile '{}' "
+                     "(use focusing|vortex|deflector|axicon|freeform)", name);
+        return std::nullopt;
+    }
+    return p;
+}
+
+// Where to render the reconstruction image, plus a one-line optical result.
+struct ProfileProof {
+    std::string summary;
+    double psf_cx = 0, psf_cy = 0, psf_z = 0, psf_hw = 0;
+};
+
+// Propagate a realized aperture field {(px[q], py[q]) -> tc[q]} and run the
+// profile's optical proof -- a different physical test per element (focus z-scan,
+// donut null, beam deflection, line focus, freeform reconstruction). Shared by
+// the geometric-phase (`pbdesign`) and propagation-phase (`design`) paths so both
+// verify the SAME way. `recon_z` is where a freeform hologram is reconstructed.
+static ProfileProof profile_optical_proof(const std::vector<double>& px,
+                                          const std::vector<double>& py,
+                                          const std::vector<cdouble>& tc,
+                                          const PhaseProfile& profile, double lambda,
+                                          double focal, double diameter,
+                                          double recon_z) {
+    const double k = 2.0 * pi / lambda;
+    const double dl = lambda * std::max(focal, 1.0) / diameter;  // ~spot scale
+    const double R_ap = diameter / 2.0;
+
+    // On-axis Rayleigh-Sommerfeld intensity at distance z (focusing/axicon).
+    auto on_axis_I = [&](double z) {
+        cdouble E{0, 0};
+        for (std::size_t q = 0; q < px.size(); ++q) {
+            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
+            E += tc[q] * std::polar(1.0 / r, k * r);
+        }
+        return std::norm(E);
+    };
+
+    ProfileProof out;
+    out.psf_z = focal;
+    out.psf_hw = std::max(5.0 * dl, 4.0);
+
+    if (profile.kind == PhaseProfileKind::Focusing) {
+        const int NZ = 240;
+        double best_z = 0.5 * focal, best_I = -1.0;
+        for (int j = 0; j < NZ; ++j) {
+            double z = 0.5 * focal + focal * j / (NZ - 1);
+            double I = on_axis_I(z);
+            if (I > best_I) { best_I = I; best_z = z; }
+        }
+        out.summary = std::format("on-axis focus at z = {:.1f} um (target {:.1f})",
+                                  best_z, focal);
+    } else if (profile.kind == PhaseProfileKind::Vortex) {
+        // Focused vortex -> a DONUT focal spot: deep on-axis null, bright ring.
+        out.psf_hw = std::max(8.0 * dl, 5.0);
+        auto psf = propagate_pillars(px, py, tc, 0, 0, out.psf_z, lambda, 201, out.psf_hw);
+        int nn = psf.n, pk = 0; double peak = 0;
+        for (int i = 0; i < nn * nn; ++i)
+            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
+        double center_I = psf.intensity[(nn / 2) * nn + nn / 2];
+        double pix = 2.0 * out.psf_hw / (nn - 1);
+        double ring_r = std::hypot((double)(pk % nn - nn / 2), (double)(pk / nn - nn / 2)) * pix;
+        out.summary = std::format(
+            "focal-plane donut (l={}): on-axis/peak = {:.3f} (null), ring radius {:.2f} um",
+            profile.topological_charge, peak > 0 ? center_I / peak : 0.0, ring_r);
+    } else if (profile.kind == PhaseProfileKind::Deflector) {
+        // The beam lands displaced by z*tan(a) along the azimuth on a screen z=focal.
+        const double a = profile.deflect_deg * pi / 180.0;
+        const double az = profile.deflect_azimuth_deg * pi / 180.0;
+        out.psf_cx = out.psf_z * std::tan(a) * std::cos(az);
+        out.psf_cy = out.psf_z * std::tan(a) * std::sin(az);
+        out.psf_hw = std::max(8.0 * dl, 5.0);
+        auto psf = propagate_pillars(px, py, tc, out.psf_cx, out.psf_cy, out.psf_z,
+                                     lambda, 201, out.psf_hw);
+        int nn = psf.n, pk = 0; double peak = 0;
+        for (int i = 0; i < nn * nn; ++i)
+            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
+        double pix = 2.0 * out.psf_hw / (nn - 1);
+        double mx = out.psf_cx + (pk % nn - nn / 2) * pix;
+        double my = out.psf_cy + (pk / nn - nn / 2) * pix;
+        double disp = std::hypot(mx, my);
+        double meas_deg = std::atan2(disp, out.psf_z) * 180.0 / pi;
+        out.summary = std::format(
+            "beam at screen z={:.0f}um lands {:.2f}um off-axis -> {:.2f}deg (target {:.2f}deg)",
+            out.psf_z, disp, meas_deg, profile.deflect_deg);
+    } else if (profile.kind == PhaseProfileKind::Axicon) {
+        // Bessel beam with an extended on-axis line focus ~ R/tan(b).
+        const double b = profile.axicon_deg * pi / 180.0;
+        const double dof_pred = R_ap / std::tan(b);
+        const double zlo = 0.1 * dof_pred, zhi = 1.4 * dof_pred;
+        const int NZ = 400;
+        std::vector<double> Iz(NZ);
+        double maxI = 0;
+        for (int j = 0; j < NZ; ++j) {
+            Iz[j] = on_axis_I(zlo + (zhi - zlo) * j / (NZ - 1));
+            if (Iz[j] > maxI) maxI = Iz[j];
+        }
+        int jlo = -1, jhi = -1;
+        for (int j = 0; j < NZ; ++j)
+            if (Iz[j] >= 0.5 * maxI) { if (jlo < 0) jlo = j; jhi = j; }
+        double zspan = jhi > jlo ? (jhi - jlo) * (zhi - zlo) / (NZ - 1) : 0.0;
+        out.psf_z = 0.5 * dof_pred;
+        out.psf_hw = std::max(6.0 * dl, 4.0);
+        // The FWHM span is a fraction of the geometric max range R/tan(b) -- the
+        // on-axis intensity ramps up then falls, it isn't flat over the full range.
+        out.summary = std::format(
+            "extended on-axis line focus: FWHM {:.1f}um (geometric max range R/tan b ~{:.1f}um)",
+            zspan, dof_pred);
+    } else {  // Freeform: an arbitrary loaded phi(x,y); no single crisp metric.
+        // The realized field reconstructs whatever wavefront the loaded map encodes;
+        // render it at z=recon_z. Per-site phase fidelity is reported by the caller.
+        out.psf_z = recon_z;
+        out.psf_hw = std::max(8.0 * dl, 5.0);
+        out.summary = std::format(
+            "freeform {0}x{0} hologram: reconstruction rendered at z={1:.0f}um "
+            "(per-site phase fidelity reported above)",
+            profile.freeform_n, recon_z);
+    }
+    return out;
+}
+
 // celeris design: build a unit-cell library, design a focusing metalens, export
 // GDSII, and report design fidelity + focal performance.
 int cmd_design(int argc, char** argv) {
@@ -532,9 +758,17 @@ int cmd_design(int argc, char** argv) {
         pillar_csv ? load_material_csv(pillar_csv, "pillar-csv")
                    : Material::constant(cdouble{pillar_n, 0.0}, "pillar");
 
+    // --profile: the target wavefront. Default focusing (the hyperbolic lens);
+    // vortex/deflector/axicon/freeform stamp other profiles on the SAME
+    // propagation-phase path (vary pillar size to hit phi(x,y) via the library).
+    const std::string profile_name = arg_value(argc, argv, "--profile", "focusing");
+    auto profile_opt = parse_phase_profile(argc, argv, focal, diameter);
+    if (!profile_opt) return 1;
+    const PhaseProfile profile = *profile_opt;
+
     std::println("CELERIS metalens design");
-    std::println("  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
-                 focal, diameter, lambda, period, thickness, pillar_n, sub_name);
+    std::println("  profile={}  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
+                 profile_name, focal, diameter, lambda, period, thickness, pillar_n, sub_name);
     // --auto-height: instead of using the fixed --thickness, sweep pillar height
     // and pick the (shortest, highest-transmittance) single etch depth that
     // reaches full 2pi phase coverage. This lifts the transmission-weighted
@@ -591,7 +825,7 @@ int cmd_design(int argc, char** argv) {
     std::println("  library phase coverage: {:.0f}°  (effective {:.0f}°)",
                  lib.phase_span() * 180.0 / pi, lib.coverage() * 180.0 / pi);
 
-    auto lens = design_metalens(lib, focal, diameter);
+    auto lens = design_metalens(lib, profile, diameter);
     std::println("  designed {0}x{0} pillars, RMS phase error {1:.1f}°, mean |t| {2:.3f}",
                  lens.n_cells, lens.rms_phase_error_deg, lens.mean_amplitude);
 
@@ -602,6 +836,69 @@ int cmd_design(int argc, char** argv) {
         std::println("  NOTE: the {} library was used for the PHYSICS, but the GDS writes "
                      "square footprints; shape-aware (polygon) GDS export is a TODO.",
                      shape_name);
+
+    // Non-focusing profiles on the propagation-phase path: the focal-spot battery
+    // below assumes a focusing lens, so run the profile's own propagation proof
+    // (the same one `pbdesign` uses) and finish here. The propagation path carries
+    // a finite library phase error + non-uniform amplitude -- the geometric-phase
+    // `pbdesign` path stamps these same profiles exactly.
+    if (profile.kind != PhaseProfileKind::Focusing) {
+        const double pp = lens.period_um;
+        const double cen = (lens.n_cells - 1) / 2.0;
+        const double R_ap = diameter / 2.0;
+        std::vector<double> px, py;
+        std::vector<cdouble> tc;
+        for (int iy = 0; iy < lens.n_cells; ++iy)
+            for (int ix = 0; ix < lens.n_cells; ++ix) {
+                double x = (ix - cen) * pp, y = (iy - cen) * pp;
+                if (std::sqrt(x * x + y * y) > R_ap) continue;
+                px.push_back(x);
+                py.push_back(y);
+                tc.push_back(lib.transmission_for_fill(
+                    lens.fill_map[(std::size_t)iy * lens.n_cells + ix]));
+            }
+        const double recon_z = std::atof(arg_value(argc, argv, "--recon-z",
+                                                   std::to_string(focal).c_str()));
+        ProfileProof proof = profile_optical_proof(px, py, tc, profile, lambda, focal,
+                                                   diameter, recon_z);
+        std::println("  optical check: {}", proof.summary);
+        std::println("  NOTE: propagation-phase profile -- finite library => RMS phase error "
+                     "{:.1f}° + non-uniform |t| (`pbdesign` stamps these profiles exactly).",
+                     lens.rms_phase_error_deg);
+
+        const char* psf_path = arg_value(argc, argv, "--psf", nullptr);
+        const char* rprefix = arg_value(argc, argv, "--report", nullptr);
+        if (psf_path || rprefix) {
+            auto psf = propagate_pillars(px, py, tc, proof.psf_cx, proof.psf_cy,
+                                         proof.psf_z, lambda, 201, proof.psf_hw);
+            if (psf_path && write_pgm(psf_path, psf.n, psf.n, psf.intensity, 2.2))
+                std::println("  wrote reconstruction image ({0}x{0}) -> {1}", psf.n, psf_path);
+            if (rprefix) {
+                std::string base = rprefix;
+                std::ofstream f(base + "_report.txt");
+                bool ok = static_cast<bool>(f);
+                if (f) {
+                    f << "CELERIS metalens design report (propagation phase)\n";
+                    f << "==================================================\n\n";
+                    f << std::format("profile           : {}\n", profile_name);
+                    f << std::format("wavelength        : {} um\n", lambda);
+                    f << std::format("aperture diameter : {} um\n", diameter);
+                    f << std::format("period            : {} um\n", period);
+                    f << std::format("pillar height     : {} um{}\n", used_thickness,
+                                     auto_height ? " (auto-selected)" : "");
+                    f << std::format("array             : {0} x {0} pillars\n", lens.n_cells);
+                    f << std::format("RMS phase error   : {:.1f} deg\n", lens.rms_phase_error_deg);
+                    f << std::format("mean transmission : {:.3f}\n", lens.mean_amplitude);
+                    f << std::format("optical check     : {}\n", proof.summary);
+                }
+                ok &= write_pgm(base + "_recon.pgm", psf.n, psf.n, psf.intensity, 2.2);
+                ok &= (write_metalens_gds(lens, base + "_layout.gds") >= 0);
+                std::println("  report bundle -> {0}_report.txt (+ _recon.pgm, _layout.gds)  ok={1}",
+                             base, ok);
+            }
+        }
+        return 0;
+    }
 
     auto foc = analyze_focus(lens, lib, focal, lambda, diameter);
     std::println("  focal: Strehl {:.3f}, FWHM {:.2f}µm (diffraction limit {:.2f}µm), "
@@ -875,43 +1172,29 @@ int cmd_pbdesign(int argc, char** argv) {
     // The geometric-phase profile to imprint. The rotation map is identical for
     // all of them -- only the target phase phi(x,y) changes.
     const std::string profile_name = arg_value(argc, argv, "--profile", "focusing");
-    PbProfile profile;
-    if (profile_name == "focusing") {
-        profile.kind = PbProfileKind::Focusing;
-        profile.focal_length_um = focal;
-    } else if (profile_name == "vortex") {
-        profile.kind = PbProfileKind::Vortex;
-        profile.focal_length_um = focal;  // focused vortex (donut focal spot)
-        profile.topological_charge = std::atoi(arg_value(argc, argv, "--charge", "1"));
-    } else if (profile_name == "deflector") {
-        profile.kind = PbProfileKind::Deflector;
-        profile.deflect_deg = std::atof(arg_value(argc, argv, "--deflect-deg", "10"));
-        profile.deflect_azimuth_deg = std::atof(arg_value(argc, argv, "--deflect-azimuth", "0"));
-    } else if (profile_name == "axicon") {
-        profile.kind = PbProfileKind::Axicon;
-        profile.axicon_deg = std::atof(arg_value(argc, argv, "--axicon-deg", "5"));
-    } else {
-        std::println("ERROR: unknown --profile '{}' (use focusing|vortex|deflector|axicon)",
-                     profile_name);
-        return 1;
-    }
+    auto profile_opt = parse_phase_profile(argc, argv, focal, diameter);
+    if (!profile_opt) return 1;
+    PhaseProfile profile = *profile_opt;
 
     std::println("CELERIS Pancharatnam-Berry (geometric-phase) metasurface");
     std::println("  profile={}  D={}um  lambda={}um  illumination={}",
                  profile_name, diameter, lambda, handedness > 0 ? "RCP" : "LCP");
     switch (profile.kind) {
-        case PbProfileKind::Focusing:
+        case PhaseProfileKind::Focusing:
             std::println("  focusing lens: f={}um", focal); break;
-        case PbProfileKind::Vortex:
+        case PhaseProfileKind::Vortex:
             std::println("  vortex/OAM: charge l={}{}", profile.topological_charge,
                          focal > 0 ? std::format("  (focused at f={}um)", focal)
                                    : "  (collimated)"); break;
-        case PbProfileKind::Deflector:
+        case PhaseProfileKind::Deflector:
             std::println("  beam deflector: {}deg toward azimuth {}deg",
                          profile.deflect_deg, profile.deflect_azimuth_deg); break;
-        case PbProfileKind::Axicon:
+        case PhaseProfileKind::Axicon:
             std::println("  axicon: cone half-angle {}deg (Bessel/line focus)",
                          profile.axicon_deg); break;
+        case PhaseProfileKind::Freeform:
+            std::println("  freeform hologram: {0}x{0} loaded phase map spanning {1}um",
+                         profile.freeform_n, profile.freeform_extent_um); break;
     }
 
     // 1. Find the half-wave-plate meta-atom (best spin-flip conversion).
@@ -978,89 +1261,13 @@ int cmd_pbdesign(int argc, char** argv) {
             px.push_back(x); py.push_back(y);
             tc.push_back(d.t_cross[off]);
         }
-    const double k = 2.0 * pi / lambda;
-    const double dl = lambda * std::max(focal, 1.0) / diameter;  // ~spot scale
-
-    // On-axis Rayleigh-Sommerfeld intensity at distance z (used by focusing/axicon).
-    auto on_axis_I = [&](double z) {
-        cdouble E{0, 0};
-        for (std::size_t q = 0; q < px.size(); ++q) {
-            double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
-            E += tc[q] * std::polar(1.0 / r, k * r);
-        }
-        return std::norm(E);
-    };
-
-    std::string optical_line;  // one-line summary, reused in the report
-    // Where to render the report PSF image (depends on the element).
-    double psf_cx = 0, psf_cy = 0, psf_z = focal, psf_hw = std::max(5.0 * dl, 4.0);
-
-    if (profile.kind == PbProfileKind::Focusing) {
-        const int NZ = 240;
-        double best_z = 0.5 * focal, best_I = -1.0;
-        for (int j = 0; j < NZ; ++j) {
-            double z = 0.5 * focal + focal * j / (NZ - 1);
-            double I = on_axis_I(z);
-            if (I > best_I) { best_I = I; best_z = z; }
-        }
-        psf_z = focal;
-        optical_line = std::format("cross-pol focuses at z = {:.1f} um (target {:.1f})",
-                                   best_z, focal);
-    } else if (profile.kind == PbProfileKind::Vortex) {
-        // Focused vortex -> a DONUT focal spot: deep on-axis null, bright ring.
-        psf_z = focal; psf_hw = std::max(8.0 * dl, 5.0);
-        auto psf = propagate_pillars(px, py, tc, 0, 0, psf_z, lambda, 201, psf_hw);
-        int nn = psf.n, pk = 0; double peak = 0;
-        for (int i = 0; i < nn * nn; ++i)
-            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
-        double center_I = psf.intensity[(nn / 2) * nn + nn / 2];
-        double pix = 2.0 * psf_hw / (nn - 1);
-        double ring_r = std::hypot((double)(pk % nn - nn / 2), (double)(pk / nn - nn / 2)) * pix;
-        optical_line = std::format(
-            "focal-plane donut (l={}): on-axis/peak = {:.3f} (null), ring radius {:.2f} um",
-            profile.topological_charge, peak > 0 ? center_I / peak : 0.0, ring_r);
-    } else if (profile.kind == PbProfileKind::Deflector) {
-        // The beam lands displaced by z*tan(a) along the azimuth on a screen z=focal.
-        const double a = profile.deflect_deg * pi / 180.0;
-        const double az = profile.deflect_azimuth_deg * pi / 180.0;
-        psf_z = focal;
-        psf_cx = psf_z * std::tan(a) * std::cos(az);
-        psf_cy = psf_z * std::tan(a) * std::sin(az);
-        psf_hw = std::max(8.0 * dl, 5.0);
-        auto psf = propagate_pillars(px, py, tc, psf_cx, psf_cy, psf_z, lambda, 201, psf_hw);
-        int nn = psf.n, pk = 0; double peak = 0;
-        for (int i = 0; i < nn * nn; ++i)
-            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
-        double pix = 2.0 * psf_hw / (nn - 1);
-        double mx = psf_cx + (pk % nn - nn / 2) * pix;
-        double my = psf_cy + (pk / nn - nn / 2) * pix;
-        double disp = std::hypot(mx, my);
-        double meas_deg = std::atan2(disp, psf_z) * 180.0 / pi;
-        optical_line = std::format(
-            "beam at screen z={:.0f}um lands {:.2f}um off-axis -> {:.2f}deg (target {:.2f}deg)",
-            psf_z, disp, meas_deg, profile.deflect_deg);
-    } else {  // Axicon: Bessel beam with an extended on-axis line focus ~ R/tan(b).
-        const double b = profile.axicon_deg * pi / 180.0;
-        const double dof_pred = R_ap / std::tan(b);
-        const double zlo = 0.1 * dof_pred, zhi = 1.4 * dof_pred;
-        const int NZ = 400;
-        std::vector<double> Iz(NZ);
-        double maxI = 0;
-        for (int j = 0; j < NZ; ++j) {
-            Iz[j] = on_axis_I(zlo + (zhi - zlo) * j / (NZ - 1));
-            if (Iz[j] > maxI) maxI = Iz[j];
-        }
-        int jlo = -1, jhi = -1;
-        for (int j = 0; j < NZ; ++j)
-            if (Iz[j] >= 0.5 * maxI) { if (jlo < 0) jlo = j; jhi = j; }
-        double zspan = jhi > jlo ? (jhi - jlo) * (zhi - zlo) / (NZ - 1) : 0.0;
-        psf_z = 0.5 * dof_pred; psf_hw = std::max(6.0 * dl, 4.0);
-        // The FWHM span is a fraction of the geometric max range R/tan(b) -- the
-        // on-axis intensity ramps up then falls, it isn't flat over the full range.
-        optical_line = std::format(
-            "extended on-axis line focus: FWHM {:.1f}um (geometric max range R/tan b ~{:.1f}um)",
-            zspan, dof_pred);
-    }
+    const double recon_z = std::atof(arg_value(argc, argv, "--recon-z",
+                                               std::to_string(focal).c_str()));
+    ProfileProof proof = profile_optical_proof(px, py, tc, profile, lambda, focal,
+                                               diameter, recon_z);
+    const std::string& optical_line = proof.summary;
+    const double psf_cx = proof.psf_cx, psf_cy = proof.psf_cy;
+    const double psf_z = proof.psf_z, psf_hw = proof.psf_hw;
     std::println("  optical check: {}; conversion-efficiency cap = {:.1f}%",
                  optical_line, 100.0 * d.conversion_efficiency);
 
@@ -1318,7 +1525,7 @@ void print_help() {
         "CELERIS — GPU-ready metalens design via rigorous coupled-wave analysis\n"
         "\n"
         "Usage:\n"
-        "  celeris design [options]   design a focusing metalens -> GDSII + report\n"
+        "  celeris design [options]   design a metalens -> GDSII + report\n"
         "  celeris validate [options] credibility battery on real TiO2 n,k:\n"
         "                             convergence + meta-atom + end-to-end report\n"
         "  celeris selftest           run the physics validation suite\n"
@@ -1330,6 +1537,10 @@ void print_help() {
         "  --wavelength <µm=0.532>\n"
         "  --period <µm=0.35>     unit-cell pitch\n"
         "  --thickness <µm=0.6>   pillar height\n"
+        "  --profile <focusing|vortex|deflector|axicon|freeform=focusing>\n"
+        "    --charge l / --deflect-deg / --deflect-azimuth / --axicon-deg   profile params\n"
+        "    --freeform-file <grid.txt> --freeform-extent <µm>  loaded phi(x,y) hologram\n"
+        "    --recon-z <µm=focal>   plane to reconstruct a non-focusing profile at\n"
         "  --auto-height          sweep height for full-2π coverage, ignore --thickness\n"
         "    --height-lo/-hi/-steps <0.30/1.20/12>  the height sweep range\n"
         "  --shape <square|circle|cross|ring=square>  meta-atom cross-section\n"
@@ -1357,16 +1568,18 @@ void print_help() {
         "  polarization-multiplexed lens: X-pol and Y-pol focus at different\n"
         "  distances; writes a rectangular-pillar GDS (+ report bundle)\n"
         "\n"
-        "celeris pbdesign [--profile focusing|vortex|deflector|axicon] [--focal 50]\n"
+        "celeris pbdesign [--profile focusing|vortex|deflector|axicon|freeform] [--focal 50]\n"
         "                 [--charge 1] [--deflect-deg 10] [--deflect-azimuth 0]\n"
-        "                 [--axicon-deg 5] [--diameter --wavelength --period\n"
+        "                 [--axicon-deg 5] [--freeform-file <grid.txt> --freeform-extent <µm>]\n"
+        "                 [--recon-z <µm>] [--diameter --wavelength --period\n"
         "                 --thickness --pillar-n --samples --harmonics\n"
         "                 --handedness 1 --out --report <prefix>]\n"
         "  Pancharatnam-Berry (geometric-phase) metasurface: one half-wave-plate\n"
         "  atom rotated per site imprints 2*theta = any phi(x,y) on circularly\n"
         "  polarized light. Profiles: focusing lens, vortex/OAM plate (--charge l),\n"
-        "  beam deflector (--deflect-deg), axicon/Bessel (--axicon-deg). RCWA-\n"
-        "  verifies the 2*theta relation, writes a rotated-pillar GDS");
+        "  beam deflector (--deflect-deg), axicon/Bessel (--axicon-deg), or a freeform\n"
+        "  hologram loaded from a phase-grid file. RCWA-verifies the 2*theta\n"
+        "  relation, writes a rotated-pillar GDS");
 }
 
 } // namespace

@@ -103,44 +103,8 @@ std::vector<PbVerifyPoint> verify_pb_phase(
     return out;
 }
 
-double pb_profile_phase(const PbProfile& p, double x, double y,
-                        double wavelength_um) {
-    const double k = 2.0 * pi / wavelength_um;
-    const double r = std::sqrt(x * x + y * y);
-    switch (p.kind) {
-        case PbProfileKind::Focusing:
-            // Converging hyperbolic wavefront -> on-axis focus at z = f.
-            return -k * (std::sqrt(r * r + p.focal_length_um * p.focal_length_um) -
-                         p.focal_length_um);
-        case PbProfileKind::Vortex: {
-            // Azimuthal phase ramp l*atan2(y,x) carries l*hbar of OAM per photon
-            // (winds 2*pi*l around the axis). Add the focusing term for a focused
-            // vortex (a donut focal spot); f <= 0 leaves a pure (collimated) OAM beam.
-            double phi = p.topological_charge * std::atan2(y, x);
-            if (p.focal_length_um > 0.0)
-                phi += -k * (std::sqrt(r * r + p.focal_length_um * p.focal_length_um) -
-                             p.focal_length_um);
-            return phi;
-        }
-        case PbProfileKind::Deflector: {
-            // Linear ramp: a transverse momentum k*sin(a) along the azimuth direction
-            // tilts a normally-incident beam to angle `a` (a blazed grating / prism).
-            const double a = p.deflect_deg * pi / 180.0;
-            const double az = p.deflect_azimuth_deg * pi / 180.0;
-            return k * std::sin(a) * (x * std::cos(az) + y * std::sin(az));
-        }
-        case PbProfileKind::Axicon: {
-            // Conical phase: every ray bends toward the axis by `b`, forming a
-            // non-diffracting Bessel beam over an extended on-axis line focus.
-            const double b = p.axicon_deg * pi / 180.0;
-            return -k * std::sin(b) * r;
-        }
-    }
-    return 0.0;
-}
-
 PbMetalensDesign design_pb_metalens(const HwpAtom& atom, double period_um,
-                                    double wavelength_um, const PbProfile& profile,
+                                    double wavelength_um, const PhaseProfile& profile,
                                     double diameter_um, int handedness) {
     const int n = std::max(1, (int)std::round(diameter_um / period_um));
     const double center = (n - 1) / 2.0;
@@ -165,7 +129,7 @@ PbMetalensDesign design_pb_metalens(const HwpAtom& atom, double period_um,
     for (int iy = 0; iy < n; ++iy)
         for (int ix = 0; ix < n; ++ix) {
             double x = (ix - center) * period_um, y = (iy - center) * period_um;
-            double phi = pb_profile_phase(profile, x, y, wavelength_um);
+            double phi = phase_profile_value(profile, x, y, wavelength_um);
             double theta = -handedness * phi / 2.0;
             std::size_t off = (std::size_t)iy * n + ix;
             d.rotation_rad[off] = theta;
@@ -185,8 +149,8 @@ PbMetalensDesign design_pb_metalens(const HwpAtom& atom, double period_um,
 PbMetalensDesign design_pb_metalens(const HwpAtom& atom, double period_um,
                                     double wavelength_um, double focal_length_um,
                                     double diameter_um, int handedness) {
-    PbProfile p;
-    p.kind = PbProfileKind::Focusing;
+    PhaseProfile p;
+    p.kind = PhaseProfileKind::Focusing;
     p.focal_length_um = focal_length_um;
     return design_pb_metalens(atom, period_um, wavelength_um, p, diameter_um,
                               handedness);

@@ -10,6 +10,7 @@
 //      library phase best matches. The output is a fabricable pillar map plus
 //      the residual phase error (design fidelity).
 
+#include "celeris/design/phase_profile.hpp"
 #include "celeris/materials/material.hpp"
 #include "celeris/rcwa/rcwa2d.hpp"
 
@@ -117,8 +118,17 @@ struct MetalensDesign {
     double mean_amplitude;            // avg |t| of chosen pillars (efficiency proxy)
 };
 
-// Design a focusing metalens of the given focal length and aperture diameter
-// using the supplied library. Target phase is the hyperbolic lens profile
+// Design a metalens for an ARBITRARY phase profile on the propagation-phase path:
+// at each lattice site, pick the library pillar whose phase best matches the
+// target phi(x,y) (focusing / vortex / deflector / axicon / freeform). Unlike the
+// geometric-phase path this carries a finite residual phase error (the library is
+// discrete) and a non-uniform amplitude -- both reported in MetalensDesign.
+MetalensDesign design_metalens(const UnitCellLibrary& lib,
+                               const PhaseProfile& profile, double diameter_um,
+                               double amplitude_weight = 0.25);
+
+// Convenience overload: a focusing lens of the given focal length and aperture.
+// Target phase is the hyperbolic lens profile
 //   phi(r) = -(2*pi/lambda) * (sqrt(r^2 + f^2) - f).
 MetalensDesign design_metalens(const UnitCellLibrary& lib,
                                double focal_length_um, double diameter_um,
