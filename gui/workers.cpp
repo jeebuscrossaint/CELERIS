@@ -65,6 +65,7 @@ void run_design(Params p) {
 
     Results r;
     r.strehl = foc.strehl;
+    r.phase_strehl = foc.phase_strehl;
     r.fwhm = foc.fwhm_um;
     r.dl = foc.diffraction_limit_um;
     r.encircled = foc.encircled_energy;

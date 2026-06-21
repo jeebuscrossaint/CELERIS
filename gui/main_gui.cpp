@@ -418,7 +418,9 @@ int main() {
                             f << std::format("phase coverage    : {:.0f} deg\n", r.coverage_deg);
                             f << std::format("RMS phase error   : {:.1f} deg\n", r.rms);
                             f << std::format("mean transmission : {:.3f}\n\n", r.meanT);
-                            f << std::format("Strehl ratio      : {:.3f}\n", r.strehl);
+                            f << std::format("Strehl (phase)    : {:.3f}  (quality; >=0.8 = diffraction-limited)\n",
+                                             r.phase_strehl);
+                            f << std::format("Strehl (w/ thrupt): {:.3f}  (quality x throughput)\n", r.strehl);
                             f << std::format("spot FWHM         : {:.3f} um\n", r.fwhm);
                             f << std::format("diffraction limit : {:.3f} um\n", r.dl);
                             f << std::format("encircled energy  : {:.1f} %\n", r.encircled * 100.0);
@@ -559,11 +561,16 @@ int main() {
                             ph[i] = static_cast<float>(lib.phase[i] * 180.0 / 3.14159265358979);
                             am[i] = static_cast<float>(lib.amplitude[i]);
                         }
-                        ImGui::Text("Phase coverage: %.0f deg  (need ~360 for full 2pi control)",
-                                    g_res.coverage_deg);
-                        if (g_res.coverage_deg < 300.0)
+                        double eff_cov = lib.coverage() * 180.0 / 3.14159265358979;
+                        ImGui::Text("Phase coverage: %.0f deg effective  (%.0f deg span; "
+                                    "need ~360 for full 2pi control)", eff_cov, g_res.coverage_deg);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Effective = 360 minus the largest gap on the phase circle\n"
+                                              "(the honest \"can I hit any target phase?\" metric).\n"
+                                              "Span = max-min, which over-reports when phase wraps.");
+                        if (eff_cov < 300.0)
                             ImGui::TextColored(rgb(190, 40, 40),
-                                "limited coverage -> taller pillars or higher index for full 2pi");
+                                "limited coverage -> taller pillars, shaped atoms, or higher index for full 2pi");
                         ImGui::PlotLines("##phfill", ph.data(), ns, 0,
                                          "imparted phase (deg) vs fill", -180.0f, 180.0f,
                                          ImVec2(-FLT_MIN, 110));
@@ -586,6 +593,7 @@ int main() {
                 if (!have_result) ImGui::TextDisabled("Run a design (F5).");
                 else {
                     std::lock_guard<std::mutex> lk(g_mtx);
+                    double eff_cov = g_res.lib.coverage() * 180.0 / 3.14159265358979;
                     if (ImGui::BeginTable("sum", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
                         kvrow("Array", std::format("{0} x {0} pillars ({1})", g_res.n_cells, g_res.pillars));
                         ImGui::TableNextRow();
@@ -594,9 +602,20 @@ int main() {
                         if (g_res.na >= 0.7)
                             ImGui::TextColored(rgb(190, 40, 40), "%.2f  (extreme)", g_res.na);
                         else ImGui::Text("%.2f", g_res.na);
-                        kvrow("Phase coverage", std::format("{:.0f} deg", g_res.coverage_deg));
+                        // Headline QUALITY: phase Strehl + spot size vs the limit.
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Optical quality (phase Strehl)");
+                        ImGui::TableNextColumn();
+                        ImVec4 pc = g_res.phase_strehl >= 0.8 ? rgb(20, 130, 40)
+                                    : g_res.phase_strehl >= 0.5 ? rgb(170, 120, 0) : rgb(190, 40, 40);
+                        ImGui::TextColored(pc, "%.3f%s", g_res.phase_strehl,
+                                           g_res.phase_strehl >= 0.8 ? "  (diffraction-limited)" : "");
+                        kvrow("Spot FWHM", std::format("{:.2f} um  (limit {:.2f})", g_res.fwhm, g_res.dl));
+                        // Headline EFFICIENCY, reported separately from quality.
+                        kvrow("Efficiency (mean |t|)", std::format("{:.3f}", g_res.meanT));
+                        kvrow("Phase coverage", std::format("{:.0f} deg effective ({:.0f} span)",
+                                                            eff_cov, g_res.coverage_deg));
                         kvrow("RMS phase error", std::format("{:.1f} deg", g_res.rms));
-                        kvrow("Mean transmission", std::format("{:.3f}", g_res.meanT));
                         ImGui::EndTable();
                     }
                 }
@@ -611,15 +630,35 @@ int main() {
                 else {
                     std::lock_guard<std::mutex> lk(g_mtx);
                     if (ImGui::BeginTable("foc", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                        // Optical QUALITY first: phase Strehl (aberration only), the
+                        // classic Marechal metric. >=0.8 = diffraction-limited. This
+                        // is what answers "is the lens sharp?" -- independent of how
+                        // much light gets through.
                         ImGui::TableNextRow();
-                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Strehl ratio");
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Strehl (phase / quality)");
+                        ImGui::TableNextColumn();
+                        ImVec4 pc = g_res.phase_strehl >= 0.8 ? rgb(20, 130, 40)
+                                    : g_res.phase_strehl >= 0.5 ? rgb(170, 120, 0) : rgb(190, 40, 40);
+                        ImGui::TextColored(pc, "%.3f", g_res.phase_strehl);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Peak vs a same-amplitude, perfectly-phased lens.\n"
+                                              "Isolates wavefront quality (Marechal). >=0.8 = diffraction-limited.");
+                        kvrow("Spot FWHM", std::format("{:.2f} um", g_res.fwhm));
+                        kvrow("Diffraction limit", std::format("{:.2f} um", g_res.dl));
+                        kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
+                        // EFFICIENCY / throughput, reported separately so it is not
+                        // confused with optical quality.
+                        kvrow("Mean transmission |t|", std::format("{:.3f}", g_res.meanT));
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn(); ImGui::TextUnformatted("Strehl (w/ throughput)");
                         ImGui::TableNextColumn();
                         ImVec4 sc = g_res.strehl >= 0.8 ? rgb(20, 130, 40)
                                     : g_res.strehl >= 0.5 ? rgb(170, 120, 0) : rgb(190, 40, 40);
                         ImGui::TextColored(sc, "%.3f", g_res.strehl);
-                        kvrow("Spot FWHM", std::format("{:.2f} um", g_res.fwhm));
-                        kvrow("Diffraction limit", std::format("{:.2f} um", g_res.dl));
-                        kvrow("Encircled energy", std::format("{:.0f} %", g_res.encircled * 100.0));
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Transmission-weighted: quality x throughput\n"
+                                              "(~ phase Strehl x mean|t|^2). Folds in efficiency loss,\n"
+                                              "so it is lower than the phase Strehl -- not an aberration.");
                         ImGui::EndTable();
                     }
                 }
@@ -981,7 +1020,7 @@ int main() {
                         if (spot_texs[i])
                             ImGui::Image((ImTextureID)(intptr_t)spot_texs[i],
                                          ImVec2(sz, sz));
-                        ImGui::Text("Strehl %.2f", g_spot[i].rel_strehl);
+                        ImGui::Text("rel.Strehl %.2f", g_spot[i].rel_strehl);
                         ImGui::Text("shift %.1f um", g_spot[i].cx_um);
                         ImGui::EndGroup();
                         if (i + 1 < g_spot.size()) ImGui::SameLine();
@@ -1049,10 +1088,40 @@ int main() {
                 std::lock_guard<std::mutex> lk(g_mtx);
                 if (g_res.chrom_focus.empty()) ImGui::TextDisabled("Run a design (F5).");
                 else {
-                    ImGui::TextUnformatted("Focal length (um) vs wavelength");
-                    ImGui::PlotLines("##chrom", g_res.chrom_focus.data(),
-                                     static_cast<int>(g_res.chrom_focus.size()), 0,
-                                     nullptr, FLT_MAX, FLT_MAX, ImGui::GetContentRegionAvail());
+                    const auto& wl = g_res.chrom_wl;
+                    const auto& fz = g_res.chrom_focus;
+                    int n = static_cast<int>(fz.size());
+                    float fmin = fz[0], fmax = fz[0];
+                    for (float v : fz) { fmin = std::min(fmin, v); fmax = std::max(fmax, v); }
+                    ImGui::Text("Band: %.0f - %.0f nm   (design lambda %.0f nm)",
+                                wl.front(), wl.back(), g_res.used.wavelength * 1000.0);
+                    ImGui::Text("Focal length: %.1f - %.1f um   (shift %.1f um across the band)",
+                                fmin, fmax, fmax - fmin);
+                    ImGui::TextColored(rgb(170, 120, 0),
+                        "Strong chromatic dispersion (f ~ 1/lambda) -- expected for a "
+                        "single-layer metalens; achromatic design is the fix.");
+                    char ov[64];
+                    std::snprintf(ov, sizeof(ov), "focal length %.0f..%.0f um (y) vs wavelength",
+                                  fmin, fmax);
+                    ImVec2 av = ImGui::GetContentRegionAvail();
+                    ImGui::PlotLines("##chrom", fz.data(), n, 0, ov, fmin, fmax,
+                                     ImVec2(av.x, std::max(av.y - 150.0f, 90.0f)));
+                    if (ImGui::BeginTable("chromt", 3, ImGuiTableFlags_Borders |
+                                          ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+                                          ImVec2(0, 140))) {
+                        ImGui::TableSetupColumn("lambda (nm)");
+                        ImGui::TableSetupColumn("focus (um)");
+                        ImGui::TableSetupColumn("vs design");
+                        ImGui::TableHeadersRow();
+                        for (int i = 0; i < n; ++i) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn(); ImGui::Text("%.0f", wl[i]);
+                            ImGui::TableNextColumn(); ImGui::Text("%.2f", fz[i]);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%+.2f um", fz[i] - g_res.used.focal);
+                        }
+                        ImGui::EndTable();
+                    }
                 }
             }
             ImGui::End();
@@ -1135,18 +1204,28 @@ int main() {
                 std::lock_guard<std::mutex> lk(g_mtx);
                 if (!have_tol || g_tol.empty())
                     ImGui::TextDisabled("Run Tolerance (Run menu or Lens Data panel).");
-                else if (ImGui::BeginTable("tolt", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-                    ImGui::TableSetupColumn("sigma (nm)"); ImGui::TableSetupColumn("mean");
+                else {
+                    ImGui::TextWrapped("Monte-Carlo fabrication sensitivity: each row adds random "
+                                       "Gaussian error (std = sigma) to every pillar's width, then "
+                                       "re-measures the focus. Strehl is transmission-weighted.");
+                    if (ImGui::BeginTable("tolt", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                    ImGui::TableSetupColumn("CD error sigma (nm)"); ImGui::TableSetupColumn("mean Strehl");
                     ImGui::TableSetupColumn("std"); ImGui::TableSetupColumn("worst");
                     ImGui::TableHeadersRow();
+                    double s0 = g_tol.front().mean_strehl;
                     for (auto& t : g_tol) {
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn(); ImGui::Text("%.0f", t.sigma_nm);
-                        ImGui::TableNextColumn(); ImGui::Text("%.3f", t.mean_strehl);
+                        ImGui::TableNextColumn();
+                        // Flag rows that have lost >20% of the nominal Strehl.
+                        if (s0 > 0 && t.mean_strehl < 0.8 * s0)
+                            ImGui::TextColored(rgb(190, 40, 40), "%.3f", t.mean_strehl);
+                        else ImGui::Text("%.3f", t.mean_strehl);
                         ImGui::TableNextColumn(); ImGui::Text("%.3f", t.std_strehl);
                         ImGui::TableNextColumn(); ImGui::Text("%.3f", t.worst_strehl);
                     }
                     ImGui::EndTable();
+                    }
                 }
             }
             ImGui::End();

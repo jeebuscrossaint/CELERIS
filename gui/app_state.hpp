@@ -38,7 +38,7 @@ struct Params {
 };
 
 struct Results {
-    double strehl = 0, fwhm = 0, dl = 0, encircled = 0, rms = 0, meanT = 0;
+    double strehl = 0, phase_strehl = 0, fwhm = 0, dl = 0, encircled = 0, rms = 0, meanT = 0;
     double coverage_deg = 0, na = 0;
     int n_cells = 0, pillars = 0;
     PsfMap psf;
