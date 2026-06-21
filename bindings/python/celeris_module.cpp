@@ -24,6 +24,7 @@
 #include "celeris/design/phase_profile.hpp"
 #include "celeris/design/pb_metalens.hpp"
 #include "celeris/design/achromatic.hpp"
+#include "celeris/design/pb_achromatic.hpp"
 #include "celeris/analysis/focal.hpp"
 
 #include <stdexcept>
@@ -642,4 +643,123 @@ PYBIND11_MODULE(_celeris, m) {
           "Adapt an AchromaticDesign to the plain MetalensDesign the GDS writer / "
           "analysis battery consume (in-plane footprints only; multi-height etch "
           "depths are not encoded in a single GDS layer -- see single_height).");
+
+    // ---- achromatic Pancharatnam-Berry (geometric phase + dispersion) -------
+    // The MODERN single-etch achromat. The geometric (PB) phase sets the base
+    // profile EXACTLY by rotating a birefringent atom (wavelength-independent), so
+    // the atom is chosen PURELY for its group delay -- ONE objective, base-phase RMS
+    // ~0 by construction (unlike the propagation-phase achromat, which must hit both
+    // phase and group delay and leaves a residual). Every site shares one etch depth
+    // (rotated rectangles of varying footprint) -> a single fabrication step. See
+    // pb_achromatic.hpp.
+    py::class_<DispersivePbAtom>(m, "DispersivePbAtom",
+        "One BIREFRINGENT meta-atom characterized across the band by its spin-flip "
+        "(cross-circular) transmission a_cross(omega) = (t_x - t_y)/2 -- the "
+        "amplitude a PB site contributes once rotated.")
+        .def_readonly("fill_x", &DispersivePbAtom::fill_x)
+        .def_readonly("fill_y", &DispersivePbAtom::fill_y)
+        .def_readonly("thickness_um", &DispersivePbAtom::thickness_um)
+        .def_readonly("phase0_rad", &DispersivePbAtom::phase0_rad,
+                      "arg(a_cross) at the center wavelength (wrapped)")
+        .def_readonly("group_delay_fs", &DispersivePbAtom::group_delay_fs,
+                      "d(arg a_cross)/d(omega), least-squares over the band [fs]")
+        .def_readonly("mean_amplitude", &DispersivePbAtom::mean_amplitude,
+                      "mean |a_cross| over the band (apodization proxy)")
+        .def_readonly("mean_conversion", &DispersivePbAtom::mean_conversion,
+                      "mean |a_cross|^2 (spin-flip efficiency)")
+        .def_readonly("retardance_center_deg", &DispersivePbAtom::retardance_center_deg,
+                      "wrap(arg t_x - arg t_y) at center (ideal 180 = half-wave plate)");
+
+    py::class_<DispersivePbLibrary>(m, "DispersivePbLibrary",
+        "A dispersive BIREFRINGENT library at ONE etch depth (atoms span a "
+        "(fill_x, fill_y) grid so the group delay varies while the height is fixed) "
+        "-- a fabricable single-etch achromat, ready for the PB selection.")
+        .def_readonly("wavelengths_um", &DispersivePbLibrary::wavelengths_um, "band samples (ascending)")
+        .def_readonly("center_wavelength_um", &DispersivePbLibrary::center_wavelength_um)
+        .def_readonly("center_index", &DispersivePbLibrary::center_index)
+        .def_readonly("period_um", &DispersivePbLibrary::period_um)
+        .def_readonly("thickness_um", &DispersivePbLibrary::thickness_um, "the single shared etch depth")
+        .def_readonly("n_fill", &DispersivePbLibrary::n_fill, "grid side (atoms = n_fill*n_fill before filtering)")
+        .def_readonly("atoms", &DispersivePbLibrary::atoms, "the birefringent atoms kept after the amplitude filter")
+        .def_readonly("gd_min_fs", &DispersivePbLibrary::gd_min_fs, "min group delay supplied [fs]")
+        .def_readonly("gd_max_fs", &DispersivePbLibrary::gd_max_fs, "max group delay supplied [fs]");
+
+    m.def("build_dispersive_pb_library", &build_dispersive_pb_library,
+          py::arg("pillar"), py::arg("background"), py::arg("incident"),
+          py::arg("substrate"), py::arg("period_um"), py::arg("band_wavelengths_um"),
+          py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
+          py::arg("n_fills"), py::arg("thickness_um"), py::arg("M"),
+          py::arg("min_amplitude") = 0.30,
+          "Build a dispersive birefringent library over a (fill_x, fill_y) grid at a "
+          "SINGLE height: two RCWA solves/atom/wavelength give t_x, t_y -> the "
+          "spin-flip amplitude a_cross and its group delay (least-squares slope of "
+          "the unwrapped phase vs angular frequency). A non-birefringent atom "
+          "(fill_x == fill_y) has a_cross ~ 0 and a garbage group delay; min_amplitude "
+          "drops atoms whose mean |a_cross| is below it so only usable PB atoms remain. "
+          "band_wavelengths_um must be ascending.");
+
+    py::class_<PbAchromaticDesign>(m, "PbAchromaticDesign",
+        "An achromatic PB focusing metalens: per site, the atom whose GROUP DELAY "
+        "best matches the radius-dependent target, rotated so the base phase is hit "
+        "EXACTLY. Single etch depth (rotated rectangles of varying footprint).")
+        .def_readonly("n_cells", &PbAchromaticDesign::n_cells)
+        .def_readonly("period_um", &PbAchromaticDesign::period_um)
+        .def_readonly("thickness_um", &PbAchromaticDesign::thickness_um, "single etch depth")
+        .def_readonly("handedness", &PbAchromaticDesign::handedness, "+1 RCP illumination, -1 LCP")
+        .def_readonly("atom_index", &PbAchromaticDesign::atom_index,
+                      "per site -> index into DispersivePbLibrary.atoms")
+        .def_readonly("center_wavelength_um", &PbAchromaticDesign::center_wavelength_um)
+        .def_readonly("focal_length_um", &PbAchromaticDesign::focal_length_um)
+        .def_readonly("diameter_um", &PbAchromaticDesign::diameter_um)
+        .def_readonly("rms_phase_error_deg", &PbAchromaticDesign::rms_phase_error_deg,
+                      "base-phase residual at center (~0: geometric phase is exact)")
+        .def_readonly("rms_group_delay_error_fs", &PbAchromaticDesign::rms_group_delay_error_fs,
+                      "group-delay residual (the achromatic lever)")
+        .def_readonly("mean_amplitude", &PbAchromaticDesign::mean_amplitude,
+                      "mean |a_cross| over the aperture")
+        .def_readonly("mean_conversion", &PbAchromaticDesign::mean_conversion,
+                      "mean |a_cross|^2 (the spin-flip efficiency cap)")
+        .def_readonly("required_gd_span_fs", &PbAchromaticDesign::required_gd_span_fs,
+                      "group-delay span the design demanded")
+        .def_readonly("available_gd_span_fs", &PbAchromaticDesign::available_gd_span_fs,
+                      "span the library could supply")
+        .def_readonly("gd_coverage", &PbAchromaticDesign::gd_coverage,
+                      "available/required (>=1 => library is sufficient)")
+        .def_property_readonly("rotation_deg",
+            [](const PbAchromaticDesign& d) {
+                std::vector<double> deg(d.rotation_rad.size());
+                for (size_t i = 0; i < d.rotation_rad.size(); ++i)
+                    deg[i] = d.rotation_rad[i] * 180.0 / 3.14159265358979323846;
+                return to_2d_array(deg, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of per-site geometric-phase rotation (degrees).")
+        .def_property_readonly("fill_x_map",
+            [](const PbAchromaticDesign& d) {
+                return to_2d_array(d.fill_x_map, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of chosen rectangle x-footprints (row-major).")
+        .def_property_readonly("fill_y_map",
+            [](const PbAchromaticDesign& d) {
+                return to_2d_array(d.fill_y_map, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of chosen rectangle y-footprints (row-major).");
+
+    m.def("design_pb_achromatic_metalens", &design_pb_achromatic_metalens,
+          py::arg("lib"), py::arg("focal_length_um"), py::arg("diameter_um"),
+          py::arg("handedness") = 1, py::arg("gd_weight") = 1.0,
+          py::arg("amplitude_weight") = 0.25,
+          "Design an achromatic PB focusing metalens. Per site: (1) pick the atom "
+          "whose GROUP DELAY best matches the radius-dependent target (the ONLY "
+          "library constraint -- geometric phase handles the base phase); (2) set "
+          "the rotation so the base phase is hit EXACTLY. gd_weight=0 ignores group "
+          "delay -> a STANDARD (chromatic) PB lens from the same library (the "
+          "baseline); gd_weight>0 engages dispersion engineering. amplitude_weight "
+          "biases toward higher spin-flip conversion.");
+
+    m.def("verify_pb_achromatic_focus", &verify_pb_achromatic_focus, py::arg("lib"),
+          py::arg("design"),
+          "Focal length vs wavelength using the library's STORED per-atom band "
+          "response (no new RCWA): propagate the aperture with each site's realized "
+          "cross transmission a_cross(omega)*exp(i*phi_geo). Flat f(lambda) = "
+          "achromatic. Returns a list of AchromaticFocalPoint.");
 }

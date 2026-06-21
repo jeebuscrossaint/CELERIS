@@ -66,6 +66,12 @@ from ._celeris import (  # noqa: F401  (re-export)
     AchromaticFocalPoint,
     verify_achromatic_focus,
     to_metalens_design,
+    DispersivePbAtom,
+    DispersivePbLibrary,
+    build_dispersive_pb_library,
+    PbAchromaticDesign,
+    design_pb_achromatic_metalens,
+    verify_pb_achromatic_focus,
 )
 
 __version__ = "0.1.0"
@@ -118,4 +124,10 @@ __all__ = [
     "AchromaticFocalPoint",
     "verify_achromatic_focus",
     "to_metalens_design",
+    "DispersivePbAtom",
+    "DispersivePbLibrary",
+    "build_dispersive_pb_library",
+    "PbAchromaticDesign",
+    "design_pb_achromatic_metalens",
+    "verify_pb_achromatic_focus",
 ]
