@@ -23,6 +23,7 @@
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/phase_profile.hpp"
 #include "celeris/design/pb_metalens.hpp"
+#include "celeris/design/achromatic.hpp"
 #include "celeris/analysis/focal.hpp"
 
 #include <stdexcept>
@@ -495,4 +496,150 @@ PYBIND11_MODULE(_celeris, m) {
           py::arg("focal_length_um"), py::arg("diameter_um"),
           py::arg("handedness") = 1,
           "Convenience overload: a PB focusing lens of the given focal length.");
+
+    // ---- achromatic (broadband) design via dispersion engineering ----------
+    // To focus a whole band at one plane, each site must match BOTH the base
+    // focusing phase (mod 2pi) AND the radius-dependent group delay (dphi/domega).
+    // A single geometric DOF traces only a 1-D curve in the (phase, GD) plane, so
+    // the library spans 2-D either by fill x height (multi-etch / grayscale) or by
+    // SHAPE variety at one height (single-etch, fabricable). See achromatic.hpp.
+    py::class_<DispersiveAtom>(m, "DispersiveAtom",
+        "One meta-atom characterized across the band: its center phase, group "
+        "delay (dphi/domega), and full per-wavelength phase/|t| response.")
+        .def_readonly("fill", &DispersiveAtom::fill, "representative fill (==fill_x for a square)")
+        .def_readonly("thickness_um", &DispersiveAtom::thickness_um)
+        .def_readonly("shape", &DispersiveAtom::shape)
+        .def_readonly("fill_x", &DispersiveAtom::fill_x)
+        .def_readonly("fill_y", &DispersiveAtom::fill_y)
+        .def_readonly("shape_param", &DispersiveAtom::shape_param)
+        .def_readonly("phase0_rad", &DispersiveAtom::phase0_rad,
+                      "transmission phase at the center wavelength (wrapped)")
+        .def_readonly("group_delay_fs", &DispersiveAtom::group_delay_fs,
+                      "dphi/domega at center, least-squares over the band [fs]")
+        .def_readonly("mean_amplitude", &DispersiveAtom::mean_amplitude, "mean |t| over the band")
+        .def_readonly("phase_rad", &DispersiveAtom::phase_rad, "phi(lambda) at each band sample")
+        .def_readonly("amplitude", &DispersiveAtom::amplitude, "|t|(lambda) at each band sample");
+
+    py::class_<MetaAtomSpec>(m, "MetaAtomSpec",
+        "One meta-atom geometry to characterize across the band (the unit the "
+        "general dispersive-library builder consumes).")
+        .def(py::init([](MetaShape shape, double fill_x, double fill_y,
+                         double thickness_um, double shape_param) {
+                 return MetaAtomSpec{shape, fill_x, fill_y, thickness_um, shape_param};
+             }),
+             py::arg("shape") = MetaShape::Rectangle, py::arg("fill_x") = 0.5,
+             py::arg("fill_y") = 0.5, py::arg("thickness_um") = 0.6,
+             py::arg("shape_param") = 0.5)
+        .def_readwrite("shape", &MetaAtomSpec::shape)
+        .def_readwrite("fill_x", &MetaAtomSpec::fill_x)
+        .def_readwrite("fill_y", &MetaAtomSpec::fill_y)
+        .def_readwrite("thickness_um", &MetaAtomSpec::thickness_um)
+        .def_readwrite("shape_param", &MetaAtomSpec::shape_param);
+
+    py::class_<DispersiveLibrary>(m, "DispersiveLibrary",
+        "A meta-atom library characterized over a wavelength band, ready for the "
+        "achromatic two-objective selection. Atoms span the (phase, group-delay) "
+        "plane (via fill x height, or shapes at one height).")
+        .def_readonly("wavelengths_um", &DispersiveLibrary::wavelengths_um, "band samples (ascending)")
+        .def_readonly("center_wavelength_um", &DispersiveLibrary::center_wavelength_um)
+        .def_readonly("center_index", &DispersiveLibrary::center_index)
+        .def_readonly("period_um", &DispersiveLibrary::period_um)
+        .def_readonly("n_fill", &DispersiveLibrary::n_fill)
+        .def_readonly("n_height", &DispersiveLibrary::n_height)
+        .def_readonly("atoms", &DispersiveLibrary::atoms, "the characterized meta-atoms")
+        .def_readonly("gd_min_fs", &DispersiveLibrary::gd_min_fs, "min group delay the library supplies [fs]")
+        .def_readonly("gd_max_fs", &DispersiveLibrary::gd_max_fs, "max group delay the library supplies [fs]");
+
+    m.def("build_dispersive_library", &build_dispersive_library, py::arg("pillar"),
+          py::arg("background"), py::arg("incident"), py::arg("substrate"),
+          py::arg("period_um"), py::arg("band_wavelengths_um"),
+          py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
+          py::arg("n_fills"), py::arg("thick_lo"), py::arg("thick_hi"),
+          py::arg("n_heights"), py::arg("M"),
+          "Build a dispersive library over a fill x height grid (so the (phase, "
+          "group-delay) plane is covered): each atom is solved at EVERY band "
+          "wavelength; group delay = least-squares slope of unwrapped phase vs "
+          "angular frequency. n_heights==1 gives a single-DOF (1-etch) library. "
+          "band_wavelengths_um must be ascending.");
+
+    m.def("build_dispersive_library_from_specs", &build_dispersive_library_from_specs,
+          py::arg("pillar"), py::arg("background"), py::arg("incident"),
+          py::arg("substrate"), py::arg("period_um"), py::arg("band_wavelengths_um"),
+          py::arg("center_wavelength_um"), py::arg("specs"), py::arg("M"),
+          "Characterize an ARBITRARY list of meta-atom geometries (MetaAtomSpec) "
+          "across the band -- the general builder both grid wrappers sit on.");
+
+    m.def("build_single_etch_library", &build_single_etch_library, py::arg("pillar"),
+          py::arg("background"), py::arg("incident"), py::arg("substrate"),
+          py::arg("period_um"), py::arg("band_wavelengths_um"),
+          py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
+          py::arg("n_fills"), py::arg("thickness_um"), py::arg("M"),
+          "Build a SINGLE-ETCH dispersive library: every atom shares one height; "
+          "the (phase, group-delay) plane is spanned by varying SHAPE (square + "
+          "circle fill sweep, cross x arm-width, ring x inner-radius) instead of "
+          "depth. Fabricable in one lithography step; smaller GD span than fill x "
+          "height (taller pillars accumulate more delay -> use ~AR-4 thickness).");
+
+    py::class_<AchromaticDesign>(m, "AchromaticDesign",
+        "A broadband focusing metalens: per site, the atom matching both the base "
+        "phase and the radius-dependent group delay.")
+        .def_readonly("n_cells", &AchromaticDesign::n_cells)
+        .def_readonly("period_um", &AchromaticDesign::period_um)
+        .def_readonly("atom_index", &AchromaticDesign::atom_index,
+                      "per site -> index into DispersiveLibrary.atoms")
+        .def_readonly("center_wavelength_um", &AchromaticDesign::center_wavelength_um)
+        .def_readonly("focal_length_um", &AchromaticDesign::focal_length_um)
+        .def_readonly("diameter_um", &AchromaticDesign::diameter_um)
+        .def_readonly("rms_phase_error_deg", &AchromaticDesign::rms_phase_error_deg,
+                      "base-phase residual at the center wavelength")
+        .def_readonly("rms_group_delay_error_fs", &AchromaticDesign::rms_group_delay_error_fs,
+                      "group-delay residual (the achromatic lever)")
+        .def_readonly("mean_amplitude", &AchromaticDesign::mean_amplitude)
+        .def_readonly("required_gd_span_fs", &AchromaticDesign::required_gd_span_fs,
+                      "group-delay span the design demanded")
+        .def_readonly("available_gd_span_fs", &AchromaticDesign::available_gd_span_fs,
+                      "span the library could supply")
+        .def_readonly("gd_coverage", &AchromaticDesign::gd_coverage,
+                      "available/required (>=1 => library is sufficient)")
+        .def_readonly("single_height", &AchromaticDesign::single_height,
+                      "did every chosen atom share one height? (fabricable in one etch)")
+        .def_readonly("min_height_um", &AchromaticDesign::min_height_um)
+        .def_readonly("max_height_um", &AchromaticDesign::max_height_um)
+        .def_property_readonly("fill_map",
+            [](const AchromaticDesign& d) {
+                return to_2d_array(d.fill_map, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of chosen pillar fills (row-major).")
+        .def_property_readonly("thickness_map",
+            [](const AchromaticDesign& d) {
+                return to_2d_array(d.thickness_map, d.n_cells, d.n_cells);
+            },
+            "n_cells x n_cells numpy array of chosen pillar heights (row-major).");
+
+    m.def("design_achromatic_metalens", &design_achromatic_metalens, py::arg("lib"),
+          py::arg("focal_length_um"), py::arg("diameter_um"),
+          py::arg("gd_weight") = 1.0, py::arg("amplitude_weight") = 0.25,
+          "Two-objective atom selection: at each site match BOTH the base focusing "
+          "phase (mod 2pi) and the radius-dependent group delay. gd_weight scales "
+          "the group-delay objective (~1 balances center vs band-edge focus); "
+          "gd_weight=0 reproduces a standard dispersion-blind design from the same "
+          "library (the achromatic baseline).");
+
+    py::class_<AchromaticFocalPoint>(m, "AchromaticFocalPoint",
+        "Focal length at one band wavelength (rigorous, from the library's stored "
+        "per-atom band response).")
+        .def_readonly("wavelength_um", &AchromaticFocalPoint::wavelength_um)
+        .def_readonly("focal_length_um", &AchromaticFocalPoint::focal_length_um)
+        .def_readonly("rel_peak", &AchromaticFocalPoint::rel_peak,
+                      "on-axis peak relative to the center-wavelength design point");
+
+    m.def("verify_achromatic_focus", &verify_achromatic_focus, py::arg("lib"),
+          py::arg("design"),
+          "Focal length vs wavelength for a design, using the library's STORED "
+          "per-atom band response (no new RCWA solves). Flat f(lambda) = achromatic.");
+
+    m.def("to_metalens_design", &to_metalens_design, py::arg("design"),
+          "Adapt an AchromaticDesign to the plain MetalensDesign the GDS writer / "
+          "analysis battery consume (in-plane footprints only; multi-height etch "
+          "depths are not encoded in a single GDS layer -- see single_height).");
 }

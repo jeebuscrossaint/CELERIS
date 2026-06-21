@@ -55,6 +55,17 @@ from ._celeris import (  # noqa: F401  (re-export)
     verify_pb_phase,
     PbMetalensDesign,
     design_pb_metalens,
+    DispersiveAtom,
+    MetaAtomSpec,
+    DispersiveLibrary,
+    build_dispersive_library,
+    build_dispersive_library_from_specs,
+    build_single_etch_library,
+    AchromaticDesign,
+    design_achromatic_metalens,
+    AchromaticFocalPoint,
+    verify_achromatic_focus,
+    to_metalens_design,
 )
 
 __version__ = "0.1.0"
@@ -96,4 +107,15 @@ __all__ = [
     "verify_pb_phase",
     "PbMetalensDesign",
     "design_pb_metalens",
+    "DispersiveAtom",
+    "MetaAtomSpec",
+    "DispersiveLibrary",
+    "build_dispersive_library",
+    "build_dispersive_library_from_specs",
+    "build_single_etch_library",
+    "AchromaticDesign",
+    "design_achromatic_metalens",
+    "AchromaticFocalPoint",
+    "verify_achromatic_focus",
+    "to_metalens_design",
 ]

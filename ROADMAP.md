@@ -105,8 +105,13 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       pillars accumulate more group delay (h=0.6→1.3×, h=1.1→3.2×); the GD span (hence
       achromatic aperture×BW) is still smaller than the multi-height grid. selftest **[15b]**
       locks it (genuinely single-height + GD-RMS reduced; gated on GD RMS not the noisy low-
-      Fresnel drift). REMAINING: a published achromatic device reproduction; PB+dispersion
-      (geometric phase is dispersionless) for the modern recipe; expose in Python/GUI.
+      Fresnel drift). **Exposed in the Python bindings** — `build_dispersive_library`,
+      `build_single_etch_library`, `build_dispersive_library_from_specs`, `design_achromatic_
+      metalens`, `verify_achromatic_focus`, `to_metalens_design` + the Dispersive{Atom,Library}
+      / MetaAtomSpec / AchromaticDesign / AchromaticFocalPoint classes; example
+      `examples/python/06_achromatic.py` runs both library kinds (GD RMS 3.6×/2.4× flatter).
+      REMAINING: a published achromatic device reproduction; PB+dispersion (geometric phase is
+      dispersionless) for the modern recipe; expose in the GUI.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
