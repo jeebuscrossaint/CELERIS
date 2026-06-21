@@ -82,6 +82,7 @@ add_library(celeris_core
     src/celeris/design/polar_metalens.cpp
     src/celeris/design/pb_metalens.cpp
     src/celeris/design/achromatic.cpp
+    src/celeris/design/pb_achromatic.cpp
     src/celeris/analysis/focal.cpp
     src/celeris/analysis/chromatic.cpp
     src/celeris/analysis/tolerance.cpp

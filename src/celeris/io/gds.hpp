@@ -55,6 +55,19 @@ int write_pb_gds(const std::string& path, int n_cells, double period_um,
                  double fill_x, double fill_y,
                  const std::vector<double>& rotation_rad, int layer = 1);
 
+// Write an achromatic Pancharatnam-Berry layout: each site holds a rectangular
+// pillar of its OWN footprint (fill_x/fill_y, n_cells^2 row-major) AND its own
+// in-plane rotation (rotation_rad, CCW about the cell center). Generalizes
+// write_pb_gds (one shared atom) to the per-site DISPERSIVE atom an achromatic PB
+// design picks. All pillars still share one etch depth -> a single-step,
+// single-layer mask. Each is emitted as a rotated 4-vertex polygon. Returns the
+// number of pillars written, or -1 on error.
+int write_pb_rect_gds(const std::string& path, int n_cells, double period_um,
+                      const std::vector<double>& fill_x,
+                      const std::vector<double>& fill_y,
+                      const std::vector<double>& rotation_rad, int layer = 1,
+                      double min_fill = 0.05);
+
 // Re-read a GDSII file and count BOUNDARY (polygon) records. Used to validate
 // that an exported file is well-formed and has the expected element count.
 // Returns -1 on error.

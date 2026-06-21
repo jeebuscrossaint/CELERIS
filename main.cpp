@@ -35,6 +35,7 @@
 #include "celeris/design/achromatic.hpp"
 #include "celeris/design/metalens.hpp"
 #include "celeris/design/optimize.hpp"
+#include "celeris/design/pb_achromatic.hpp"
 #include "celeris/design/pb_metalens.hpp"
 #include "celeris/design/polar_metalens.hpp"
 #include "celeris/io/gds.hpp"
@@ -502,6 +503,36 @@ static int run_selftest() {
                      (single && gd_better && ad.rms_phase_error_deg < 25.0)
                          ? "✓ (GD-matched in ONE etch)"
                          : "FAIL");
+    }
+
+    // ---- Validation 15c: achromatic Pancharatnam-Berry (PB + dispersion) -----
+    // The modern recipe: the geometric (PB) phase sets the base profile EXACTLY by
+    // rotation while a dispersive birefringent atom (picked per radius from a
+    // fill_x x fill_y grid at ONE height) supplies the group delay. The two robust
+    // signals: (1) the base-phase RMS is ~0 for BOTH the standard and achromatic
+    // designs (geometric phase is exact -- no library quantization on phase), and
+    // (2) engaging the group-delay objective REDUCES the group-delay RMS, all at a
+    // single etch depth. (Focal drift stays a noisy supplement at this aperture.)
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        const double l0 = 0.532, bw = 0.20, D = 6.0, fl = 20.0, h = 1.10;
+        std::vector<double> band = {l0 * (1 - 0.5 * bw), l0, l0 * (1 + 0.5 * bw)};
+        std::println("[15c] Achromatic PB (geometric phase + dispersion, one etch {:.2f}µm):", h);
+        auto lib = build_dispersive_pb_library(tio2, materials::air(), materials::air(),
+                                               materials::bk7(), 0.35, band, l0,
+                                               0.10, 0.90, /*n_fills=*/6, h, /*M=*/5);
+        auto sd = design_pb_achromatic_metalens(lib, fl, D, /*handedness=*/+1, /*gd_weight=*/0.0);
+        auto ad = design_pb_achromatic_metalens(lib, fl, D, /*handedness=*/+1, /*gd_weight=*/1.0);
+        std::println("    GD library span = {:.2f} fs ({} atoms @ {:.2f}µm); base-phase RMS: "
+                     "standard {:.1e}°, achromatic {:.1e}° (geometric -> exact)",
+                     lib.gd_max_fs - lib.gd_min_fs, static_cast<int>(lib.atoms.size()), h,
+                     sd.rms_phase_error_deg, ad.rms_phase_error_deg);
+        bool base_exact = sd.rms_phase_error_deg < 1e-6 && ad.rms_phase_error_deg < 1e-6;
+        bool gd_better = ad.rms_group_delay_error_fs < sd.rms_group_delay_error_fs;
+        std::println("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
+                     sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
+                     (base_exact && gd_better) ? "✓ (exact base phase + GD-matched, ONE etch)"
+                                               : "FAIL");
     }
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
@@ -1579,6 +1610,159 @@ int cmd_achromatic(int argc, char** argv) {
     return 0;
 }
 
+// celeris pbachromatic: the MODERN achromatic recipe -- geometric (PB) phase +
+// dispersion engineering, in a SINGLE etch. A dispersive birefringent library
+// (rectangles over a fill_x x fill_y grid at one height) supplies a range of group
+// delays; at each site the atom is chosen PURELY for its group delay and then
+// ROTATED so the base focusing phase is hit EXACTLY (geometric phase is exact and
+// wavelength-independent). So the base-phase residual is ~0 -- unlike the
+// propagation-phase achromat -- and the achromatic limit is only the library's
+// group-delay coverage. Compares against a standard (chromatic) PB lens from the
+// same library and writes a rotated-rectangle GDS (one etch depth). ROADMAP #2.
+int cmd_pb_achromatic(int argc, char** argv) {
+    const double focal = std::atof(arg_value(argc, argv, "--focal", "30"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "10"));
+    const double lambda0 = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double frac_bw = std::atof(arg_value(argc, argv, "--bandwidth", "0.20"));
+    const int nb = std::atoi(arg_value(argc, argv, "--band-samples", "7"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--fill-samples", "12"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const double gd_weight = std::atof(arg_value(argc, argv, "--gd-weight", "1.0"));
+    // Birefringent atoms accumulate group delay with optical path, so a taller
+    // pillar widens the GD span each footprint can supply (h~1.1µm at Λ=0.35 ~ AR 4).
+    const double height = std::atof(arg_value(argc, argv, "--height", "1.10"));
+    const int handedness = std::atoi(arg_value(argc, argv, "--handedness", "1")) >= 0 ? 1 : -1;
+    const std::string out = arg_value(argc, argv, "--out", "pb_achromatic.gds");
+    const std::string sub_name = arg_value(argc, argv, "--substrate", "bk7");
+
+    const Material& substrate = sub_name == "air" ? materials::air()
+                                : sub_name == "sio2" ? materials::fused_silica()
+                                                     : materials::bk7();
+    const char* pillar_csv = arg_value(argc, argv, "--pillar-csv", nullptr);
+    const Material pillar =
+        pillar_csv ? load_material_csv(pillar_csv, "pillar-csv")
+                   : Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    const double lam_lo = lambda0 * (1.0 - 0.5 * frac_bw);
+    const double lam_hi = lambda0 * (1.0 + 0.5 * frac_bw);
+    std::vector<double> band(nb);
+    for (int j = 0; j < nb; ++j)
+        band[j] = lam_lo + (lam_hi - lam_lo) * j / (nb - 1);
+
+    std::println("CELERIS achromatic Pancharatnam-Berry (geometric phase + dispersion)");
+    std::println("  f={}µm  D={}µm  λ0={}µm  band=[{:.3f},{:.3f}]µm ({:.0f}% BW, {} samples)",
+                 focal, diameter, lambda0, lam_lo, lam_hi, frac_bw * 100.0, nb);
+    std::println("  Λ={}µm  n_pillar={}  substrate={}  illumination={}  SINGLE-ETCH height {:.2f}µm",
+                 period, pillar_n, sub_name, handedness > 0 ? "RCP" : "LCP", height);
+    std::println("  building dispersive birefringent library ({0}×{0} fill grid × {1} "
+                 "wavelengths, 2 solves each, M={2})...", samples, nb, M);
+
+    DispersivePbLibrary lib = build_dispersive_pb_library(
+        pillar, materials::air(), materials::air(), substrate, period, band, lambda0,
+        0.10, 0.90, samples, height, M);
+    std::println("  group-delay range supplied by the library: [{:.2f}, {:.2f}] fs "
+                 "(span {:.2f} fs, {} atoms)",
+                 lib.gd_min_fs, lib.gd_max_fs, lib.gd_max_fs - lib.gd_min_fs,
+                 static_cast<int>(lib.atoms.size()));
+
+    // Two designs from the SAME library isolate the dispersion engineering:
+    // gd_weight=0 = the best-conversion atom everywhere = a STANDARD (chromatic) PB
+    // lens; gd_weight>0 varies the atom per radius to match the group delay.
+    auto std_des = design_pb_achromatic_metalens(lib, focal, diameter, handedness, 0.0);
+    auto ach_des = design_pb_achromatic_metalens(lib, focal, diameter, handedness, gd_weight);
+
+    std::println("  standard PB (gd_weight 0): base-phase RMS {:.2e}°, GD RMS {:.2f} fs, "
+                 "mean |a_cross| {:.3f}, conv {:.3f}",
+                 std_des.rms_phase_error_deg, std_des.rms_group_delay_error_fs,
+                 std_des.mean_amplitude, std_des.mean_conversion);
+    std::println("  achromatic (gd_weight {:g}): base-phase RMS {:.2e}°, GD RMS {:.2f} fs, "
+                 "mean |a_cross| {:.3f}, conv {:.3f}",
+                 gd_weight, ach_des.rms_phase_error_deg, ach_des.rms_group_delay_error_fs,
+                 ach_des.mean_amplitude, ach_des.mean_conversion);
+    std::println("  base-phase RMS ~0 for BOTH: the rotation stamps the base phase EXACTLY "
+                 "(geometric phase) -- the atom is free to chase group delay.");
+    std::println("  group-delay budget: required span {:.2f} fs, available {:.2f} fs "
+                 "-> coverage {:.2f}",
+                 ach_des.required_gd_span_fs, ach_des.available_gd_span_fs, ach_des.gd_coverage);
+    if (ach_des.gd_coverage < 1.0)
+        std::println("  HONEST: GD coverage < 1 -> the library cannot supply the full "
+                     "group-delay span; achromatic only over a reduced aperture/bandwidth "
+                     "(taller/higher-aspect or coupled atoms widen the span).");
+
+    // Rigorous chromatic response of BOTH designs from the library's stored band data.
+    auto chrom_std = verify_pb_achromatic_focus(lib, std_des);
+    auto chrom_ach = verify_pb_achromatic_focus(lib, ach_des);
+    std::println("  chromatic focal length across the band (rigorous; flat = achromatic):");
+    std::println("      {:>9}  {:>16}  {:>16}", "λ(nm)", "standard f(µm)", "achromatic f(µm)");
+    double std_lo = 1e300, std_hi = -1e300, ach_lo = 1e300, ach_hi = -1e300;
+    for (int j = 0; j < nb; ++j) {
+        std::println("      {:>9.0f}  {:>16.2f}  {:>16.2f}",
+                     chrom_std[j].wavelength_um * 1000.0,
+                     chrom_std[j].focal_length_um, chrom_ach[j].focal_length_um);
+        std_lo = std::min(std_lo, chrom_std[j].focal_length_um);
+        std_hi = std::max(std_hi, chrom_std[j].focal_length_um);
+        ach_lo = std::min(ach_lo, chrom_ach[j].focal_length_um);
+        ach_hi = std::max(ach_hi, chrom_ach[j].focal_length_um);
+    }
+    const double std_drift = std_hi - std_lo, ach_drift = ach_hi - ach_lo;
+    std::println("  focal drift over the band: standard {:.2f} µm  ->  achromatic {:.2f} µm "
+                 "({:.1f}× tighter)",
+                 std_drift, ach_drift, ach_drift > 1e-9 ? std_drift / ach_drift : 0.0);
+
+    // GDS: per-site rotated rectangles, all one etch depth (a single mask layer).
+    int np = write_pb_rect_gds(out, ach_des.n_cells, ach_des.period_um,
+                               ach_des.fill_x_map, ach_des.fill_y_map,
+                               ach_des.rotation_rad);
+    if (np < 0) { std::println("  ERROR: could not write {}", out); return 1; }
+    std::println("  wrote {} rotated rectangles (one etch depth) -> {}", np, out);
+
+    const char* rprefix = arg_value(argc, argv, "--report", nullptr);
+    if (rprefix) {
+        std::string base = rprefix;
+        std::ofstream f(base + "_pb_achromatic_report.txt");
+        bool ok = static_cast<bool>(f);
+        if (f) {
+            f << "CELERIS achromatic Pancharatnam-Berry metalens design report\n";
+            f << "===========================================================\n\n";
+            f << std::format("recipe            : geometric (PB) phase + dispersion (single etch)\n");
+            f << std::format("center wavelength : {} um\n", lambda0);
+            f << std::format("band              : [{:.3f}, {:.3f}] um ({:.0f}% BW)\n",
+                             lam_lo, lam_hi, frac_bw * 100.0);
+            f << std::format("focal length      : {} um\n", focal);
+            f << std::format("aperture diameter : {} um\n", diameter);
+            f << std::format("period            : {} um\n", period);
+            f << std::format("etch depth        : {:.2f} um (single etch)\n", height);
+            f << std::format("illumination      : {} (circular)\n", handedness > 0 ? "RCP" : "LCP");
+            f << std::format("library atoms     : {}\n", static_cast<int>(lib.atoms.size()));
+            f << std::format("array             : {0} x {0} rotated rectangles\n\n", ach_des.n_cells);
+            f << std::format("base-phase RMS    : {:.2e} deg (geometric phase is exact)\n",
+                             ach_des.rms_phase_error_deg);
+            f << std::format("group-delay RMS   : {:.2f} fs (standard {:.2f})\n",
+                             ach_des.rms_group_delay_error_fs, std_des.rms_group_delay_error_fs);
+            f << std::format("mean |a_cross|    : {:.3f}\n", ach_des.mean_amplitude);
+            f << std::format("conversion (cap)  : {:.3f}\n", ach_des.mean_conversion);
+            f << std::format("GD required span  : {:.2f} fs\n", ach_des.required_gd_span_fs);
+            f << std::format("GD available span : {:.2f} fs\n", ach_des.available_gd_span_fs);
+            f << std::format("GD coverage       : {:.2f}\n", ach_des.gd_coverage);
+            f << std::format("focal drift (std) : {:.2f} um\n", std_drift);
+            f << std::format("focal drift (ach) : {:.2f} um\n", ach_drift);
+            f << "\nlambda(nm)   standard_f(um)   achromatic_f(um)\n";
+            for (int j = 0; j < nb; ++j)
+                f << std::format("{:>9.0f}   {:>14.2f}   {:>16.2f}\n",
+                                 chrom_std[j].wavelength_um * 1000.0,
+                                 chrom_std[j].focal_length_um, chrom_ach[j].focal_length_um);
+        }
+        ok &= (write_pb_rect_gds(base + "_pb_achromatic_layout.gds", ach_des.n_cells,
+                                 ach_des.period_um, ach_des.fill_x_map, ach_des.fill_y_map,
+                                 ach_des.rotation_rad) >= 0);
+        std::println("  report bundle -> {0}_pb_achromatic_report.txt (+ _pb_achromatic_layout.gds)  ok={1}",
+                     base, ok);
+    }
+    return 0;
+}
+
 // celeris validate: the credibility battery. Uses REAL tabulated TiO2 n,k
 // (amorphous ALD, Siefke 2016 — the deposition used in visible metalenses) on a
 // fused-silica substrate, and produces a reproducible validation report:
@@ -1864,6 +2048,18 @@ void print_help() {
         "  budget and the chromatic focal drift vs a dispersion-blind baseline.\n"
         "  --single-etch spans (phase, group delay) with SHAPE variety at ONE height\n"
         "  (square/circle/cross/ring) -> fabricable in a single etch, no grayscale");
+    std::println(
+        "celeris pbachromatic [--focal 30] [--diameter 10] [--wavelength 0.532]\n"
+        "                 [--bandwidth 0.20] [--band-samples 7] [--period 0.35]\n"
+        "                 [--height 1.10] [--handedness 1] [--fill-samples 12]\n"
+        "                 [--pillar-n 2.4 | --pillar-csv <f>] [--harmonics 6]\n"
+        "                 [--gd-weight 1.0] [--substrate bk7|sio2|air] [--out --report <prefix>]\n"
+        "  Achromatic Pancharatnam-Berry metalens -- the modern recipe: geometric\n"
+        "  (PB) phase sets the base profile EXACTLY (rotation) while a dispersive\n"
+        "  birefringent atom (chosen per radius from a fill_x x fill_y grid at ONE\n"
+        "  etch depth) supplies the group delay. Base-phase RMS ~0 by construction;\n"
+        "  the achromatic limit is only the library's group-delay coverage. Writes a\n"
+        "  rotated-rectangle GDS (single mask layer)");
 }
 
 } // namespace
@@ -2077,6 +2273,7 @@ int main(int argc, char** argv) {
     if (cmd == "polardesign") return cmd_polardesign(argc, argv);
     if (cmd == "pbdesign") return cmd_pbdesign(argc, argv);
     if (cmd == "achromatic") return cmd_achromatic(argc, argv);
+    if (cmd == "pbachromatic") return cmd_pb_achromatic(argc, argv);
 #ifdef CELERIS_USE_CUDA
     if (cmd == "gpubench") return run_gpubench(argc, argv);
 #endif

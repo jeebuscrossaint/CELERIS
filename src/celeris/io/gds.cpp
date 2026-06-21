@@ -305,6 +305,59 @@ int write_pb_gds(const std::string& path, int n_cells, double period_um,
     return f.good() ? count : -1;
 }
 
+int write_pb_rect_gds(const std::string& path, int n_cells, double period_um,
+                      const std::vector<double>& fill_x,
+                      const std::vector<double>& fill_y,
+                      const std::vector<double>& rotation_rad, int layer,
+                      double min_fill) {
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return -1;
+    record(f, HEADER, INT16, i16(600));
+    record(f, BGNLIB, INT16, timestamps());
+    record(f, LIBNAME, ASCII, ascii("CELERIS"));
+    { std::vector<uint8_t> u; put_real8(u, 1e-3); put_real8(u, 1e-9);
+      record(f, UNITS, REAL8, u); }
+    record(f, BGNSTR, INT16, timestamps());
+    record(f, STRNAME, ASCII, ascii("PBMETALENS"));
+
+    const double center = (n_cells - 1) / 2.0;
+    const double to_db = 1000.0;  // microns -> db units (nm)
+    int count = 0;
+    for (int iy = 0; iy < n_cells; ++iy)
+        for (int ix = 0; ix < n_cells; ++ix) {
+            std::size_t off = static_cast<std::size_t>(iy) * n_cells + ix;
+            const double fx = fill_x[off], fy = fill_y[off];
+            if (fx < min_fill && fy < min_fill) continue;
+            const double cx = (ix - center) * period_um;
+            const double cy = (iy - center) * period_um;
+            const double hx = 0.5 * fx * period_um;
+            const double hy = 0.5 * fy * period_um;
+            const double corners[4][2] = {{-hx, -hy}, {hx, -hy}, {hx, hy}, {-hx, hy}};
+            const double th = rotation_rad[off];
+            const double c = std::cos(th), s = std::sin(th);
+            record(f, BOUNDARY, NODATA, {});
+            record(f, LAYER, INT16, i16(static_cast<int16_t>(layer)));
+            record(f, DATATYPE, INT16, i16(0));
+            std::vector<uint8_t> xy;
+            int32_t first_x = 0, first_y = 0;
+            for (int v = 0; v < 4; ++v) {
+                double px = cx + c * corners[v][0] - s * corners[v][1];
+                double py = cy + s * corners[v][0] + c * corners[v][1];
+                int32_t xi = static_cast<int32_t>(std::lround(px * to_db));
+                int32_t yi = static_cast<int32_t>(std::lround(py * to_db));
+                if (v == 0) { first_x = xi; first_y = yi; }
+                put32(xy, xi); put32(xy, yi);
+            }
+            put32(xy, first_x); put32(xy, first_y);  // close the ring
+            record(f, XY, INT32, xy);
+            record(f, ENDEL, NODATA, {});
+            ++count;
+        }
+    record(f, ENDSTR, NODATA, {});
+    record(f, ENDLIB, NODATA, {});
+    return f.good() ? count : -1;
+}
+
 int gds_count_boundaries(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return -1;

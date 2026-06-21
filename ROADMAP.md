@@ -110,8 +110,22 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       metalens`, `verify_achromatic_focus`, `to_metalens_design` + the Dispersive{Atom,Library}
       / MetaAtomSpec / AchromaticDesign / AchromaticFocalPoint classes; example
       `examples/python/06_achromatic.py` runs both library kinds (GD RMS 3.6×/2.4× flatter).
-      REMAINING: a published achromatic device reproduction; PB+dispersion (geometric phase is
-      dispersionless) for the modern recipe; expose in the GUI.
+      **ACHROMATIC PANCHARATNAM–BERRY — DONE** (`celeris pbachromatic`, the modern recipe):
+      the geometric (PB) phase sets the base profile EXACTLY by rotation while a DISPERSIVE
+      birefringent atom (picked per radius from a fill_x×fill_y grid at ONE etch depth)
+      supplies the group delay. This DECOUPLES the two objectives — unlike the propagation-
+      phase achromat (which leaves a base-phase residual because each atom must hit both
+      phase AND group delay), here the rotation hits the base phase for whatever atom is
+      placed, so the atom is chosen PURELY for group delay (one objective) and the base-
+      phase RMS is ~0 by construction. New module `design/pb_achromatic.{hpp,cpp}`
+      (`DispersivePbAtom`/`DispersivePbLibrary`, `build_dispersive_pb_library` = two RCWA
+      solves/atom/λ → spin-flip a_cross=(t_x−t_y)/2 + its group delay, FILTERS out non-
+      birefringent near-square atoms whose a_cross≈0 gives a garbage group delay,
+      `design_pb_achromatic_metalens`, `verify_pb_achromatic_focus`) + CLI + selftest [15c]
+      + a per-site rotated-rectangle GDS writer `write_pb_rect_gds` (single mask layer).
+      RESULT (D=10,f=30,20% BW, ONE 1.10µm etch): base-phase RMS ~5e-15° (exact), GD RMS
+      1.12→0.18 fs, chromatic focal drift 4.64→1.90 µm (2.4× tighter), conversion cap 0.52.
+      REMAINING: a published achromatic device reproduction; expose in the GUI.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
@@ -141,8 +155,9 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       rotated polygons — closes part of the shape-aware GDS gap). HONEST FINDING: the
       ~5–7° residual is a method/discretization mismatch (θ=0 uses the analytic separable
       path; rotated angles use grid-Laurent at finite resolution) — shrinks with grid/M.
-      REMAINING: achromatic design; vortex/OAM & arbitrary-profile PB (the focusing
-      profile is just one target — any φ(r) works through the same rotation map).
+      Vortex/OAM & arbitrary-profile PB are DONE (any φ(r) flows through the same
+      rotation map). **Achromatic PB — DONE** (`celeris pbachromatic`, the modern
+      recipe; see the §2 achromatic item).
 - [x] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
       hologram/CGH. DONE. The profile machinery was lifted into a neutral `PhaseProfile`
       (focusing | vortex/OAM | deflector | axicon | **freeform**) + `phase_profile_value()`
