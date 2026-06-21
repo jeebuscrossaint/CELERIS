@@ -872,9 +872,47 @@ int cmd_pbdesign(int argc, char** argv) {
     const std::string out = arg_value(argc, argv, "--out", "pb_metalens.gds");
     const Material pillar = Material::constant(cdouble{pillar_n, 0.0}, "pillar");
 
-    std::println("CELERIS Pancharatnam-Berry (geometric-phase) metalens");
-    std::println("  f={}um  D={}um  lambda={}um  illumination={}",
-                 focal, diameter, lambda, handedness > 0 ? "RCP" : "LCP");
+    // The geometric-phase profile to imprint. The rotation map is identical for
+    // all of them -- only the target phase phi(x,y) changes.
+    const std::string profile_name = arg_value(argc, argv, "--profile", "focusing");
+    PbProfile profile;
+    if (profile_name == "focusing") {
+        profile.kind = PbProfileKind::Focusing;
+        profile.focal_length_um = focal;
+    } else if (profile_name == "vortex") {
+        profile.kind = PbProfileKind::Vortex;
+        profile.focal_length_um = focal;  // focused vortex (donut focal spot)
+        profile.topological_charge = std::atoi(arg_value(argc, argv, "--charge", "1"));
+    } else if (profile_name == "deflector") {
+        profile.kind = PbProfileKind::Deflector;
+        profile.deflect_deg = std::atof(arg_value(argc, argv, "--deflect-deg", "10"));
+        profile.deflect_azimuth_deg = std::atof(arg_value(argc, argv, "--deflect-azimuth", "0"));
+    } else if (profile_name == "axicon") {
+        profile.kind = PbProfileKind::Axicon;
+        profile.axicon_deg = std::atof(arg_value(argc, argv, "--axicon-deg", "5"));
+    } else {
+        std::println("ERROR: unknown --profile '{}' (use focusing|vortex|deflector|axicon)",
+                     profile_name);
+        return 1;
+    }
+
+    std::println("CELERIS Pancharatnam-Berry (geometric-phase) metasurface");
+    std::println("  profile={}  D={}um  lambda={}um  illumination={}",
+                 profile_name, diameter, lambda, handedness > 0 ? "RCP" : "LCP");
+    switch (profile.kind) {
+        case PbProfileKind::Focusing:
+            std::println("  focusing lens: f={}um", focal); break;
+        case PbProfileKind::Vortex:
+            std::println("  vortex/OAM: charge l={}{}", profile.topological_charge,
+                         focal > 0 ? std::format("  (focused at f={}um)", focal)
+                                   : "  (collimated)"); break;
+        case PbProfileKind::Deflector:
+            std::println("  beam deflector: {}deg toward azimuth {}deg",
+                         profile.deflect_deg, profile.deflect_azimuth_deg); break;
+        case PbProfileKind::Axicon:
+            std::println("  axicon: cone half-angle {}deg (Bessel/line focus)",
+                         profile.axicon_deg); break;
+    }
 
     // 1. Find the half-wave-plate meta-atom (best spin-flip conversion).
     std::println("  searching for the HWP atom ({0}x{0} fill grid, 2 solves each)...",
@@ -887,8 +925,8 @@ int cmd_pbdesign(int argc, char** argv) {
                  atom.fill_x, atom.fill_y, atom.retardance_deg,
                  atom.conversion_efficiency);
 
-    // 2. Design: rotate the fixed atom per site.
-    PbMetalensDesign d = design_pb_metalens(atom, period, lambda, focal, diameter,
+    // 2. Design: rotate the fixed atom per site to stamp phi(x,y).
+    PbMetalensDesign d = design_pb_metalens(atom, period, lambda, profile, diameter,
                                             handedness);
     std::println("  designed {0}x{0} rotated pillars  RMS phase error={1:.2e} deg "
                  "(geometric phase is exact)",
@@ -925,7 +963,8 @@ int cmd_pbdesign(int argc, char** argv) {
     std::println("    -> geometric-phase tracking RMS = {:.2f} deg (RCWA vs -2*theta)",
                  phase_track_err);
 
-    // 4. Optical proof: propagate the spin-flipped field and confirm focus at f.
+    // 4. Optical proof: propagate the spin-flipped field and confirm the profile
+    //    does what it should -- a different test per element.
     const double pp = d.period_um;
     const double cen = (d.n_cells - 1) / 2.0;
     const double R_ap = diameter / 2.0;
@@ -940,22 +979,90 @@ int cmd_pbdesign(int argc, char** argv) {
             tc.push_back(d.t_cross[off]);
         }
     const double k = 2.0 * pi / lambda;
-    double zlo = 0.5 * focal, zhi = 1.5 * focal;
-    const int NZ = 240;
-    double best_z = zlo, best_I = -1.0;
-    for (int j = 0; j < NZ; ++j) {
-        double z = zlo + (zhi - zlo) * j / (NZ - 1);
+    const double dl = lambda * std::max(focal, 1.0) / diameter;  // ~spot scale
+
+    // On-axis Rayleigh-Sommerfeld intensity at distance z (used by focusing/axicon).
+    auto on_axis_I = [&](double z) {
         cdouble E{0, 0};
         for (std::size_t q = 0; q < px.size(); ++q) {
             double r = std::sqrt(px[q] * px[q] + py[q] * py[q] + z * z);
             E += tc[q] * std::polar(1.0 / r, k * r);
         }
-        double I = std::norm(E);
-        if (I > best_I) { best_I = I; best_z = z; }
+        return std::norm(E);
+    };
+
+    std::string optical_line;  // one-line summary, reused in the report
+    // Where to render the report PSF image (depends on the element).
+    double psf_cx = 0, psf_cy = 0, psf_z = focal, psf_hw = std::max(5.0 * dl, 4.0);
+
+    if (profile.kind == PbProfileKind::Focusing) {
+        const int NZ = 240;
+        double best_z = 0.5 * focal, best_I = -1.0;
+        for (int j = 0; j < NZ; ++j) {
+            double z = 0.5 * focal + focal * j / (NZ - 1);
+            double I = on_axis_I(z);
+            if (I > best_I) { best_I = I; best_z = z; }
+        }
+        psf_z = focal;
+        optical_line = std::format("cross-pol focuses at z = {:.1f} um (target {:.1f})",
+                                   best_z, focal);
+    } else if (profile.kind == PbProfileKind::Vortex) {
+        // Focused vortex -> a DONUT focal spot: deep on-axis null, bright ring.
+        psf_z = focal; psf_hw = std::max(8.0 * dl, 5.0);
+        auto psf = propagate_pillars(px, py, tc, 0, 0, psf_z, lambda, 201, psf_hw);
+        int nn = psf.n, pk = 0; double peak = 0;
+        for (int i = 0; i < nn * nn; ++i)
+            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
+        double center_I = psf.intensity[(nn / 2) * nn + nn / 2];
+        double pix = 2.0 * psf_hw / (nn - 1);
+        double ring_r = std::hypot((double)(pk % nn - nn / 2), (double)(pk / nn - nn / 2)) * pix;
+        optical_line = std::format(
+            "focal-plane donut (l={}): on-axis/peak = {:.3f} (null), ring radius {:.2f} um",
+            profile.topological_charge, peak > 0 ? center_I / peak : 0.0, ring_r);
+    } else if (profile.kind == PbProfileKind::Deflector) {
+        // The beam lands displaced by z*tan(a) along the azimuth on a screen z=focal.
+        const double a = profile.deflect_deg * pi / 180.0;
+        const double az = profile.deflect_azimuth_deg * pi / 180.0;
+        psf_z = focal;
+        psf_cx = psf_z * std::tan(a) * std::cos(az);
+        psf_cy = psf_z * std::tan(a) * std::sin(az);
+        psf_hw = std::max(8.0 * dl, 5.0);
+        auto psf = propagate_pillars(px, py, tc, psf_cx, psf_cy, psf_z, lambda, 201, psf_hw);
+        int nn = psf.n, pk = 0; double peak = 0;
+        for (int i = 0; i < nn * nn; ++i)
+            if (psf.intensity[i] > peak) { peak = psf.intensity[i]; pk = i; }
+        double pix = 2.0 * psf_hw / (nn - 1);
+        double mx = psf_cx + (pk % nn - nn / 2) * pix;
+        double my = psf_cy + (pk / nn - nn / 2) * pix;
+        double disp = std::hypot(mx, my);
+        double meas_deg = std::atan2(disp, psf_z) * 180.0 / pi;
+        optical_line = std::format(
+            "beam at screen z={:.0f}um lands {:.2f}um off-axis -> {:.2f}deg (target {:.2f}deg)",
+            psf_z, disp, meas_deg, profile.deflect_deg);
+    } else {  // Axicon: Bessel beam with an extended on-axis line focus ~ R/tan(b).
+        const double b = profile.axicon_deg * pi / 180.0;
+        const double dof_pred = R_ap / std::tan(b);
+        const double zlo = 0.1 * dof_pred, zhi = 1.4 * dof_pred;
+        const int NZ = 400;
+        std::vector<double> Iz(NZ);
+        double maxI = 0;
+        for (int j = 0; j < NZ; ++j) {
+            Iz[j] = on_axis_I(zlo + (zhi - zlo) * j / (NZ - 1));
+            if (Iz[j] > maxI) maxI = Iz[j];
+        }
+        int jlo = -1, jhi = -1;
+        for (int j = 0; j < NZ; ++j)
+            if (Iz[j] >= 0.5 * maxI) { if (jlo < 0) jlo = j; jhi = j; }
+        double zspan = jhi > jlo ? (jhi - jlo) * (zhi - zlo) / (NZ - 1) : 0.0;
+        psf_z = 0.5 * dof_pred; psf_hw = std::max(6.0 * dl, 4.0);
+        // The FWHM span is a fraction of the geometric max range R/tan(b) -- the
+        // on-axis intensity ramps up then falls, it isn't flat over the full range.
+        optical_line = std::format(
+            "extended on-axis line focus: FWHM {:.1f}um (geometric max range R/tan b ~{:.1f}um)",
+            zspan, dof_pred);
     }
-    std::println("  optical check: cross-pol focuses at z = {:.1f} um (target {:.1f}); "
-                 "focusing efficiency cap = {:.1f}%",
-                 best_z, focal, 100.0 * d.conversion_efficiency);
+    std::println("  optical check: {}; conversion-efficiency cap = {:.1f}%",
+                 optical_line, 100.0 * d.conversion_efficiency);
 
     // 5. GDS: rotated pillars (the rotation IS the design).
     int np = write_pb_gds(out, d.n_cells, d.period_um, atom.fill_x, atom.fill_y,
@@ -967,25 +1074,23 @@ int cmd_pbdesign(int argc, char** argv) {
     const char* rp = arg_value(argc, argv, "--report", nullptr);
     if (rp) {
         std::string base = rp;
-        double dl = lambda * focal / diameter;
-        auto psf = propagate_pillars(px, py, tc, 0, 0, focal, lambda, 201,
-                                     std::max(5.0 * dl, 4.0));
+        auto psf = propagate_pillars(px, py, tc, psf_cx, psf_cy, psf_z, lambda, 201,
+                                     psf_hw);
         bool ok = write_pgm(base + "_pb_psf.pgm", psf.n, psf.n, psf.intensity, 2.2);
         std::ofstream f(base + "_pb_report.txt");
         if (f) {
-            f << "CELERIS Pancharatnam-Berry (geometric-phase) metalens report\n";
-            f << "============================================================\n\n";
+            f << "CELERIS Pancharatnam-Berry (geometric-phase) metasurface report\n";
+            f << "===============================================================\n\n";
+            f << std::format("profile            : {}\n", profile_name);
             f << std::format("wavelength         : {} um\n", lambda);
             f << std::format("aperture diameter  : {} um\n", diameter);
-            f << std::format("focal length       : {} um   measured focus: {:.1f} um\n",
-                             focal, best_z);
-            f << std::format("illumination       : {} (circular)\n\n",
-                             handedness > 0 ? "RCP" : "LCP");
+            f << std::format("illumination       : {} (circular)\n", handedness > 0 ? "RCP" : "LCP");
+            f << std::format("optical check      : {}\n\n", optical_line);
             f << std::format("HWP atom fill_x    : {:.3f}\n", atom.fill_x);
             f << std::format("HWP atom fill_y    : {:.3f}\n", atom.fill_y);
             f << std::format("HWP retardance     : {:.1f} deg (ideal 180)\n",
                              atom.retardance_deg);
-            f << std::format("conversion eff     : {:.3f} (focusing-efficiency cap)\n",
+            f << std::format("conversion eff     : {:.3f} (efficiency cap)\n",
                              atom.conversion_efficiency);
             f << std::format("array              : {0} x {0} rotated pillars\n", d.n_cells);
             f << std::format("design phase error : {:.2e} deg (geometric phase is exact)\n",
@@ -1252,12 +1357,16 @@ void print_help() {
         "  polarization-multiplexed lens: X-pol and Y-pol focus at different\n"
         "  distances; writes a rectangular-pillar GDS (+ report bundle)\n"
         "\n"
-        "celeris pbdesign [--focal 50] [--diameter --wavelength --period --thickness\n"
-        "                 --pillar-n --samples --harmonics --handedness 1 --out\n"
-        "                 --report <prefix>]\n"
-        "  Pancharatnam-Berry (geometric-phase) lens: one half-wave-plate atom\n"
-        "  rotated per site imprints 2*theta on circularly polarized light;\n"
-        "  RCWA-verifies the 2*theta relation, writes a rotated-pillar GDS");
+        "celeris pbdesign [--profile focusing|vortex|deflector|axicon] [--focal 50]\n"
+        "                 [--charge 1] [--deflect-deg 10] [--deflect-azimuth 0]\n"
+        "                 [--axicon-deg 5] [--diameter --wavelength --period\n"
+        "                 --thickness --pillar-n --samples --harmonics\n"
+        "                 --handedness 1 --out --report <prefix>]\n"
+        "  Pancharatnam-Berry (geometric-phase) metasurface: one half-wave-plate\n"
+        "  atom rotated per site imprints 2*theta = any phi(x,y) on circularly\n"
+        "  polarized light. Profiles: focusing lens, vortex/OAM plate (--charge l),\n"
+        "  beam deflector (--deflect-deg), axicon/Bessel (--axicon-deg). RCWA-\n"
+        "  verifies the 2*theta relation, writes a rotated-pillar GDS");
 }
 
 } // namespace

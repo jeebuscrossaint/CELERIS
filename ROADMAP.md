@@ -109,8 +109,17 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       path; rotated angles use grid-Laurent at finite resolution) — shrinks with grid/M.
       REMAINING: achromatic design; vortex/OAM & arbitrary-profile PB (the focusing
       profile is just one target — any φ(r) works through the same rotation map).
-- [ ] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
-      hologram/CGH
+- [~] Arbitrary phase profiles: beam deflector, axicon, vortex/OAM, freeform wavefront,
+      hologram/CGH. DONE on the PB (geometric-phase) path: `design_pb_metalens` now takes
+      a `PbProfile` (focusing | vortex/OAM | deflector | axicon) — the rotation map
+      θ=−handedness·φ/2 is profile-agnostic, so only the target φ(x,y) changes
+      (`pb_profile_phase` in pb_metalens.cpp). CLI `pbdesign --profile vortex|deflector|
+      axicon` (+ `--charge`, `--deflect-deg`, `--deflect-azimuth`, `--axicon-deg`), each
+      with its own optical-proof check: vortex → focal-plane donut (on-axis null 0.000,
+      bright ring); deflector 10° → beam lands at 9.93° (target 10°); axicon → extended
+      on-axis line focus (Bessel). Geometric phase still exact (RMS ~1e-15°), RCWA 2θ
+      tracking 4.69°. REMAINING: freeform/hologram (CGH) phase from an arbitrary map,
+      and the same profiles on the propagation-phase (`design`) path.
 - [ ] Full Jones-matrix metasurfaces (arbitrary polarization transforms)
 - [ ] Wide-FOV / off-axis designs (quadratic phase, doublets, aplanatic)
 - [ ] Topology / freeform meta-atom inverse design (research-grade)
