@@ -76,8 +76,26 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       in `validate` [4]. HONEST FINDING: a TiO₂ *square* pillar at Λ=0.35/λ=0.532 caps
       coverage ~325–345°, not a clean 360° — closing the last gap with high |t| needs
       shape variety (cross/H, holes) or a higher-index material (REMAINING below).
-- [ ] **Achromatic / broadband** design (group-delay + dispersion engineering) — the
-      highest-value application
+- [~] **Achromatic / broadband** design (group-delay + dispersion engineering) — the
+      highest-value application. DONE (first cut): `celeris achromatic` + the engine
+      `design/achromatic.{hpp,cpp}`. Builds a **dispersive library** over a fill×height
+      grid (so the (phase, group-delay) plane is COVERED — a single DOF traces only a
+      1-D curve and can't set both), extracts each atom's group delay = dφ/dω (least-
+      squares over the band, phase unwrapped), then a **two-objective selection** matches
+      BOTH the base focusing phase (mod 2π) AND the radius-dependent group delay (GD error
+      mapped to the band-edge phase error it causes, so `--gd-weight ~1` balances center
+      vs edge). Verification reuses the library's STORED per-atom band response (no extra
+      RCWA). RESULT (D=10,f=30,20% BW): adding the GD objective flattens chromatic focal
+      drift **8.0µm → 1.9µm (4.2× tighter)** while base-phase RMS stays diffraction-limited
+      (1.7°→4.7°). selftest **[15]** locks it (drift 2.4→0.6µm, still focusing). HONEST
+      LIMITATIONS: (1) the achromatic design uses MULTIPLE pillar heights → a multi-level/
+      grayscale etch (a single GDS layer encodes only in-plane footprints, not per-site
+      depth); (2) the GD span (hence achromatic band×aperture) is bounded by the library —
+      small apertures here have GD coverage »1, but a large aperture needs taller/coupled
+      atoms; (3) low-Fresnel focal shift moves the absolute focus below target (both
+      designs equally). REMAINING: single-etch achromatic via coupled/free-form atoms;
+      a published achromatic device reproduction; PB+dispersion (geometric phase is
+      dispersionless) for the modern recipe; expose in Python/GUI.
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
