@@ -159,9 +159,14 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       library, showing the headline chromatic focal drift (e.g. 10.2→2.8 µm, 3.6×
       flatter at f=50/D=20), group-delay RMS, GD coverage, and an overlaid focus-vs-λ
       plot (standard orange vs achromatic green); writes GDS via `to_metalens_design`
-      and honestly flags the multi-height (grayscale-etch) case. REMAINING: a
-      published achromatic device reproduction (K2016 reproduced above is
-      monochromatic); the single-etch/`pbachromatic` paths in the GUI panel too.
+      and honestly flags the multi-height (grayscale-etch) case. The panel now
+      has a **Library** selector exposing ALL THREE paths (fill×height /
+      single-etch `build_single_etch_library` / Pancharatnam-Berry
+      `build_dispersive_pb_library`): `run_achromatic` branches on the kind, the
+      PB path writes a rotated-rectangle GDS (`write_pb_rect_gds`), and the
+      single-etch/PB paths add an Etch-height slider (the one-etch GD knob) +
+      kind-aware labels. REMAINING: a published achromatic device reproduction
+      (K2016 reproduced above is monochromatic).
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
