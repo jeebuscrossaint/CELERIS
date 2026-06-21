@@ -54,11 +54,25 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [x] Cross-check vs an external solver — DONE (grcwa, pip-installed, validated vs analytic
       TMM). CELERIS 2D matches grcwa on the square pillar, asymmetric rect (0.964/0.977 vs
       0.954/0.972, both pols), and subwavelength TE/TM. Baked into `selftest` [8].
-- [ ] **1D TE solver convergence** — NEW finding: the 1D solver's TE transmission for a
-      mid-period grating (Λ=0.3, λ=0.5) oscillates with M (0.973→0.887) instead of
-      converging to the grcwa-true 0.933 (1D TM is fine). Pre-existing; exposed by the
-      grcwa cross-check. Doesn't affect the metalens design path (pure 2D), but fix for
-      full credibility.
+- [x] **1D TE solver convergence** — FIXED. The 1D TE transmission for a subwavelength
+      grating (Λ=0.3, λ=0.5) used to oscillate/diverge with M instead of converging to
+      the grcwa-true 0.93333 (TM was always fine). ROOT CAUSE: a SIGN error in the
+      half-space companion admittance for E_y. The layer modes propagate as
+      exp(−k0·q·z) (forward wave e^{−i·kz·z}, companion ∂_z = −i·kz), so the matching
+      half-space admittance must be **Y = −j·kz**, but the code used +j·kz. The +j·kz
+      sign is absorbed harmlessly for the propagating order-0, but it is the wrong
+      branch for the EVANESCENT orders, so the R/T split converged to the wrong value as
+      more orders were kept (energy stayed conserved throughout — the boundary solve is
+      structurally unitary — which masked the bug; the old selftest only checked energy).
+      The diagnosis went deeper than the original note: the split was actually wrong for
+      MULTI-order gratings too (not just TE oscillation), confirmed vs grcwa. Fix is a
+      one-line sign flip in BOTH 1D paths (single-layer `rcwa1d.cpp` + S-matrix stack
+      `rcwa_stack1d.cpp`); TM untouched. NOW: subwavelength TE → 0.93333 (|Δ grcwa|
+      ~4e-6), multi-order Λ=1.0 matches grcwa exactly at λ=0.6 (0.79332 vs 0.79335) and
+      λ=0.45 (0.89926 exact), normal & oblique, energy=1. selftest **[5]** now includes a
+      1D-TE-converges-to-grcwa(0.93333) regression lock, and 1D TE finally agrees with
+      the (already-correct) 2D solver in [8a]. Didn't affect the metalens design path
+      (pure 2D), but closes a credibility gap a CREOL tester sweeping M would hit.
 - [x] Convergence studies documented (metric vs harmonics M, vs sampling) — `celeris
       validate` §1 tabulates phase/transmittance/energy-conservation vs M.
 - [ ] Auto-convergence helper (suggest M for a target accuracy)

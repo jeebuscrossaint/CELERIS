@@ -87,8 +87,16 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
     const cdouble j_unit{0.0, 1.0};
     if (pol == Pol::TE) {
         Vmodes = W * q.asDiagonal();
-        Yreg_I = j_unit * kzI;
-        Yreg_II = j_unit * kzII;
+        // Half-space companion admittance for E_y. The layer modes propagate as
+        // exp(−k0·q·z) (forward wave e^{−i·kz·z}), so the matching companion
+        // ∂_z = −i·kz ⇒ Y = −j·kz, NOT +j·kz. The +j·kz sign is consistent for
+        // the incident/exit *propagating* order-0 (sign is absorbed there), but
+        // it is the wrong branch for the evanescent orders, which makes the R/T
+        // split converge to the wrong value as more orders are kept (the 1D-TE
+        // non-convergence). Energy stays conserved either way; only the split
+        // was wrong. (TM has its own admittance below and is unaffected.)
+        Yreg_I = -j_unit * kzI;
+        Yreg_II = -j_unit * kzII;
     } else {
         Vmodes = j_unit * (E.inverse() * W) * q.asDiagonal();
         Yreg_I = kzI.array() / (n_inc * n_inc);

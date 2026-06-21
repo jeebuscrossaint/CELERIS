@@ -118,8 +118,11 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
     const MatrixXcd Wh = MatrixXcd::Identity(n, n);
     MatrixXcd Vinc, Vsub;
     if (pol == Pol::TE) {
-        Vinc = (j_unit * kzI).matrix().asDiagonal();
-        Vsub = (j_unit * kzII).matrix().asDiagonal();
+        // Companion admittance Y = −j·kz (NOT +j·kz): matches the layer modes'
+        // exp(−k0·q·z) forward-wave convention; the +j·kz sign mismatches the
+        // evanescent orders and gives the wrong R/T split. See rcwa1d.cpp.
+        Vinc = (-j_unit * kzI).matrix().asDiagonal();
+        Vsub = (-j_unit * kzII).matrix().asDiagonal();
     } else {
         Vinc = (kzI.array() / (n_inc * n_inc)).matrix().asDiagonal();
         Vsub = (kzII.array() / (n_sub * n_sub)).matrix().asDiagonal();

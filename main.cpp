@@ -152,6 +152,24 @@ static int run_selftest() {
             std::println("    {:>3}   {:>10.5f}  {:>10.5f}  {:>10.6f}", M,
                          r.de_t[z], r.de_t[z + 1], r.sum_de);
         }
+
+        // (b) 1D TE convergence to an external reference (grcwa). A subwavelength
+        // (Λ=0.3µm < λ=0.5µm) freestanding n=1.5 grating passes ONLY the zeroth
+        // order; its transmittance must converge in M to grcwa's 0.93333 (grcwa
+        // is itself validated vs analytic TMM). This locks the half-space
+        // companion-admittance sign in the TE path (Y = −j·kz): the wrong sign
+        // still conserves energy but converges the split to the wrong value.
+        BinaryGrating1D sub{glass, materials::air(), 0.3, 0.5, 0.5};
+        std::println("    1D TE convergence vs grcwa (Λ=0.3µm subwavelength, "
+                     "T0 -> grcwa 0.93333):");
+        std::println("    {:>3}   {:>10}  {:>10}", "M", "TE T0", "|Δ grcwa|");
+        for (int M : {4, 10, 20}) {
+            auto r = solve_rcwa_1d(materials::air(), sub, materials::air(), 0.5,
+                                   0.0, M, Pol::TE);
+            std::size_t z = r.orders.size() / 2;
+            std::println("    {:>3}   {:>10.5f}  {:>10.2e}", M, r.de_t[z],
+                         std::abs(r.de_t[z] - 0.93333));
+        }
     }
 
     // ---- Validation 6: TM polarization ------------------------------------
