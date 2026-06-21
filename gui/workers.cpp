@@ -218,10 +218,11 @@ void run_polardesign(Params p) {
 
 void run_achromatic(Params p) {
     g_running = true;
-    set_phase("Building dispersive library (fill x height, RCWA per band)...", 0.05f);
-    // Band samples about the design wavelength (ascending), and a fill x height
-    // grid so the (phase, group-delay) plane is covered (a single DOF can't set
-    // both). Kept modest for GUI responsiveness -- the CLI exposes finer control.
+    // Band samples about the design wavelength (ascending). Kept modest (5 samples)
+    // for GUI responsiveness -- the CLI exposes finer control. All three library
+    // kinds share the same band, the same two-design (gd_weight 0 vs p.gd_weight)
+    // comparison, and the same chromatic-focus verification, so the summary metrics
+    // and the focus-vs-lambda plot are uniform regardless of which library built it.
     const double l0 = p.wavelength;
     const double bw = std::clamp(p.band_frac, 0.02f, 0.6f);
     const int nb = 5;
@@ -230,34 +231,27 @@ void run_achromatic(Params p) {
         double t = (nb > 1) ? static_cast<double>(i) / (nb - 1) : 0.5;
         band.push_back(l0 * (1.0 - bw / 2.0 + bw * t));
     }
-    auto dl = build_dispersive_library(
-        make_pillar(p), materials::air(), materials::air(), make_substrate(p),
-        p.period, band, l0, 0.08, 0.92, /*n_fills=*/10, /*thick_lo=*/0.40,
-        /*thick_hi=*/1.40, /*n_heights=*/5, p.harmonics);
 
-    set_phase("Two-objective atom selection (standard + achromatic)...", 0.75f);
-    auto sd = design_achromatic_metalens(dl, p.focal, p.diameter, /*gd_weight=*/0.0);
-    auto ad = design_achromatic_metalens(dl, p.focal, p.diameter, p.gd_weight);
-
-    set_phase("Verifying chromatic focus (stored band response)...", 0.9f);
-    auto cs = verify_achromatic_focus(dl, sd);
-    auto ca = verify_achromatic_focus(dl, ad);
-    auto drift = [](const std::vector<AchromaticFocalPoint>& c) {
-        double mn = 1e300, mx = -1e300;
-        for (const auto& q : c) { mn = std::min(mn, q.focal_length_um); mx = std::max(mx, q.focal_length_um); }
-        return (mx > mn) ? mx - mn : 0.0;
-    };
-
-    AchroSummary s;
-    s.drift_std = drift(cs); s.drift_ach = drift(ca);
-    s.gd_rms_std = sd.rms_group_delay_error_fs; s.gd_rms_ach = ad.rms_group_delay_error_fs;
-    s.base_rms_std = sd.rms_phase_error_deg; s.base_rms_ach = ad.rms_phase_error_deg;
-    s.gd_coverage = ad.gd_coverage; s.meanT = ad.mean_amplitude;
-    s.center_wl = l0; s.focal = p.focal;
-    s.single_height = ad.single_height; s.n_cells = ad.n_cells;
-    {
+    // Fill the shared summary + plot globals from the two designs and their
+    // verified chromatic curves. Generic over the design type (AchromaticDesign
+    // and PbAchromaticDesign share the field names used here); cs/ca are always
+    // std::vector<AchromaticFocalPoint>. The design object itself (different type
+    // per kind) is stored by the caller before this runs.
+    auto finalize = [&](const auto& sd, const auto& ad, const auto& cs, const auto& ca,
+                        bool single_h, int lib_kind) {
+        auto drift = [](const std::vector<AchromaticFocalPoint>& c) {
+            double mn = 1e300, mx = -1e300;
+            for (const auto& q : c) { mn = std::min(mn, q.focal_length_um); mx = std::max(mx, q.focal_length_um); }
+            return (mx > mn) ? mx - mn : 0.0;
+        };
+        AchroSummary s;
+        s.drift_std = drift(cs); s.drift_ach = drift(ca);
+        s.gd_rms_std = sd.rms_group_delay_error_fs; s.gd_rms_ach = ad.rms_group_delay_error_fs;
+        s.base_rms_std = sd.rms_phase_error_deg; s.base_rms_ach = ad.rms_phase_error_deg;
+        s.gd_coverage = ad.gd_coverage; s.meanT = ad.mean_amplitude;
+        s.center_wl = l0; s.focal = p.focal;
+        s.single_height = single_h; s.n_cells = ad.n_cells; s.lib_kind = lib_kind;
         std::lock_guard<std::mutex> lk(g_mtx);
-        g_achro = ad;
         g_achro_sum = s;
         g_achro_wl.clear(); g_achro_focus_std.clear(); g_achro_focus_ach.clear();
         for (const auto& q : cs) {
@@ -270,6 +264,49 @@ void run_achromatic(Params p) {
                                "group-delay RMS {:.2f}->{:.2f} fs",
                                s.drift_std, s.drift_ach, s.gd_rms_std, s.gd_rms_ach);
         g_progress = 1.0f;
+    };
+
+    if (p.achro_lib == 2) {
+        // Achromatic Pancharatnam-Berry: a dispersive BIREFRINGENT library at one
+        // etch depth (two RCWA solves per atom per band). The rotation stamps the
+        // base phase exactly, so the atom is chosen purely for group delay.
+        set_phase("Building dispersive birefringent PB library (2 solves/atom/band)...", 0.05f);
+        auto lib = build_dispersive_pb_library(
+            make_pillar(p), materials::air(), materials::air(), make_substrate(p),
+            p.period, band, l0, 0.10, 0.90, /*n_fills=*/8, p.etch_height, p.harmonics);
+        set_phase("Group-delay atom selection (standard + achromatic PB)...", 0.78f);
+        auto sd = design_pb_achromatic_metalens(lib, p.focal, p.diameter, /*handedness=*/+1, /*gd_weight=*/0.0);
+        auto ad = design_pb_achromatic_metalens(lib, p.focal, p.diameter, /*handedness=*/+1, p.gd_weight);
+        set_phase("Verifying chromatic focus (stored band response)...", 0.9f);
+        auto cs = verify_pb_achromatic_focus(lib, sd);
+        auto ca = verify_pb_achromatic_focus(lib, ad);
+        { std::lock_guard<std::mutex> lk(g_mtx); g_achro_pb = ad; }
+        finalize(sd, ad, cs, ca, /*single_h=*/true, /*lib_kind=*/2);
+    } else {
+        // Propagation-phase achromat from a dispersive library. Two flavours:
+        //   0 = fill x height grid (multi-DOF, may need a grayscale/multi-level etch)
+        //   1 = single-etch shape-diverse (one height, fabricable in one etch step)
+        DispersiveLibrary dl;
+        if (p.achro_lib == 1) {
+            set_phase("Building single-etch dispersive library (shape-diverse, one height)...", 0.05f);
+            dl = build_single_etch_library(
+                make_pillar(p), materials::air(), materials::air(), make_substrate(p),
+                p.period, band, l0, 0.08, 0.92, /*n_fills=*/10, p.etch_height, p.harmonics);
+        } else {
+            set_phase("Building dispersive library (fill x height, RCWA per band)...", 0.05f);
+            dl = build_dispersive_library(
+                make_pillar(p), materials::air(), materials::air(), make_substrate(p),
+                p.period, band, l0, 0.08, 0.92, /*n_fills=*/10, /*thick_lo=*/0.40,
+                /*thick_hi=*/1.40, /*n_heights=*/5, p.harmonics);
+        }
+        set_phase("Two-objective atom selection (standard + achromatic)...", 0.78f);
+        auto sd = design_achromatic_metalens(dl, p.focal, p.diameter, /*gd_weight=*/0.0);
+        auto ad = design_achromatic_metalens(dl, p.focal, p.diameter, p.gd_weight);
+        set_phase("Verifying chromatic focus (stored band response)...", 0.9f);
+        auto cs = verify_achromatic_focus(dl, sd);
+        auto ca = verify_achromatic_focus(dl, ad);
+        { std::lock_guard<std::mutex> lk(g_mtx); g_achro = ad; }
+        finalize(sd, ad, cs, ca, ad.single_height, p.achro_lib);
     }
     g_achro_pending = true;
     g_running = false;

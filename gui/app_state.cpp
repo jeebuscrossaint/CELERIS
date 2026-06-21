@@ -38,6 +38,7 @@ PsfMap g_polar_psf_x, g_polar_psf_y;
 SystemOptResult g_opt;
 
 AchromaticDesign g_achro;
+PbAchromaticDesign g_achro_pb;
 AchroSummary g_achro_sum;
 std::vector<float> g_achro_wl, g_achro_focus_std, g_achro_focus_ach;
 

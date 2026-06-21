@@ -16,6 +16,7 @@
 #include "celeris/analysis/wavefront.hpp"
 #include "celeris/design/achromatic.hpp"
 #include "celeris/design/metalens.hpp"
+#include "celeris/design/pb_achromatic.hpp"
 #include "celeris/design/polar_metalens.hpp"
 #include "celeris/design/system_opt.hpp"
 #include "celeris/materials/material.hpp"
@@ -34,6 +35,8 @@ struct Params {
     float thickness = 0.6f, pillar_n = 2.4f;  // the active (patterned) layer
     float band_frac = 0.20f;  // achromatic: fractional bandwidth about lambda
     float gd_weight = 1.0f;   // achromatic: group-delay objective weight
+    int achro_lib = 0;        // achromatic library: 0 fill x height, 1 single-etch, 2 PB
+    float etch_height = 1.10f; // single-etch / PB: the one shared pillar height (um)
     int harmonics = 6, fill_samples = 18;
     int pillar_mat = 3;     // index into kPillarMats (default: TiO2 approx)
     int substrate_mat = 0;  // 0 = N-BK7, 1 = air, 2 = fused silica
@@ -93,8 +96,10 @@ struct AchroSummary {
     double center_wl = 0, focal = 0;           // design wavelength (um), focal (um)
     bool single_height = true;
     int n_cells = 0;
+    int lib_kind = 0;  // which library produced this: 0 fill x height, 1 single-etch, 2 PB
 };
-extern AchromaticDesign g_achro;
+extern AchromaticDesign g_achro;        // fill x height / single-etch design (for GDS)
+extern PbAchromaticDesign g_achro_pb;   // achromatic PB design (for rotated-rect GDS)
 extern AchroSummary g_achro_sum;
 extern std::vector<float> g_achro_wl, g_achro_focus_std, g_achro_focus_ach;
 

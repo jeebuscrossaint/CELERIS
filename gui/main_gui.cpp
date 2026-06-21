@@ -789,6 +789,22 @@ int main() {
                                    "dependent group delay, so a whole band focuses at one "
                                    "plane. Compared against a dispersion-blind design from "
                                    "the same library.");
+                // Library kind selects how the (phase, group-delay) plane is spanned
+                // -- mirrors the CLI's `achromatic` / `achromatic --single-etch` /
+                // `pbachromatic`. All three run the same standard-vs-achromatic compare.
+                const char* kAchroLibs[] = {
+                    "Fill x height (multi-level etch)",
+                    "Single-etch (shape-diverse, one height)",
+                    "Pancharatnam-Berry (geometric phase + dispersion)"};
+                ImGui::SetNextItemWidth(320);
+                ImGui::Combo("Library", &params.achro_lib, kAchroLibs, IM_ARRAYSIZE(kAchroLibs));
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Fill x height: widest GD span, but may pick multiple heights "
+                        "(grayscale etch).\nSingle-etch: shape variety at ONE height -- "
+                        "fabricable in one etch step.\nPB: rotation stamps the base phase "
+                        "EXACTLY, the dispersive atom supplies only the group delay; one "
+                        "etch, rotated rectangles.");
                 ImGui::SetNextItemWidth(120);
                 ImGui::InputFloat("Focal (um)", &params.focal, 0, 0, "%.1f");
                 ImGui::SetNextItemWidth(120);
@@ -800,13 +816,26 @@ int main() {
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Group-delay objective weight. 0 = dispersion-blind "
                                       "baseline; ~1 balances center vs band-edge focus.");
+                if (params.achro_lib != 0) {  // single-etch / PB share one etch depth
+                    ImGui::SetNextItemWidth(120);
+                    ImGui::SliderFloat("Etch height (um)", &params.etch_height, 0.40f, 1.60f, "%.2f");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("The single shared pillar height. Taller pillars "
+                                          "accumulate more group delay (wider GD span), so "
+                                          "this is the key achromatic knob for one-etch designs.");
+                }
                 bool busy = g_running.load();
                 if (busy) ImGui::BeginDisabled();
                 if (ImGui::Button("Run Achromatic Design", ImVec2(-FLT_MIN, 28)))
                     std::thread(run_achromatic, params).detach();
                 if (busy) ImGui::EndDisabled();
-                ImGui::TextDisabled("Builds a fill x height library (10 x 5) across a 5-"
-                                    "sample band -- takes a moment.");
+                ImGui::TextDisabled(
+                    params.achro_lib == 0 ? "Builds a fill x height library (10 x 5) across a "
+                                            "5-sample band -- takes a moment."
+                    : params.achro_lib == 1 ? "Builds a single-etch shape-diverse library "
+                                              "(10 fills x 7 shapes) -- takes a moment."
+                                            : "Builds a birefringent PB library (8 x 8 fill "
+                                              "grid, 2 solves/atom) -- slower; takes a moment.");
 
                 if (!have_achro)
                     ImGui::TextDisabled("Set the band + GD weight and run.");
@@ -825,16 +854,27 @@ int main() {
                     ImGui::TextColored(rgb(40, 170, 90), "achromatic %.2f um", s.drift_ach);
                     if (fac > 1.0) { ImGui::SameLine();
                         ImGui::TextColored(rgb(40, 170, 90), "(%.1fx flatter)", fac); }
+                    const bool is_pb = s.lib_kind == 2;
+                    ImGui::TextDisabled(
+                        s.lib_kind == 0 ? "Library: fill x height grid"
+                        : s.lib_kind == 1 ? "Library: single-etch (shape-diverse, one height)"
+                                          : "Library: Pancharatnam-Berry (geometric phase + dispersion)");
                     ImGui::Text("Group-delay residual RMS:  standard %.2f fs  ->  "
                                 "achromatic %.2f fs", s.gd_rms_std, s.gd_rms_ach);
-                    ImGui::Text("Base-phase RMS:  standard %.1f deg,  achromatic %.1f deg",
+                    ImGui::Text("Base-phase RMS:  standard %.2g deg,  achromatic %.2g deg",
                                 s.base_rms_std, s.base_rms_ach);
-                    ImGui::Text("Library GD coverage: %.2f  (>=1 = sufficient)   mean |t| %.3f",
-                                s.gd_coverage, s.meanT);
+                    if (is_pb)
+                        ImGui::TextDisabled("  (PB: rotation stamps the base phase EXACTLY -- "
+                                            "RMS ~0 by construction; the atom chases group delay.)");
+                    ImGui::Text("Library GD coverage: %.2f  (>=1 = sufficient)   %s %.3f",
+                                s.gd_coverage, is_pb ? "mean |a_cross|" : "mean |t|", s.meanT);
                     if (!s.single_height)
                         ImGui::TextColored(rgb(170, 120, 0),
                             "Multi-height design -> grayscale/multi-level etch (a single "
                             "GDS layer encodes footprints only, not per-site depth).");
+                    else
+                        ImGui::TextColored(rgb(40, 170, 90),
+                            "Single etch depth -> one lithography step (no grayscale).");
 
                     // Overlaid focus-vs-wavelength: standard (orange) vs achromatic
                     // (green). A flat achromatic curve = the broadband fix working.
@@ -882,11 +922,21 @@ int main() {
                     ImGui::SetNextItemWidth(-110);
                     ImGui::InputText("##apath", apath, sizeof(apath)); ImGui::SameLine();
                     if (ImGui::Button("Save GDS", ImVec2(-FLT_MIN, 0))) {
-                        auto lens = to_metalens_design(g_achro);
-                        int np = write_metalens_gds(lens, apath);
+                        int np;
+                        if (is_pb)
+                            // PB design: per-site rotated rectangles of varying footprint,
+                            // all one etch depth -- a single mask layer.
+                            np = write_pb_rect_gds(apath, g_achro_pb.n_cells,
+                                                   g_achro_pb.period_um, g_achro_pb.fill_x_map,
+                                                   g_achro_pb.fill_y_map, g_achro_pb.rotation_rad);
+                        else {
+                            auto lens = to_metalens_design(g_achro);
+                            np = write_metalens_gds(lens, apath);
+                        }
                         g_status = np >= 0
                             ? std::format("Wrote {} pillars -> {}{}", np, apath,
-                                          s.single_height ? "" : " (footprints only; multi-height)")
+                                          is_pb ? " (rotated rectangles, one etch)"
+                                          : s.single_height ? "" : " (footprints only; multi-height)")
                             : std::string("ERROR: GDS write failed");
                     }
                 }
