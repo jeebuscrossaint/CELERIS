@@ -217,7 +217,27 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       (~34° for a deflector) + non-uniform |t|; the PB path stamps the same profiles exactly
       (RMS ~1e-14°). REMAINING (lower value): same profiles in the Python bindings + GUI.
 - [ ] Full Jones-matrix metasurfaces (arbitrary polarization transforms)
-- [ ] Wide-FOV / off-axis designs (quadratic phase, doublets, aplanatic)
+- [~] Wide-FOV / off-axis designs (quadratic phase, doublets, aplanatic). DONE
+      (first cut): a **quadratic-phase** wide-FOV lens. New `PhaseProfileKind::Quadratic`
+      (phi = -k*r^2/(2f)) on the propagation-phase path (`design --profile quadratic`),
+      and `celeris widefov` — designs a hyperbolic AND a quadratic lens for the same f/D
+      from the SAME library and sweeps the field angle through an aperture STOP placed in
+      front of the metasurface. KEY PHYSICS: under tilt the quadratic phase is the same
+      parabola simply RECENTERED at x0 = f*sin(theta), so its focus just translates and
+      stays sharp; the hyperbolic lens develops coma. The wide-FOV benefit appears ONLY
+      with the offset stop (default: front focal plane, distance = f): each field angle
+      then samples a DECENTERED low-NA patch of the larger lens — coma-free for the
+      quadratic (vertex-centered parabola), coma-laden for the hyperbolic. New
+      `analyze_wide_fov` (offset-stop, decentered-patch propagation) alongside the
+      existing `analyze_field_of_view` (stop-at-lens; the right model for a normal lens's
+      usable field, where quadratic shows NO benefit — an honest finding). RESULT
+      (f=30, lens D=70, stop D=20 at 30µm): hyperbolic FOV-to-Strehl-0.8 ±15.4° vs
+      quadratic ≥±30° (sweep cap); to-0.5 ±21.5° vs ≥±30°. HONEST COSTS: resolution is
+      set by the (small) stop ~lambda*f/D_stop not the full lens, and the focal surface
+      is curved (Petzval). selftest **[17]** locks it (at 30°: hyperbolic 0.27 vs
+      quadratic 0.96). Exposed in the Python bindings (PhaseProfileKind.Quadratic +
+      PhaseProfile.quadratic factory). REMAINING: doublet (2-surface corrector + lens,
+      Arbabi 2016) and aplanatic designs; a GUI panel.
 - [ ] Topology / freeform meta-atom inverse design (research-grade)
 - [ ] Fab constraints baked into design (min feature, min gap, etch bias)
 

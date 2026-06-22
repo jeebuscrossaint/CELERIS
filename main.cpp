@@ -594,6 +594,38 @@ static int run_selftest() {
                      (hwp_ok && brackets && phase_ok && retard_ok) ? "✓" : "FAIL");
     }
 
+    // ---- Wide-FOV 17: quadratic-phase lens vs hyperbolic, off-axis ----------
+    // A hyperbolic metalens is perfect on-axis but develops coma off-axis; a
+    // QUADRATIC (parabolic) lens with an aperture stop IN FRONT (here at the front
+    // focal plane) is the same parabola simply recentered under tilt, so its focus
+    // stays sharp across a wide field (the spot just shifts). With the offset stop
+    // each field angle samples a decentered low-NA patch: coma-free for the
+    // quadratic (vertex-centered parabola), coma-laden for the hyperbolic lens.
+    // Lock the contrast -- at the widest angle the quadratic holds its Strehl while
+    // the hyperbolic collapses. (See `celeris widefov`.)
+    {
+        const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
+        const double l0 = 0.532, f = 20.0, D = 50.0, stopD = 16.0, stopd = 20.0;
+        std::println("[17] Wide-FOV: quadratic vs hyperbolic phase (stop D={:.0f}µm @ {:.0f}µm "
+                     "in front, f={:.0f}µm):", stopD, stopd, f);
+        auto lib = build_unit_cell_library(tio2, materials::air(), materials::air(),
+                                           materials::bk7(), 0.35, l0, 0.6, 0.08, 0.92,
+                                           14, /*M=*/5);
+        PhaseProfile hyp; hyp.kind = PhaseProfileKind::Focusing; hyp.focal_length_um = f;
+        PhaseProfile quad; quad.kind = PhaseProfileKind::Quadratic; quad.focal_length_um = f;
+        auto lh = design_metalens(lib, hyp, D);
+        auto lq = design_metalens(lib, quad, D);
+        std::vector<double> angles = {0.0, 15.0, 30.0};
+        auto fh = analyze_wide_fov(lh, lib, f, l0, D, stopD, stopd, angles);
+        auto fq = analyze_wide_fov(lq, lib, f, l0, D, stopD, stopd, angles);
+        const double hyp_edge = fh.back().rel_strehl, quad_edge = fq.back().rel_strehl;
+        std::println("    rel. Strehl at {:.0f}°: hyperbolic {:.3f} (coma) -> quadratic {:.3f} "
+                     "(holds focus)", angles.back(), hyp_edge, quad_edge);
+        bool win = quad_edge > 0.8 && hyp_edge < 0.6 && quad_edge > hyp_edge + 0.3;
+        std::println("    quadratic-phase lens keeps a wide-field focus where the hyperbolic "
+                     "fails  {}", win ? "✓" : "FAIL");
+    }
+
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
     // Instead of looking a pillar up from the discrete library, SOLVE for the
     // geometry hitting a target phase with maximum transmission.
@@ -746,6 +778,11 @@ static std::optional<PhaseProfile> parse_phase_profile(int argc, char** argv,
     if (name == "focusing") {
         p.kind = PhaseProfileKind::Focusing;
         p.focal_length_um = focal;
+    } else if (name == "quadratic") {
+        // Parabolic wide-FOV lens (focuses on-axis at z=f like focusing, but its
+        // off-axis focus stays sharp -- see `celeris widefov`).
+        p.kind = PhaseProfileKind::Quadratic;
+        p.focal_length_um = focal;
     } else if (name == "vortex") {
         p.kind = PhaseProfileKind::Vortex;
         p.focal_length_um = focal;  // focused vortex (donut focal spot); <=0 => collimated
@@ -775,7 +812,7 @@ static std::optional<PhaseProfile> parse_phase_profile(int argc, char** argv,
         }
     } else {
         std::println("ERROR: unknown --profile '{}' "
-                     "(use focusing|vortex|deflector|axicon|freeform)", name);
+                     "(use focusing|quadratic|vortex|deflector|axicon|freeform)", name);
         return std::nullopt;
     }
     return p;
@@ -816,7 +853,8 @@ static ProfileProof profile_optical_proof(const std::vector<double>& px,
     out.psf_z = focal;
     out.psf_hw = std::max(5.0 * dl, 4.0);
 
-    if (profile.kind == PhaseProfileKind::Focusing) {
+    if (profile.kind == PhaseProfileKind::Focusing ||
+        profile.kind == PhaseProfileKind::Quadratic) {
         const int NZ = 240;
         double best_z = 0.5 * focal, best_I = -1.0;
         for (int j = 0; j < NZ; ++j) {
@@ -893,6 +931,129 @@ static ProfileProof profile_optical_proof(const std::vector<double>& px,
             profile.freeform_n, recon_z);
     }
     return out;
+}
+
+// celeris widefov: design a HYPERBOLIC lens and a QUADRATIC (parabolic) lens for
+// the SAME f/D from the SAME library, sweep the field (incidence) angle, and show
+// the classic wide-FOV trade. The hyperbolic lens is perfect on-axis but develops
+// coma off-axis; the quadratic lens is the same parabola recentered under tilt, so
+// its focus stays sharp across a wide angular range (the spot just shifts to
+// x ~ f*sin(theta)) at the cost of some on-axis quality and a curved focal surface.
+int cmd_widefov(int argc, char** argv) {
+    const double focal = std::atof(arg_value(argc, argv, "--focal", "30"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "70"));
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--fill-samples", "24"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const double max_angle = std::atof(arg_value(argc, argv, "--max-angle", "30"));
+    const double angle_step = std::atof(arg_value(argc, argv, "--angle-step", "3"));
+    // Aperture stop: the limiting aperture (sets resolution), placed in FRONT of
+    // the metasurface so each field angle samples a decentered patch -- the
+    // configuration that makes a quadratic-phase lens wide-FOV. The stop defaults
+    // to the FRONT FOCAL PLANE (distance = f): there the moving patch stays
+    // centered on the tilted parabola's recentered vertex, so the quadratic lens
+    // sees a near-on-axis (coma-free) patch at every field angle.
+    const double stop_D = std::atof(arg_value(argc, argv, "--stop-diameter", "20"));
+    const double stop_d = std::atof(arg_value(argc, argv, "--stop-distance",
+                                              std::to_string(focal).c_str()));
+    const std::string sub_name = arg_value(argc, argv, "--substrate", "bk7");
+    const Material& substrate = sub_name == "air"  ? materials::air()
+                                : sub_name == "sio2" ? materials::fused_silica()
+                                                     : materials::bk7();
+    const char* pillar_csv = arg_value(argc, argv, "--pillar-csv", nullptr);
+    const Material pillar =
+        pillar_csv ? load_material_csv(pillar_csv, "pillar-csv")
+                   : Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+
+    std::println("CELERIS wide-FOV comparison (hyperbolic vs quadratic phase)");
+    std::println("  f={}µm  lens D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
+                 focal, diameter, lambda, period, thickness, pillar_n, sub_name);
+    std::println("  aperture stop: D={}µm at {}µm in FRONT of the metasurface "
+                 "(stop is the limiting aperture)", stop_D, stop_d);
+    // The lens must be big enough to catch the off-axis walk-off of the stopped
+    // beam, else the patch clips the lens edge and BOTH lenses vignette.
+    const double walk = stop_d * std::tan(max_angle * pi / 180.0);
+    if (walk + stop_D / 2.0 > diameter / 2.0)
+        std::println("  WARNING: at {:.0f}° the stop patch (center {:.1f}µm + radius {:.1f}µm) "
+                     "exceeds the lens radius {:.1f}µm -> edge vignetting; raise --diameter or "
+                     "lower --stop-distance/--max-angle.", max_angle, walk, stop_D / 2.0,
+                     diameter / 2.0);
+
+    // One library, two designs -> the only difference is the target phase profile.
+    bool auto_height = false;
+    for (int i = 2; i < argc; ++i)
+        if (std::string(argv[i]) == "--auto-height") auto_height = true;
+    UnitCellLibrary lib;
+    if (auto_height) {
+        std::println("  auto-height: sweeping for best coverage at high |t|...");
+        auto opt = optimize_height_for_2pi(pillar, materials::air(), materials::air(),
+                                           substrate, period, lambda, 0.30, 1.20, 12,
+                                           0.08, 0.92, std::max(samples, 32), M, 330.0);
+        lib = std::move(opt.best_library);
+        std::println("  chosen height {:.3f} µm -> coverage {:.0f}°, mean |t|² {:.3f}",
+                     opt.best_thickness_um, opt.coverage_deg, opt.mean_transmittance);
+    } else {
+        std::println("  building unit-cell library ({} pillars, M={})...", samples, M);
+        lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
+                                      substrate, period, lambda, thickness,
+                                      0.08, 0.92, samples, M);
+    }
+    std::println("  library coverage {:.0f}°", lib.coverage() * 180.0 / pi);
+    std::println("  resolution: stop sets spot ~λf/D_stop = {:.2f}µm "
+                 "(the full lens would give {:.2f}µm -- the wide-FOV resolution cost)",
+                 lambda * focal / stop_D, lambda * focal / diameter);
+
+    PhaseProfile hyp; hyp.kind = PhaseProfileKind::Focusing;  hyp.focal_length_um = focal;
+    PhaseProfile quad; quad.kind = PhaseProfileKind::Quadratic; quad.focal_length_um = focal;
+    auto lens_h = design_metalens(lib, hyp, diameter);
+    auto lens_q = design_metalens(lib, quad, diameter);
+
+    std::vector<double> angles;
+    for (double a = 0.0; a <= max_angle + 1e-9; a += angle_step) angles.push_back(a);
+    auto fov_h = analyze_wide_fov(lens_h, lib, focal, lambda, diameter, stop_D, stop_d, angles);
+    auto fov_q = analyze_wide_fov(lens_q, lib, focal, lambda, diameter, stop_D, stop_d, angles);
+
+    std::println("");
+    std::println("  field-of-view sweep (relative Strehl vs each lens's own on-axis peak):");
+    std::println("      {:>9}  {:>11}  {:>11}   {:>12}  {:>12}", "angle(°)",
+                 "hyperbolic", "quadratic", "spot_hyp(µm)", "spot_quad(µm)");
+    for (std::size_t i = 0; i < angles.size(); ++i)
+        std::println("      {:>9.0f}  {:>11.3f}  {:>11.3f}   {:>12.2f}  {:>12.2f}",
+                     angles[i], fov_h[i].rel_strehl, fov_q[i].rel_strehl,
+                     fov_h[i].spot_shift_um, fov_q[i].spot_shift_um);
+
+    // First angle where the relative Strehl falls below `thresh`, linearly
+    // interpolated; returns the last swept angle if it never drops below.
+    auto fov_to = [](const std::vector<FieldPoint>& fp, double thresh) {
+        for (std::size_t i = 1; i < fp.size(); ++i)
+            if (fp[i].rel_strehl < thresh) {
+                double a0 = fp[i - 1].angle_deg, a1 = fp[i].angle_deg;
+                double s0 = fp[i - 1].rel_strehl, s1 = fp[i].rel_strehl;
+                return s0 == s1 ? a0 : a0 + (a1 - a0) * (s0 - thresh) / (s0 - s1);
+            }
+        return fp.back().angle_deg;
+    };
+    // "≥" when a lens never drops below the threshold within the swept range.
+    auto cap = [](const std::vector<FieldPoint>& fp, double thresh) {
+        return fp.back().rel_strehl >= thresh ? "≥±" : "±";
+    };
+    const double h50 = fov_to(fov_h, 0.5), q50 = fov_to(fov_q, 0.5);
+    const double h80 = fov_to(fov_h, 0.8), q80 = fov_to(fov_q, 0.8);
+    std::println("");
+    std::println("  FOV half-angle to Strehl>=0.5:  hyperbolic {}{:.1f}°   quadratic {}{:.1f}°  ->  "
+                 "{:.1f}x wider", cap(fov_h, 0.5), h50, cap(fov_q, 0.5), q50,
+                 h50 > 0 ? q50 / h50 : 0.0);
+    std::println("  FOV half-angle to Strehl>=0.8:  hyperbolic {}{:.1f}°   quadratic {}{:.1f}°",
+                 cap(fov_h, 0.8), h80, cap(fov_q, 0.8), q80);
+    std::println("  spot landing: quadratic spot tracks ~f*sin(θ); hyperbolic chief ray ~f*tan(θ).");
+    std::println("  NOTE: the quadratic lens is wide-FOV ONLY with this offset stop (each angle");
+    std::println("        sees a decentered low-NA patch -> a recentered parabola = sharp shifted");
+    std::println("        focus). The price: resolution set by the stop (above) and a curved");
+    std::println("        (Petzval) focal surface. Without the stop both lenses degrade alike.");
+    return 0;
 }
 
 // celeris design: build a unit-cell library, design a focusing metalens, export
@@ -2243,6 +2404,8 @@ void print_help() {
         "\n"
         "Usage:\n"
         "  celeris design [options]   design a metalens -> GDSII + report\n"
+        "  celeris widefov [options]  wide-FOV design: hyperbolic vs quadratic-phase\n"
+        "                             lens, off-axis Strehl sweep (the FOV trade)\n"
         "  celeris validate [options] credibility battery on real TiO2 n,k:\n"
         "                             convergence + meta-atom + end-to-end report\n"
         "  celeris reproduce [opts]   reproduce a published metalens (Khorasaninejad\n"
@@ -2256,7 +2419,8 @@ void print_help() {
         "  --wavelength <µm=0.532>\n"
         "  --period <µm=0.35>     unit-cell pitch\n"
         "  --thickness <µm=0.6>   pillar height\n"
-        "  --profile <focusing|vortex|deflector|axicon|freeform=focusing>\n"
+        "  --profile <focusing|quadratic|vortex|deflector|axicon|freeform=focusing>\n"
+        "    (quadratic = parabolic wide-FOV lens; see `celeris widefov`)\n"
         "    --charge l / --deflect-deg / --deflect-azimuth / --axicon-deg   profile params\n"
         "    --freeform-file <grid.txt> --freeform-extent <µm>  loaded phi(x,y) hologram\n"
         "    --recon-z <µm=focal>   plane to reconstruct a non-focusing profile at\n"
@@ -2275,6 +2439,15 @@ void print_help() {
         "  --psf <file.pgm>       write the focal-spot image (PGM)\n"
         "  --report <prefix>      write a full deliverable bundle (txt metrics +\n"
         "                         PSF & caustic images + GDS)\n"
+        "\n"
+        "celeris widefov [--focal 30] [--diameter 16] [--max-angle 30] [--angle-step 3]\n"
+        "                [--auto-height] [--wavelength --period --thickness --pillar-n\n"
+        "                --substrate --fill-samples --harmonics]\n"
+        "  design a hyperbolic AND a quadratic-phase lens for the same f/D from the\n"
+        "  same library, sweep the incidence (field) angle, and report each lens's\n"
+        "  relative Strehl vs angle + the FOV half-angle: the quadratic lens holds a\n"
+        "  sharp focus over a much wider field (its spot just shifts to ~f*sin(θ))\n"
+        "  while the hyperbolic lens develops coma -- the classic wide-FOV trade.\n"
         "\n"
         "celeris birefringence [--fill-y 0.5] [--period --wavelength --thickness\n"
         "                       --pillar-n --samples --harmonics]\n"
@@ -2547,6 +2720,7 @@ int main(int argc, char** argv) {
     if (cmd == "validate") return cmd_validate(argc, argv);
     if (cmd == "reproduce") return cmd_reproduce(argc, argv);
     if (cmd == "design") return cmd_design(argc, argv);
+    if (cmd == "widefov") return cmd_widefov(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);
     if (cmd == "polardesign") return cmd_polardesign(argc, argv);
     if (cmd == "pbdesign") return cmd_pbdesign(argc, argv);

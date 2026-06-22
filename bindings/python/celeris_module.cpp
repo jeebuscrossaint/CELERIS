@@ -69,6 +69,8 @@ PYBIND11_MODULE(_celeris, m) {
     py::enum_<PhaseProfileKind>(m, "PhaseProfileKind",
         "Target wavefront phi(x,y) a metasurface imprints.")
         .value("Focusing", PhaseProfileKind::Focusing, "hyperbolic lens -> focal spot")
+        .value("Quadratic", PhaseProfileKind::Quadratic,
+               "parabolic lens -> wide-FOV focus (with an offset aperture stop)")
         .value("Vortex", PhaseProfileKind::Vortex, "OAM plate -> donut / OAM beam")
         .value("Deflector", PhaseProfileKind::Deflector, "blazed grating -> tilted beam")
         .value("Axicon", PhaseProfileKind::Axicon, "conical phase -> Bessel / line focus")
@@ -334,6 +336,14 @@ PYBIND11_MODULE(_celeris, m) {
                 p.focal_length_um = focal_length_um;
                 return p;
             }, py::arg("focal_length_um"), "Hyperbolic focusing lens.")
+        .def_static("quadratic",
+            [](double focal_length_um) {
+                PhaseProfile p;
+                p.kind = PhaseProfileKind::Quadratic;
+                p.focal_length_um = focal_length_um;
+                return p;
+            }, py::arg("focal_length_um"),
+            "Parabolic (wide-FOV) lens phi=-k*r^2/(2f).")
         .def_static("vortex",
             [](int charge, double focal_length_um) {
                 PhaseProfile p;

@@ -42,6 +42,19 @@ double phase_profile_value(const PhaseProfile& p, double x, double y,
             // Converging hyperbolic wavefront -> on-axis focus at z = f.
             return -k * (std::sqrt(r * r + p.focal_length_um * p.focal_length_um) -
                          p.focal_length_um);
+        case PhaseProfileKind::Quadratic:
+            // Parabolic (paraxial) lens. KEY wide-FOV property: an obliquely
+            // incident plane wave adds a linear phase k*sin(theta)*x, and
+            //   -k*(x^2+y^2)/(2f) + k*sin(theta)*x
+            //     = -k/(2f)*[(x - f*sin(theta))^2 + y^2] + const,
+            // i.e. the SAME parabola simply recentered at x0 = f*sin(theta).
+            // The focal spot shifts laterally with the field angle but the
+            // wavefront aberration is angle-independent -> no coma, a wide field
+            // of view. The price (vs the hyperbolic lens, which is perfect only
+            // on-axis): on-axis spherical aberration that grows with NA and a
+            // curved (Petzval) focal surface, so a real wide-FOV design pairs
+            // this with an aperture stop offset from the metasurface.
+            return -k * r * r / (2.0 * p.focal_length_um);
         case PhaseProfileKind::Vortex: {
             // Azimuthal phase ramp l*atan2(y,x) carries l*hbar of OAM per photon
             // (winds 2*pi*l around the axis). Add the focusing term for a focused

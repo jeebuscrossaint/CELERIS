@@ -21,6 +21,7 @@ namespace celeris {
 
 enum class PhaseProfileKind {
     Focusing,   // hyperbolic lens: phi = -k(sqrt(r^2+f^2)-f)              -> focal spot
+    Quadratic,  // parabolic lens:  phi = -k*r^2/(2f)                      -> WIDE-FOV focus
     Vortex,     // OAM plate:       phi = l*atan2(y,x) [+focusing if f>0]   -> donut / OAM beam
     Deflector,  // blazed grating:  phi = k*sin(a)*(x*cos az + y*sin az)    -> tilted beam
     Axicon,     // conical phase:   phi = -k*sin(b)*r                       -> Bessel / line focus
