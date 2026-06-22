@@ -289,8 +289,23 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Efficiency breakdown (per diffraction order, reflection, absorption budget)
 - [ ] Polarization analysis maps (Stokes/Mueller, extinction-ratio map)
 - [ ] Stray light / higher-order ghosts
-- [~] Bundled real n,k library — TiO₂ (Siefke 2016, ALD amorphous) shipped in
-      `data/TiO2_Siefke.csv`; still need a-Si, c-Si, GaN, SiN, Al₂O₃, Au/Ag/Al
+- [x] **Bundled real n,k library + named registry** — DONE. A `materials::`
+      registry (`by_name` + `catalog`, case-insensitive names & aliases) now
+      resolves the full metalens material set: analytic published Sellmeier for
+      the transparent dielectrics (SiO₂, BK7, **Si₃N₄**, **Al₂O₃ sapphire**
+      Malitson-Dodge 1972, **GaN** Barker-Ilegems 1973 — via a faithful
+      refractiveindex.info formula-1 factory) and REAL tabulated n,k (with loss)
+      for the lossy/high-index ones shipped in `data/` (CC0, sourced from the
+      polyanskiy/refractiveindex.info database): **TiO₂** (Siefke 2016),
+      **c-Si** (Green 2008), **a-Si** (Pierce-Spicer 1972), **Au** & **Ag**
+      (Johnson-Christy 1972), **Al** (McPeak 2015). `celeris materials` lists
+      them (type, n+ik at a reference λ, validity range, source); `design`
+      takes `--pillar <name>` / `--substrate <name>` (with `--pillar-csv` and
+      `--pillar-n` as overrides). selftest **[19]** locks literature spot-values
+      (sapphire n@532=1.7717, Au@600 n0.25/k3.07, k(c-Si)<k(a-Si), aliases,
+      data-files-present). GaN unblocks reproducing Wang 2018 (GaN achromat).
+      REMAINING (lower value): a GUI material picker; metals via an analytic
+      Lorentz-Drude model (today metals are tabulated).
 - [ ] Material editor in GUI (fit Sellmeier to data, anisotropic, thermo-optic)
 - [ ] Fabrication-aware analysis (sidewall angle, corner rounding → performance)
 

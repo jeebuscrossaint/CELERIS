@@ -42,6 +42,15 @@ public:
     static Material sellmeier(std::vector<std::array<double, 2>> bc_terms,
                               std::string name = "sellmeier");
 
+    // refractiveindex.info "formula 1" (Sellmeier, lossless):
+    //   n² = 1 + c₀ + Σ_i  c_{2i-1} · λ² / (λ² − c_{2i}²),   λ in µm.
+    // `coeffs` = the raw coefficient list straight off a refractiveindex.info
+    // YAML (c₀ followed by (strength, resonance-wavelength) pairs — note the
+    // resonance is a WAVELENGTH that gets SQUARED here, unlike sellmeier()'s
+    // pre-squared C). Lets canonical published dispersions be pasted verbatim.
+    static Material sellmeier_ri_formula1(std::vector<double> coeffs,
+                                          std::string name = "formula1");
+
     // Tabulated n and k vs wavelength (µm), linearly interpolated.
     // `wavelength_um` must be strictly ascending; out-of-range queries clamp
     // to the nearest endpoint. This is what you'll load from

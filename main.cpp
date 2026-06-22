@@ -737,6 +737,44 @@ static int run_selftest() {
         }
     }
 
+    // ---- Validation 19: named material registry (real n,k library) ---------
+    // The registry maps canonical names + aliases to Materials. Analytic
+    // dielectrics are exact published Sellmeier (lossless); tabulated metals &
+    // semiconductors carry real loss from refractiveindex.info data. Lock a few
+    // literature spot-values so the shipped data/registry can't silently drift.
+    {
+        using namespace materials;
+        std::println("[19] Material registry (real n,k library):");
+        // analytic, lossless: sapphire ordinary at 532nm = 1.7717 (Malitson 1972).
+        const cdouble sa = by_name("sapphire").index(0.532);
+        const bool sapphire_ok = std::abs(sa.real() - 1.7717) < 2e-3 && sa.imag() == 0.0;
+        // alias resolution: gold==au, silica==sio2.
+        const bool alias_ok = by_name("gold").name() == by_name("au").name() &&
+                              by_name("silica").index(0.532).real() ==
+                                  by_name("sio2").index(0.532).real();
+        // tabulated, lossy: gold at 600nm has small n, large k (Johnson-Christy).
+        const cdouble au = by_name("au").index(0.600);
+        const bool au_ok = au.real() < 0.5 && au.imag() > 2.5;
+        // c-Si nearly transparent (small k) vs a-Si absorbing (large k) at 532nm.
+        const double k_csi = by_name("c-si").index(0.532).imag();
+        const double k_asi = by_name("a-si").index(0.532).imag();
+        const bool si_ok = k_csi < 0.10 && k_asi > 0.50;
+        // every tabulated data file located on disk?
+        bool files_ok = true;
+        int n_mat = 0;
+        for (const auto& m : catalog()) {
+            ++n_mat;
+            if (m.tabulated && !m.available) files_ok = false;
+        }
+        std::println("    {} materials | sapphire n@532={:.4f} k=0 {} | gold@600 "
+                     "n={:.2f} k={:.2f} {} | k(c-Si)={:.3f}<k(a-Si)={:.3f} {} | "
+                     "aliases {} | data files {}",
+                     n_mat, sa.real(), sapphire_ok ? "✓" : "FAIL", au.real(),
+                     au.imag(), au_ok ? "✓" : "FAIL", k_csi, k_asi,
+                     si_ok ? "✓" : "FAIL", alias_ok ? "✓" : "FAIL",
+                     files_ok ? "✓" : "FAIL");
+    }
+
 #ifdef CELERIS_USE_CUDA
     // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
     // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
@@ -803,6 +841,41 @@ const char* arg_value(int argc, char** argv, const std::string& key,
     for (int i = 2; i + 1 < argc; ++i)
         if (key == argv[i]) return argv[i + 1];
     return fallback;
+}
+
+// Resolve the substrate material from --substrate <name>. Accepts any registry
+// name (air/sio2/bk7/sapphire/gan/...); the old air|sio2|bk7 spellings still
+// work since they are registry names. Falls back to the default name on error.
+static Material resolve_substrate(int argc, char** argv,
+                                  const std::string& def = "bk7") {
+    const std::string name = arg_value(argc, argv, "--substrate", def.c_str());
+    try {
+        return materials::by_name(name);
+    } catch (const std::exception& e) {
+        std::println("  WARNING: substrate {}; using {}", e.what(), def);
+        return materials::by_name(def);
+    }
+}
+
+// Resolve the pillar material. Precedence: --pillar-csv <file> (explicit data)
+// > --pillar <name> (registry name, e.g. tio2/gan/a-si — real n,k incl. loss)
+// > --pillar-n <n> (a lossless constant index, the legacy default). Reports the
+// resolved choice. `def_n` is the constant-index fallback.
+static Material resolve_pillar(int argc, char** argv, double def_n = 2.4) {
+    if (const char* csv = arg_value(argc, argv, "--pillar-csv", nullptr))
+        return load_material_csv(csv, "pillar-csv");
+    if (const char* name = arg_value(argc, argv, "--pillar", nullptr)) {
+        try {
+            Material m = materials::by_name(name);
+            std::println("  pillar material: {} (registry)", m.name());
+            return m;
+        } catch (const std::exception& e) {
+            std::println("  WARNING: pillar {}; using constant n={}", e.what(), def_n);
+        }
+    }
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n",
+                                                std::to_string(def_n).c_str()));
+    return Material::constant(cdouble{pillar_n, 0.0}, "pillar");
 }
 
 // Parse --profile (+ its parameters) into a PhaseProfile, shared by the
@@ -1106,15 +1179,9 @@ int cmd_design(int argc, char** argv) {
     const int samples = std::atoi(arg_value(argc, argv, "--fill-samples", "18"));
     const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
     const std::string out = arg_value(argc, argv, "--out", "metalens.gds");
-    const std::string sub_name = arg_value(argc, argv, "--substrate", "bk7");
 
-    const Material& substrate = sub_name == "air"  ? materials::air()
-                                : sub_name == "sio2" ? materials::fused_silica()
-                                                     : materials::bk7();
-    const char* pillar_csv = arg_value(argc, argv, "--pillar-csv", nullptr);
-    const Material pillar =
-        pillar_csv ? load_material_csv(pillar_csv, "pillar-csv")
-                   : Material::constant(cdouble{pillar_n, 0.0}, "pillar");
+    const Material substrate = resolve_substrate(argc, argv);
+    const Material pillar = resolve_pillar(argc, argv, pillar_n);
 
     // --profile: the target wavefront. Default focusing (the hyperbolic lens);
     // vortex/deflector/axicon/freeform stamp other profiles on the SAME
@@ -1125,8 +1192,10 @@ int cmd_design(int argc, char** argv) {
     const PhaseProfile profile = *profile_opt;
 
     std::println("CELERIS metalens design");
-    std::println("  profile={}  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  n_pillar={}  substrate={}",
-                 profile_name, focal, diameter, lambda, period, thickness, pillar_n, sub_name);
+    std::println("  profile={}  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  pillar={} (n={:.3f}+{:.3f}i)  substrate={}",
+                 profile_name, focal, diameter, lambda, period, thickness,
+                 pillar.name(), pillar.index(lambda).real(),
+                 pillar.index(lambda).imag(), substrate.name());
     // --auto-height: instead of using the fixed --thickness, sweep pillar height
     // and pick the (shortest, highest-transmittance) single etch depth that
     // reaches full 2pi phase coverage. This lifts the transmission-weighted
@@ -2607,6 +2676,35 @@ int cmd_validate(int argc, char** argv) {
     return 0;
 }
 
+// celeris materials [--wavelength <µm>]: list the built-in material library
+// (analytic dielectrics + real tabulated n,k), with the complex index sampled
+// at a reference wavelength so a user can sanity-check each entry at a glance.
+int cmd_materials(int argc, char** argv) {
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    std::println("CELERIS material library  (n + ik sampled at λ = {} µm)", lambda);
+    std::println("  any of these names work with --pillar / --substrate; tabulated\n"
+                 "  entries carry real loss (k), analytic dielectrics are lossless.\n");
+    std::println("  {:<14} {:<6} {:>16} {:>12}   {}", "name", "type", "n+ik @λ",
+                 "valid (µm)", "source");
+    std::println("  {}", std::string(78, '-'));
+    for (const auto& m : materials::catalog()) {
+        std::string idx = "  (file missing)";
+        std::string range = "broadband";
+        if (m.lambda_min_um > 0.0 || m.lambda_max_um > 0.0)
+            range = std::format("{:.2f}-{:.2f}", m.lambda_min_um, m.lambda_max_um);
+        if (!m.tabulated || m.available) {
+            try {
+                cdouble n = materials::by_name(m.name).index(lambda);
+                idx = std::format("{:.3f}{:+.3f}i", n.real(), n.imag());
+            } catch (const std::exception&) { idx = "  (error)"; }
+        }
+        std::println("  {:<14} {:<6} {:>16} {:>12}   {}", m.name,
+                     m.tabulated ? "data" : "model", idx, range, m.description);
+    }
+    std::println("\n  load any other refractiveindex.info CSV with --pillar-csv <file>.");
+    return 0;
+}
+
 void print_help() {
     std::println(
         "CELERIS — GPU-ready metalens design via rigorous coupled-wave analysis\n"
@@ -2619,6 +2717,7 @@ void print_help() {
         "                             convergence + meta-atom + end-to-end report\n"
         "  celeris reproduce [opts]   reproduce a published metalens (Khorasaninejad\n"
         "                             Science 2016): conversion eff vs paper + focusing\n"
+        "  celeris materials [opts]   list the built-in material library (real n,k)\n"
         "  celeris selftest           run the physics validation suite\n"
         "  celeris help               show this message\n"
         "\n"
@@ -2637,9 +2736,11 @@ void print_help() {
         "    --height-lo/-hi/-steps <0.30/1.20/12>  the height sweep range\n"
         "  --shape <square|circle|cross|ring=square>  meta-atom cross-section\n"
         "    --shape-param <0.5>  cross arm width / ring inner-radius (fraction)\n"
-        "  --pillar-n <2.4>       pillar refractive index (constant)\n"
-        "  --pillar-csv <file>    load pillar n,k from CSV (overrides --pillar-n)\n"
-        "  --substrate <bk7|air|sio2=bk7>\n"
+        "  --pillar <name>        pillar material by registry name (tio2|gan|a-si|\n"
+        "                         c-si|si3n4|au|ag|al|... -- see `celeris materials`)\n"
+        "  --pillar-n <2.4>       OR a constant pillar index (lossless)\n"
+        "  --pillar-csv <file>    OR load pillar n,k from a CSV (highest precedence)\n"
+        "  --substrate <name=bk7> substrate by registry name (bk7|sio2|air|sapphire|...)\n"
         "  --fill-samples <18>    library resolution\n"
         "  --harmonics <6>        RCWA Fourier half-count (accuracy vs speed)\n"
         "  --out <metalens.gds>   output GDSII path\n"
@@ -2933,6 +3034,7 @@ int main(int argc, char** argv) {
     if (cmd == "shapeconv") return cmd_shapeconv(argc, argv);
     if (cmd == "validate") return cmd_validate(argc, argv);
     if (cmd == "reproduce") return cmd_reproduce(argc, argv);
+    if (cmd == "materials") return cmd_materials(argc, argv);
     if (cmd == "design") return cmd_design(argc, argv);
     if (cmd == "widefov") return cmd_widefov(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);
