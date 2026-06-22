@@ -1,7 +1,9 @@
 #include "celeris/analysis/field.hpp"
 
+#include "celeris/analysis/focal.hpp"  // propagate_pillars (GPU/CPU far-field)
 #include "celeris/core.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -143,6 +145,91 @@ std::vector<FieldPoint> analyze_wide_fov(const MetalensDesign& lens,
         out.push_back({ang, on_axis_peak > 0 ? pk / on_axis_peak : 0.0, px});
     }
     return out;
+}
+
+FieldGrid analyze_field_grid(const MetalensDesign& lens,
+                             const UnitCellLibrary& lib,
+                             double focal_length_um, double wavelength_um,
+                             double diameter_um, double max_angle_deg,
+                             int n_half, int psf_n) {
+    const double p = lens.period_um;
+    const double center = (lens.n_cells - 1) / 2.0;
+    const double R_ap = diameter_um / 2.0;
+    const double k = 2.0 * pi / wavelength_um;
+
+    // The aperture cells (positions + designed transmission), built once; each
+    // field point reuses them with its own tilt phase.
+    std::vector<double> px, py;
+    std::vector<cdouble> t0;
+    for (int iy = 0; iy < lens.n_cells; ++iy)
+        for (int ix = 0; ix < lens.n_cells; ++ix) {
+            const double x = (ix - center) * p, y = (iy - center) * p;
+            if (std::sqrt(x * x + y * y) > R_ap) continue;
+            const double fill = lens.fill_map[static_cast<std::size_t>(iy) * lens.n_cells + ix];
+            px.push_back(x);
+            py.push_back(y);
+            t0.push_back(lib.transmission_for_fill(fill));
+        }
+    const std::size_t npil = px.size();
+
+    // Window: a few diffraction-limited spot widths, large enough to hold the
+    // coma flare that grows off-axis. Sampling resolves the spot for FWHM.
+    const double dl = wavelength_um * focal_length_um / diameter_um;
+    const double W = std::max(6.0 * dl, 4.0);
+    const double step = 2.0 * W / (psf_n - 1);
+
+    // Peak intensity + tangential/sagittal FWHM of one tilted-illumination PSF.
+    struct Spot { double peak, fwhm_x, fwhm_y; };
+    std::vector<cdouble> tt(npil);
+    auto spot_at = [&](double tx, double ty, double cx, double cy) -> Spot {
+        const double sx = std::sin(tx), sy = std::sin(ty);
+        for (std::size_t c = 0; c < npil; ++c)
+            tt[c] = t0[c] * std::polar(1.0, k * (sx * px[c] + sy * py[c]));
+        PsfMap m = propagate_pillars(px, py, tt, cx, cy, focal_length_um,
+                                     wavelength_um, psf_n, W);
+        // Peak pixel.
+        int pix = 0, piy = 0;
+        double best = -1.0;
+        for (int j = 0; j < psf_n; ++j)
+            for (int i = 0; i < psf_n; ++i) {
+                double v = m.intensity[static_cast<std::size_t>(j) * psf_n + i];
+                if (v > best) { best = v; pix = i; piy = j; }
+            }
+        const double half = best / 2.0;
+        auto fwhm_along = [&](bool horizontal) {
+            int lo = -1, hi = -1;
+            for (int s = 0; s < psf_n; ++s) {
+                std::size_t idx = horizontal
+                    ? static_cast<std::size_t>(piy) * psf_n + s
+                    : static_cast<std::size_t>(s) * psf_n + pix;
+                if (m.intensity[idx] >= half) { if (lo < 0) lo = s; hi = s; }
+            }
+            return (hi > lo && lo >= 0) ? (hi - lo) * step : 0.0;
+        };
+        return {best, fwhm_along(true), fwhm_along(false)};
+    };
+
+    Spot on_axis = spot_at(0.0, 0.0, 0.0, 0.0);
+    const double ref = on_axis.peak > 0 ? on_axis.peak : 1.0;
+
+    FieldGrid g;
+    g.n = 2 * n_half + 1;
+    g.max_angle_deg = max_angle_deg;
+    g.points.reserve(static_cast<std::size_t>(g.n) * g.n);
+    for (int jy = -n_half; jy <= n_half; ++jy) {
+        const double ang_y = n_half > 0 ? max_angle_deg * jy / n_half : 0.0;
+        const double ty = ang_y * pi / 180.0;
+        for (int jx = -n_half; jx <= n_half; ++jx) {
+            const double ang_x = n_half > 0 ? max_angle_deg * jx / n_half : 0.0;
+            const double tx = ang_x * pi / 180.0;
+            const double cx = focal_length_um * std::tan(tx);
+            const double cy = focal_length_um * std::tan(ty);
+            Spot s = spot_at(tx, ty, cx, cy);
+            g.points.push_back({ang_x, ang_y, s.peak / ref, s.fwhm_x, s.fwhm_y,
+                                cx, cy});
+        }
+    }
+    return g;
 }
 
 } // namespace celeris

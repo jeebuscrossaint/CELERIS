@@ -215,7 +215,8 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
                            cdouble Ex0,
                            cdouble Ey0,
                            int Mx,
-                           int My) {
+                           int My,
+                           std::vector<OrderEfficiency>* orders_out) {
     if (Mx < 0 || My < 0) throw std::invalid_argument("M must be >= 0");
     if (stack.layers.empty())
         throw std::invalid_argument("solve_rcwa_2d: stack has no layers");
@@ -460,6 +461,29 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
     out.de_t0 = (fwdN(i0)).real() * norm;
     out.tx0 = Esub(N + i0) / denom;   // transmitted Ex / incident Ex
     out.ty0 = -Esub(i0) / denom;      // transmitted Ey / incident Ex
+
+    // Optional per-order energy split for an efficiency budget. The flux vectors
+    // already hold the radiated power per order; an order (p,q) is propagating in
+    // a region of index n iff (n·k0)² > kx_p² + ky_q² (positive longitudinal kz²).
+    if (orders_out) {
+        const double k0sub = (n_sub.real() * k0) * (n_sub.real() * k0);
+        const double k0inc = (n_inc.real() * k0) * (n_inc.real() * k0);
+        orders_out->clear();
+        orders_out->reserve(static_cast<std::size_t>(N));
+        for (int p = -Mx; p <= Mx; ++p)
+            for (int q = -My; q <= My; ++q) {
+                const int i = order_index(p, q, Mx, My);
+                const double kt2 = (kxv(i) * kxv(i) + kyv(i) * kyv(i)).real();
+                OrderEfficiency oe;
+                oe.p = p;
+                oe.q = q;
+                oe.de_t = (fwdN(i)).real() * norm;
+                oe.de_r = (-bwd0(i)).real() * norm;
+                oe.prop_t = k0sub - kt2 > 0.0;
+                oe.prop_r = k0inc - kt2 > 0.0;
+                orders_out->push_back(oe);
+            }
+    }
     return out;
 }
 

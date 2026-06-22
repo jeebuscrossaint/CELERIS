@@ -93,9 +93,24 @@ struct Rcwa2DResult {
                      //  imparts — the core quantity for unit-cell libraries)
 };
 
+// Per-diffraction-order energy split, optionally filled by solve_rcwa_2d for an
+// efficiency budget ("where does the light go?"). de_t/de_r are the fractions of
+// incident power transmitted/reflected into order (p,q); prop_t/prop_r flag
+// whether that order is a propagating (radiating) wave in the substrate /
+// incident region — evanescent orders carry ~0 real flux and are bookkeeping.
+struct OrderEfficiency {
+    int p, q;
+    double de_t;
+    double de_r;
+    bool prop_t;
+    bool prop_r;
+};
+
 // Solve a biperiodic stack. Incidence is set by polar/azimuth angles and the
 // tangential incident E-field at order 0 (Ex0, Ey0); e.g. (0,1) = E along y,
 // (1,0) = E along x. Mx/My are the harmonic half-counts in each direction.
+// If `orders_out` is non-null it is filled with the per-order energy split (one
+// entry per (p,q)); pass nullptr to skip that bookkeeping on the hot path.
 Rcwa2DResult solve_rcwa_2d(const Material& incident,
                            const Rcwa2DStack& stack,
                            const Material& substrate,
@@ -105,6 +120,7 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
                            cdouble Ex0,
                            cdouble Ey0,
                            int Mx,
-                           int My);
+                           int My,
+                           std::vector<OrderEfficiency>* orders_out = nullptr);
 
 } // namespace celeris

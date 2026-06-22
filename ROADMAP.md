@@ -285,8 +285,29 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
 - [ ] Report export to PDF/HTML (today: txt + images)
 
 ## 4. Analysis & materials depth  (Zemax parity, mostly incremental)
-- [ ] Field-resolved grids (PSF/MTF/Strehl across the full field, not just a row)
-- [ ] Efficiency breakdown (per diffraction order, reflection, absorption budget)
+- [x] **Field-resolved grids** (PSF/Strehl across the full field, not just a row)
+      — DONE. `analyze_field_grid` (`analysis/field.{hpp,cpp}`) + CLI `celeris
+      fieldmap` sweep a 2D grid of incidence (field) angles (θx,θy) over ±max-angle
+      and report the relative Strehl + tangential/sagittal spot FWHM at each node,
+      reusing the GPU/CPU `propagate_pillars` core. The full-field generalization of
+      `design --fov` (which is only the center row). Prints the rel-Strehl grid +
+      diagonal FWHM trend + FOV half-angle, optionally writes a PGM heatmap. VERIFIED:
+      a hyperbolic singlet (f=50,D=20,NA0.20) gives a symmetric map falling 1.000
+      on-axis → 0.806 at ±12° corners (mild coma at low NA); on-axis FWHM = DL.
+      selftest **[21]** locks the structural invariants (on-axis = reference, 4-corner
+      symmetry Δ<1e-3, monotone off-axis falloff, on-axis spot diffraction-limited).
+- [x] **Efficiency breakdown** (per diffraction order, reflection, absorption budget)
+      — DONE. `solve_rcwa_2d` gained an optional `OrderEfficiency` out-param (per-order
+      de_t/de_r + propagating flag, from the already-computed flux vectors — zero cost
+      when null); new `analyze_efficiency` (`analysis/efficiency.{hpp,cpp}`) + CLI
+      `celeris efficiency` report a meta-atom's energy budget: reflection,
+      transmission, **absorption = 1−R−T** (real for lossy metals), and the split
+      between the useful 0th order and higher (stray) orders. VERIFIED: subwavelength
+      lossless TiO₂ → 100% in 0th order, A≈0, R+T+A=1.000000; a gold pillar → 57.9%
+      absorption; a non-subwavelength pitch (Λ=1.2µm) leaks into symmetric (±1,0)/(0,±1)
+      stray orders. selftest **[20]** locks energy closure + TiO₂(lossless, 0th-only) +
+      Au(absorbing). This is the per-element analog of a Zemax surface-efficiency/ghost
+      budget. REMAINING (lower value): expose in Python bindings + a GUI panel.
 - [ ] Polarization analysis maps (Stokes/Mueller, extinction-ratio map)
 - [ ] Stray light / higher-order ghosts
 - [x] **Bundled real n,k library + named registry** — DONE. A `materials::`

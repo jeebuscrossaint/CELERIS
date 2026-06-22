@@ -49,4 +49,34 @@ std::vector<FieldPoint> analyze_wide_fov(const MetalensDesign& lens,
                                          double stop_distance_um,
                                          const std::vector<double>& angles_deg);
 
+// One node of the full 2D field-resolved grid: the off-axis focus for a plane
+// wave tilted by (theta_x, theta_y). Reports the relative Strehl (vs the on-axis
+// peak) and the tangential/sagittal spot FWHM, so a grid of these is the full-
+// field PSF/Strehl map (not just the center-row spot-vs-field of the FieldPoint
+// sweep above). cx/cy are the chief-ray landing on the focal plane.
+struct FieldGridPoint {
+    double theta_x_deg, theta_y_deg;
+    double rel_strehl;
+    double fwhm_x_um, fwhm_y_um;
+    double cx_um, cy_um;
+};
+
+struct FieldGrid {
+    int n;                  // (2*n_half+1) angles per axis; n = side length
+    double max_angle_deg;   // extent of each axis
+    std::vector<FieldGridPoint> points;  // row-major n x n, theta_y outer / theta_x inner
+};
+
+// Sweep an n_half-symmetric grid of field angles (theta_x, theta_y) over
+// +/- max_angle_deg and report the off-axis focus quality at each. Each point
+// illuminates the full aperture with the tilted plane wave exp(i k (sin θx·x +
+// sin θy·y)) and propagates to a window centered on the chief ray; the PSF is
+// sampled on psf_n x psf_n. This is the full-field map: the on-axis (0,0) node
+// is the rel_strehl=1 reference. side length n = 2*n_half + 1.
+FieldGrid analyze_field_grid(const MetalensDesign& lens,
+                             const UnitCellLibrary& lib,
+                             double focal_length_um, double wavelength_um,
+                             double diameter_um, double max_angle_deg,
+                             int n_half, int psf_n);
+
 } // namespace celeris

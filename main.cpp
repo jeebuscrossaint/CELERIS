@@ -26,6 +26,7 @@
 #endif
 
 #include "celeris/analysis/chromatic.hpp"
+#include "celeris/analysis/efficiency.hpp"
 #include "celeris/analysis/field.hpp"
 #include "celeris/analysis/focal.hpp"
 #include "celeris/analysis/polarization.hpp"
@@ -775,6 +776,74 @@ static int run_selftest() {
                      files_ok ? "✓" : "FAIL");
     }
 
+    {
+        using namespace materials;
+        std::println("[20] Efficiency budget (per-order / absorption):");
+        // (a) Lossless TiO2 atom, subwavelength pitch -> energy conserved, no
+        // absorption, ALL transmitted power in the single propagating 0th order.
+        auto bt = analyze_efficiency(materials::air(), by_name("tio2"),
+                                     materials::air(), by_name("sio2"), 0.35, 0.35,
+                                     0.6, 0.6, 0.6, 0.532, {1.0, 0.0}, {0.0, 0.0}, 6);
+        const double sum_t = bt.transmission + bt.reflection + bt.absorption;
+        const bool e_ok = std::abs(sum_t - 1.0) < 1e-3;        // R+T+A = 1
+        const bool a_ok = bt.absorption < 1e-3;                // lossless
+        const bool o0_ok = std::abs(bt.t_zero - bt.transmission) < 1e-4 &&
+                           bt.n_prop_t == 1;                   // only 0th propagates
+        // (b) Lossy gold atom -> real absorption (the deficit 1-R-T), energy still
+        // accounted for exactly.
+        auto bg = analyze_efficiency(materials::air(), by_name("au"),
+                                     materials::air(), by_name("sio2"), 0.35, 0.35,
+                                     0.5, 0.5, 0.10, 0.532, {1.0, 0.0}, {0.0, 0.0}, 6);
+        const double sum_g = bg.transmission + bg.reflection + bg.absorption;
+        const bool g_ok = std::abs(sum_g - 1.0) < 1e-3 && bg.absorption > 0.2;
+        std::println("    TiO2: R+T+A={:.6f} {} | absorption {:.2e} {} | 0th holds "
+                     "all T ({} order) {}",
+                     sum_t, e_ok ? "✓" : "FAIL", bt.absorption, a_ok ? "✓" : "FAIL",
+                     bt.n_prop_t, o0_ok ? "✓" : "FAIL");
+        std::println("    Au:   R+T+A={:.6f}, absorption {:.3f} (lossy metal) {}",
+                     sum_g, bg.absorption, g_ok ? "✓" : "FAIL");
+    }
+
+    {
+        using namespace materials;
+        std::println("[21] Field-resolved grid (full-field Strehl map):");
+        // Small focusing lens, 5x5 field grid. Lock the structural invariants: the
+        // on-axis node is the rel_strehl=1 reference, the grid is symmetric (the
+        // lens is rotationally symmetric), Strehl falls monotonically off-axis, and
+        // the on-axis spot is diffraction-limited.
+        const double f = 30.0, D = 12.0, lam = 0.532, per = 0.35, h = 0.6;
+        auto lib = build_unit_cell_library(by_name("tio2"), materials::air(),
+                                           materials::air(), by_name("sio2"), per,
+                                           lam, h, 0.08, 0.92, 14, 5);
+        auto lens = design_metalens(lib, f, D);
+        auto g = analyze_field_grid(lens, lib, f, lam, D, /*max_angle=*/10.0,
+                                    /*n_half=*/2, /*psf_n=*/61);
+        const int n = g.n, c = n / 2;  // center index
+        auto at = [&](int jx, int jy) -> const FieldGridPoint& {
+            return g.points[(std::size_t)jy * n + jx];
+        };
+        const double s00 = at(c, c).rel_strehl;
+        const double corner = at(0, 0).rel_strehl;
+        // 4-corner symmetry (rotational symmetry of the lens).
+        const double cmax = std::max({at(0, 0).rel_strehl, at(n - 1, 0).rel_strehl,
+                                      at(0, n - 1).rel_strehl,
+                                      at(n - 1, n - 1).rel_strehl});
+        const double cmin = std::min({at(0, 0).rel_strehl, at(n - 1, 0).rel_strehl,
+                                      at(0, n - 1).rel_strehl,
+                                      at(n - 1, n - 1).rel_strehl});
+        const bool sym_ok = (cmax - cmin) < 1e-3;
+        const bool ref_ok = std::abs(s00 - 1.0) < 1e-9;     // on-axis = reference
+        const bool fall_ok = corner < s00 - 0.02;           // degrades off-axis
+        const double dl = lam * f / D;
+        const bool dl_ok = at(c, c).fwhm_x_um <= 1.6 * dl &&
+                           at(c, c).fwhm_x_um > 0.0;         // on-axis ~ DL
+        std::println("    on-axis Strehl {:.6f} {} | corner {:.3f}<center {} | "
+                     "4-corner sym Δ={:.2e} {} | on-axis FWHM {:.2f}µm (DL {:.2f}) {}",
+                     s00, ref_ok ? "✓" : "FAIL", corner, fall_ok ? "✓" : "FAIL",
+                     cmax - cmin, sym_ok ? "✓" : "FAIL", at(c, c).fwhm_x_um, dl,
+                     dl_ok ? "✓" : "FAIL");
+    }
+
 #ifdef CELERIS_USE_CUDA
     // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
     // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
@@ -1164,6 +1233,185 @@ int cmd_widefov(int argc, char** argv) {
     std::println("        sees a decentered low-NA patch -> a recentered parabola = sharp shifted");
     std::println("        focus). The price: resolution set by the stop (above) and a curved");
     std::println("        (Petzval) focal surface. Without the stop both lenses degrade alike.");
+    return 0;
+}
+
+// celeris efficiency: the per-meta-atom energy budget -- where does the incident
+// power go? Reflection, transmission, material absorption (1-R-T), and the split
+// between the useful zeroth order and higher (stray) diffraction orders. A
+// subwavelength pitch has ONLY order 0 propagating (no stray light by design);
+// a lossy pillar (metal) shows real absorption. The per-element analog of a
+// Zemax surface-efficiency / ghost budget.
+int cmd_efficiency(int argc, char** argv) {
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const double fill = std::atof(arg_value(argc, argv, "--fill", "0.5"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "8"));
+    const std::string pol = arg_value(argc, argv, "--pol", "x");
+
+    const Material substrate = resolve_substrate(argc, argv);
+    const Material pillar = resolve_pillar(argc, argv, pillar_n);
+
+    const std::string shape_name = arg_value(argc, argv, "--shape", "square");
+    const double shape_param = std::atof(arg_value(argc, argv, "--shape-param", "0.5"));
+    const MetaShape shape = shape_name == "circle" || shape_name == "ellipse"
+                                ? MetaShape::Ellipse
+                            : shape_name == "cross" ? MetaShape::Cross
+                            : shape_name == "ring"  ? MetaShape::Ring
+                                                    : MetaShape::Rectangle;
+    const cdouble Ex0 = pol == "y" ? cdouble{0.0, 0.0} : cdouble{1.0, 0.0};
+    const cdouble Ey0 = pol == "y" ? cdouble{1.0, 0.0} : cdouble{0.0, 0.0};
+
+    std::println("CELERIS meta-atom efficiency budget");
+    std::println("  λ={}µm  Λ={}µm  h={}µm  fill={}  shape={}  pol={}  M={}",
+                 lambda, period, thickness, fill, shape_name, pol, M);
+    std::println("  pillar={} (n={:.3f}+{:.3f}i)  substrate={} (n={:.3f})",
+                 pillar.name(), pillar.index(lambda).real(),
+                 pillar.index(lambda).imag(), substrate.name(),
+                 substrate.index(lambda).real());
+    const bool sub_wl = period < lambda;  // subwavelength pitch?
+    std::println("  pitch is {} (Λ/λ={:.3f}) -> {} propagating diffraction orders expected",
+                 sub_wl ? "SUBWAVELENGTH" : "NOT subwavelength", period / lambda,
+                 sub_wl ? "only the 0th" : "higher (stray)");
+
+    auto b = analyze_efficiency(materials::air(), pillar, materials::air(),
+                                substrate, period, period, fill, fill, thickness,
+                                lambda, Ex0, Ey0, M, shape, shape_param);
+
+    std::println("");
+    std::println("  energy budget (fractions of incident power):");
+    std::println("      transmission : {:.4f}   (0th order {:.4f} + stray {:.4f})",
+                 b.transmission, b.t_zero, b.t_stray);
+    std::println("      reflection   : {:.4f}   (0th order {:.4f} + stray {:.4f})",
+                 b.reflection, b.r_zero, b.r_stray);
+    std::println("      absorption   : {:.4f}   (= 1 - R - T; material loss)",
+                 b.absorption);
+    std::println("      sum check    : {:.6f}   (R+T+A)",
+                 b.transmission + b.reflection + b.absorption);
+    std::println("  propagating channels: {} transmitted, {} reflected",
+                 b.n_prop_t, b.n_prop_r);
+
+    // Per-order table for the propagating transmitted orders + any stray.
+    std::println("");
+    std::println("  per-order split (propagating orders, by transmitted power):");
+    std::println("      {:>4} {:>4}  {:>10}  {:>10}  {}", "p", "q", "T_order",
+                 "R_order", "channel");
+    int shown = 0;
+    for (const auto& o : b.orders) {
+        if (!o.prop_t && !o.prop_r) continue;       // skip evanescent bookkeeping
+        if (o.de_t < 1e-6 && o.de_r < 1e-6) continue;
+        std::println("      {:>4} {:>4}  {:>10.5f}  {:>10.5f}  {}", o.p, o.q,
+                     o.de_t, o.de_r,
+                     (o.p == 0 && o.q == 0) ? "0th (useful)" : "stray");
+        if (++shown >= 12) { std::println("      ... (further orders omitted)"); break; }
+    }
+    if (shown == 0)
+        std::println("      (none above 1e-6)");
+
+    // Interpretation line: a good metalens atom is high-T, low absorption, all
+    // the transmitted power in the 0th order (subwavelength pitch suppresses stray).
+    const double useful = b.transmission > 0 ? b.t_zero / b.transmission : 0.0;
+    std::println("");
+    std::println("  -> {:.1f}% of transmitted power is in the useful 0th order; "
+                 "absorption {:.1f}%, reflection {:.1f}%.",
+                 useful * 100.0, b.absorption * 100.0, b.reflection * 100.0);
+    return 0;
+}
+
+// celeris fieldmap: full-field PSF/Strehl grid. Designs a focusing lens, then
+// sweeps a 2D grid of incidence (field) angles (theta_x, theta_y) and reports
+// the relative Strehl + tangential/sagittal spot FWHM at each -- the full-field
+// quality map (not just the center-row spot-vs-field of `design --fov`). A
+// single hyperbolic lens is sharp on-axis and aberrates (coma) off-axis, so the
+// map falls off toward the corners.
+int cmd_fieldmap(int argc, char** argv) {
+    const double focal = std::atof(arg_value(argc, argv, "--focal", "50"));
+    const double diameter = std::atof(arg_value(argc, argv, "--diameter", "20"));
+    const double lambda = std::atof(arg_value(argc, argv, "--wavelength", "0.532"));
+    const double period = std::atof(arg_value(argc, argv, "--period", "0.35"));
+    const double thickness = std::atof(arg_value(argc, argv, "--thickness", "0.6"));
+    const double pillar_n = std::atof(arg_value(argc, argv, "--pillar-n", "2.4"));
+    const int samples = std::atoi(arg_value(argc, argv, "--fill-samples", "18"));
+    const int M = std::atoi(arg_value(argc, argv, "--harmonics", "6"));
+    const double max_angle = std::atof(arg_value(argc, argv, "--max-angle", "12"));
+    const int n_half = std::atoi(arg_value(argc, argv, "--angle-steps", "4"));
+    const int psf_n = std::atoi(arg_value(argc, argv, "--psf-n", "101"));
+    const char* out_pgm = arg_value(argc, argv, "--out", nullptr);
+
+    const Material substrate = resolve_substrate(argc, argv);
+    const Material pillar = resolve_pillar(argc, argv, pillar_n);
+
+    std::println("CELERIS field-resolved analysis (full-field Strehl/FWHM grid)");
+    std::println("  f={}µm  D={}µm  λ={}µm  Λ={}µm  h={}µm  pillar={}  substrate={}",
+                 focal, diameter, lambda, period, thickness, pillar.name(),
+                 substrate.name());
+    std::println("  building unit-cell library ({} pillars, M={})...", samples, M);
+    auto lib = build_unit_cell_library(pillar, materials::air(), materials::air(),
+                                       substrate, period, lambda, thickness,
+                                       0.08, 0.92, samples, M);
+    auto lens = design_metalens(lib, focal, diameter);
+    std::println("  designed {0}x{0} pillars, RMS phase error {1:.1f}°, mean |t| {2:.3f}",
+                 lens.n_cells, lens.rms_phase_error_deg, lens.mean_amplitude);
+    std::println("  sweeping a {0}x{0} field grid to ±{1:.1f}° (psf {2}x{2})...",
+                 2 * n_half + 1, max_angle, psf_n);
+
+    auto g = analyze_field_grid(lens, lib, focal, lambda, diameter, max_angle,
+                                n_half, psf_n);
+
+    // Relative-Strehl grid (rows = theta_y, cols = theta_x).
+    std::println("");
+    std::println("  relative Strehl across the field (rows θy, cols θx, degrees):");
+    std::print("        θx:");
+    for (int jx = -n_half; jx <= n_half; ++jx)
+        std::print(" {:>6.1f}", n_half > 0 ? max_angle * jx / n_half : 0.0);
+    std::println("");
+    for (int jy = 0; jy < g.n; ++jy) {
+        std::print("    {:>6.1f} :", g.points[(std::size_t)jy * g.n].theta_y_deg);
+        for (int jx = 0; jx < g.n; ++jx)
+            std::print(" {:>6.3f}", g.points[(std::size_t)jy * g.n + jx].rel_strehl);
+        std::println("");
+    }
+
+    // Diagonal FWHM trend (on-axis to corner) — shows the off-axis spot blowing up.
+    std::println("");
+    std::println("  spot FWHM along the diagonal (on-axis -> corner):");
+    std::println("      {:>8} {:>8}  {:>10}  {:>10}  {:>10}", "θx(°)", "θy(°)",
+                 "rel.Strehl", "FWHMx(µm)", "FWHMy(µm)");
+    for (int d = 0; d <= n_half; ++d) {
+        int jx = n_half + d, jy = n_half + d;  // center is (n_half,n_half)
+        const auto& pnt = g.points[(std::size_t)jy * g.n + jx];
+        std::println("      {:>8.1f} {:>8.1f}  {:>10.3f}  {:>10.3f}  {:>10.3f}",
+                     pnt.theta_x_deg, pnt.theta_y_deg, pnt.rel_strehl,
+                     pnt.fwhm_x_um, pnt.fwhm_y_um);
+    }
+
+    // Field half-angle to Strehl >= 0.8 / 0.5 along +x (a single-number FOV).
+    auto fov_to = [&](double thr) {
+        double last = 0.0;
+        for (int jx = n_half; jx <= 2 * n_half; ++jx) {  // center..+x edge
+            const auto& pnt = g.points[(std::size_t)n_half * g.n + jx];
+            if (pnt.rel_strehl >= thr) last = pnt.theta_x_deg;
+            else break;
+        }
+        return last;
+    };
+    std::println("");
+    std::println("  on-axis-row FOV half-angle: to Strehl>=0.8 = {:.1f}°, "
+                 ">=0.5 = {:.1f}° (sweep cap ±{:.1f}°)",
+                 fov_to(0.8), fov_to(0.5), max_angle);
+
+    if (out_pgm) {
+        // Write the rel-Strehl grid as a small PGM heatmap (bright = sharp).
+        std::vector<double> img(g.points.size());
+        for (std::size_t i = 0; i < g.points.size(); ++i)
+            img[i] = g.points[i].rel_strehl;
+        if (write_pgm(out_pgm, g.n, g.n, img, 1.0))
+            std::println("  wrote field Strehl map ({0}x{0}) -> {1}", g.n, out_pgm);
+        else
+            std::println("  ERROR: could not write {}", out_pgm);
+    }
     return 0;
 }
 
@@ -2713,6 +2961,10 @@ void print_help() {
         "  celeris design [options]   design a metalens -> GDSII + report\n"
         "  celeris widefov [options]  wide-FOV design: hyperbolic vs quadratic-phase\n"
         "                             lens, off-axis Strehl sweep (the FOV trade)\n"
+        "  celeris efficiency [opts]  meta-atom energy budget: R / T / absorption +\n"
+        "                             per-diffraction-order split (stray-light budget)\n"
+        "  celeris fieldmap [options] full-field PSF/Strehl grid over a 2D field-angle\n"
+        "                             sweep (the off-axis quality map, not just a row)\n"
         "  celeris validate [options] credibility battery on real TiO2 n,k:\n"
         "                             convergence + meta-atom + end-to-end report\n"
         "  celeris reproduce [opts]   reproduce a published metalens (Khorasaninejad\n"
@@ -2758,6 +3010,24 @@ void print_help() {
         "  relative Strehl vs angle + the FOV half-angle: the quadratic lens holds a\n"
         "  sharp focus over a much wider field (its spot just shifts to ~f*sin(θ))\n"
         "  while the hyperbolic lens develops coma -- the classic wide-FOV trade.\n"
+        "\n"
+        "celeris efficiency [--fill 0.5] [--wavelength 0.532] [--period 0.35]\n"
+        "                   [--thickness 0.6] [--pillar <name>|--pillar-n 2.4]\n"
+        "                   [--substrate bk7] [--shape square|circle|cross|ring]\n"
+        "                   [--pol x|y] [--harmonics 8]\n"
+        "  one meta-atom's energy budget: reflection, transmission, absorption\n"
+        "  (1-R-T, real for lossy metals), and the per-diffraction-order split --\n"
+        "  how much lands in the useful 0th order vs higher (stray) orders. A\n"
+        "  subwavelength pitch (Λ<λ) has only the 0th order propagating by design.\n"
+        "\n"
+        "celeris fieldmap [--focal 50] [--diameter 20] [--max-angle 12]\n"
+        "                 [--angle-steps 4] [--psf-n 101] [--wavelength --period\n"
+        "                 --thickness --pillar|--pillar-n --substrate --fill-samples\n"
+        "                 --harmonics] [--out <map.pgm>]\n"
+        "  full-field Strehl/FWHM map: designs a focusing lens, sweeps a 2D grid of\n"
+        "  field angles (θx,θy) to ±max-angle (2*angle-steps+1 per axis), and prints\n"
+        "  the relative-Strehl grid + diagonal FWHM trend + the FOV half-angle. The\n"
+        "  full-field generalization of `design --fov` (which is just the center row).\n"
         "\n"
         "celeris birefringence [--fill-y 0.5] [--period --wavelength --thickness\n"
         "                       --pillar-n --samples --harmonics]\n"
@@ -3036,6 +3306,8 @@ int main(int argc, char** argv) {
     if (cmd == "reproduce") return cmd_reproduce(argc, argv);
     if (cmd == "materials") return cmd_materials(argc, argv);
     if (cmd == "design") return cmd_design(argc, argv);
+    if (cmd == "efficiency") return cmd_efficiency(argc, argv);
+    if (cmd == "fieldmap") return cmd_fieldmap(argc, argv);
     if (cmd == "widefov") return cmd_widefov(argc, argv);
     if (cmd == "birefringence") return cmd_birefringence(argc, argv);
     if (cmd == "polardesign") return cmd_polardesign(argc, argv);
