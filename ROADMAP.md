@@ -51,9 +51,27 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       referenced efficiency normalizes out. RCWA-verifies the 2θ geometric phase
       (~4–5° RMS) and a diffraction-limited focal spot (FWHM ~ 0.514·λ/NA). HONEST
       FINDING: the 660 nm nanofin (fill_y=0.95, a 20 nm gap) needs M≥10 to converge
-      (default bumped to 10). selftest **[16]** locks the 532 nm device. REMAINING
-      (lower value): a published ACHROMATIC device (K2016 is monochromatic); shaped /
-      higher-index meta-atoms to push absolute (reflection-limited) efficiency higher.
+      (default bumped to 10). selftest **[16]** locks the 532 nm device.
+      (c) **`celeris reproduce --device chen2018`** reproduces the canonical BROADBAND
+      ACHROMATIC visible device — **Chen, Zhu, Sanjeev, Khorasaninejad, Shi, Lee &
+      Capasso, Nature Nanotechnol. 13, 220 (2018)** — a single-layer NA=0.20, D=26.4 µm
+      TiO₂ achromat, H=600 nm nanofins on glass at a 400 nm lattice, achromatic across
+      470–670 nm under circular polarization. Maps onto CELERIS's `pbachromatic` recipe
+      (geometric/PB phase exact by rotation + dispersion-engineered group delay, ONE
+      600 nm etch). KEY REPRODUCED RESULT — the paper's central physical limit: a
+      diffraction-limited achromat needs a group-delay span (1/c)(√(R²+f²)−f), and a
+      600 nm TiO₂ nanofin supplies only ~5 fs. At the published NA/D the required span
+      is **4.45 fs — right at that ceiling**, so the diameter is GROUP-DELAY-LIMITED
+      (exactly why the published lens is 26.4 µm). Engaging the group-delay objective
+      flattens the chromatic focal drift **22.8 µm → 4.6 µm (5.0× flatter)** while the
+      geometric phase stays exact (RMS ~1e-14°); spin-conversion cap 32 % (upper bound,
+      above the paper's measured ~20 %). HONEST: our atoms are simple single-etch
+      rotated RECTANGLES (GD span 3.7 fs, coverage 0.83), not the paper's coupled
+      *integrated-resonant unit elements* that reach the full ~5 fs — same height/
+      period/material, same design principle, simpler unit cell. selftest **[18]** locks
+      it (required span at ceiling + exact phase + GD-RMS reduced in one etch).
+      REMAINING (lower value): shaped / higher-index meta-atoms to push absolute
+      (reflection-limited) efficiency higher.
 - [x] **Improved (Li/Liu–Fan) 2D Fourier factorization** — DONE. Replaced the basic
       Laurent 2D solver (which gave qualitatively WRONG transmittance, e.g. T≈0.07 where
       truth is ≈0.96, and broke energy beyond M≈8) with the inverse-rule / Liu–Fan
@@ -165,8 +183,13 @@ That's a strong, validated **engine + analysis + GUI**. What's missing is mostly
       `build_dispersive_pb_library`): `run_achromatic` branches on the kind, the
       PB path writes a rotated-rectangle GDS (`write_pb_rect_gds`), and the
       single-etch/PB paths add an Etch-height slider (the one-etch GD knob) +
-      kind-aware labels. REMAINING: a published achromatic device reproduction
-      (K2016 reproduced above is monochromatic).
+      kind-aware labels. **Published achromatic device reproduced** —
+      `celeris reproduce --device chen2018` reproduces Chen et al., Nat. Nanotechnol.
+      13, 220 (2018) (NA=0.20 D=26.4 µm TiO₂ achromat, 470–670 nm): the required
+      group-delay span (4.45 fs) sits at the ~5 fs 600-nm-nanofin ceiling so the
+      diameter is GD-limited, and the achromatic objective flattens the focal drift
+      5.0× (single etch); see §1 (validation) for the full write-up. The achromatic
+      design breadth is now complete (CLI + Python + GUI + published-device repro).
 - [~] More meta-atom shapes: circular, elliptical, cross/H, ring/hole. DONE: the 2D
       solver now handles arbitrary two-material shapes via a sampled-grid Fourier
       factorization (`MetaShape` + `RectCell2D::rasterize_eps` + `shape_operators` in
