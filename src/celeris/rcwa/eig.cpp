@@ -16,7 +16,24 @@
 // with MKL_Complex16, so we must NOT redeclare it -- just use it. MKL_Complex16
 // is layout-compatible with std::complex<double>, so the pointers reinterpret.
 #include <mkl.h>
+#include <cstdlib>
 using lpk_cd = MKL_Complex16;
+
+namespace {
+// CELERIS already parallelizes its workloads across cores itself (per-pillar
+// library sweeps, per-row propagation/analysis). If MKL then spawns its own
+// thread pool per call, the two nest and oversubscribe the CPU -- measured ~5x
+// SLOWER than the AVX2 build (M=8 design: 33s nested vs 5.9s pinned). Pin MKL to
+// one thread by default so its fast per-core AVX-512 BLAS/LAPACK kernels compose
+// with our outer parallelism instead of fighting it. An explicit MKL_NUM_THREADS
+// from the user is respected (we only set the default when none is present).
+struct CelerisMklThreadInit {
+    CelerisMklThreadInit() {
+        if (!std::getenv("MKL_NUM_THREADS")) mkl_set_num_threads(1);
+    }
+};
+const CelerisMklThreadInit celeris_mkl_thread_init;
+}  // namespace
 #else
 // Standalone LAPACK (e.g. reference/CLAPACK): declare zgeev_ by hand rather than
 // include clapack.h, which #defines abs/min/max and clashes with Eigen. f2c

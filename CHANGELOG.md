@@ -17,6 +17,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`libcudart_static.a` + `libculibos.a` + `dl`/`rt`/`pthread`).
 
 ### Fixed
+- **MKL thread oversubscription on Linux.** CELERIS already parallelizes its workloads
+  across cores; MKL's own per-call threading nested on top and ran ~5× *slower* than the
+  AVX2 build by default (M=8 design: 33 s nested vs 5.9 s pinned). `eig.cpp` now pins MKL
+  to one thread by default (respecting an explicit `MKL_NUM_THREADS`), so MKL composes
+  with the outer parallelism: **2.3× faster than the AVX2 build at M=8**, out of the box.
 - Python bindings failed to build on Linux: `solve_rcwa_2d` had 10 `py::arg`
   annotations for 11 parameters (the `OrderEfficiency` out-param) — a hard error under
   the fetched pybind11. Bound via a lambda that exposes the clean 10-argument API.

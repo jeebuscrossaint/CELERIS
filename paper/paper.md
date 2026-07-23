@@ -155,6 +155,15 @@ because an apples-to-apples multicore comparison is the honest one.
 [TODO: optionally add single-core CPU and larger-GPU data points; regenerate via
 `reproduce_all`.]
 
+The dominant cost, however, is the RCWA modal solve, not propagation. The solve is
+bounded by dense complex linear algebra (operator assembly, matrix inverses, and the
+S-matrix recursion), which an optional Intel MKL backend accelerates. Because CELERIS
+parallelizes its unit-cell sweeps across cores itself, MKL is pinned to a single thread
+to avoid nested oversubscription; composed this way it is **2.3× faster than the AVX2
+build** on an M = 8 metalens library design (5.9 s vs 13.5 s, 16-core), with larger gains
+at higher Fourier order. The default build has no MKL dependency (header-only Eigen with
+AVX2); MKL is opt-in.
+
 ## Limitations
 
 State plainly (maturity, not weakness):
