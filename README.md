@@ -1,5 +1,8 @@
 # CELERIS
 
+[![CI](https://github.com/jeebuscrossaint/CELERIS/actions/workflows/ci.yml/badge.svg)](https://github.com/jeebuscrossaint/CELERIS/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **GPU-ready metalens design via rigorous coupled-wave analysis (RCWA).**
 
 CELERIS takes a lens specification — focal length, aperture, wavelength, pillar
@@ -254,4 +257,6 @@ GPU-accelerated analysis path. Notable items still ahead:
 
 ## License
 
-TBD.
+CELERIS is released under the **Apache License 2.0** (see [`LICENSE`](LICENSE)) — a
+permissive license with an explicit patent grant. If you use CELERIS in research,
+please cite it via [`CITATION.cff`](CITATION.cff).
