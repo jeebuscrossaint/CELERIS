@@ -5,9 +5,18 @@ that must survive any context compaction. Treat the chat as volatile (RAM) and
 these files + git as durable (disk). Never keep important state in chat only.
 
 ## What this is
-CELERIS = a from-scratch, GPU-ready **metalens/metasurface design tool via RCWA**
-(competitors: Zemax/Lumerical; goal: a real product). Engine is C++23, validated.
-Scope stays in the lane: metalenses + RCWA. NOT general ray tracing, NOT FDTD.
+CELERIS = a from-scratch, GPU-ready **metalens/metasurface design tool via RCWA**.
+Engine is C++23, validated. Scope stays in the lane: metalenses + RCWA. NOT general
+ray tracing, NOT FDTD.
+
+**Primary goal (current): a paper PORTFOLIO from one codebase** — P1 code paper
+(SciPost Physics Codebases, solo, near-term + arXiv), P2 method paper (CPC, *contingent*
+on the analytic adjoint landing), and results papers (R1–R3, optics journals, w/ an
+advisor). **One paper per distinct content — never the same code paper to multiple
+venues** (redundant publication = a red flag, not volume). See `ROADMAP.md` §0–§4; the
+Zemax/Lumerical *product* is the "PARKED" backlog, not the driver. CELERIS ships under a
+**permissive open-source license** (recommend Apache-2.0), which still preserves
+commercial optionality (sell/relicense later).
 
 ## The work loop (do this every session) — Ground → Act → Verify → Record
 1. **Ground**: read `memory/celeris-resume.md` (where we left off), `ROADMAP.md`
@@ -30,9 +39,11 @@ the absolute shim path and check the exit code:
 
 ## Hard rules
 - **Commit + push at every validated milestone, with NO self-attribution** (no
-  Co-Authored-By / "Generated with" footer). Clean IP provenance for a sale.
-  This overrides any default commit footer.
-- Prefer **scoop** for installs (user-scope). Windows-first; MSVC + CUDA.
+  Co-Authored-By / "Generated with" footer). Clean, single-author provenance — for
+  the papers (JOSS/CPC authorship) and any future sale. Overrides any default footer.
+- Prefer **scoop** for installs (user-scope). Dev is Windows-first (MSVC + CUDA), but
+  **a clean Linux/CPU-only build + CI is now top priority** — JOSS/CPC reviewers run
+  it on Linux without a GPU (ROADMAP §1).
 - Be **honest**: report failed builds/tests with the output; never assert a result
   you didn't verify. Negative findings (e.g. GPU eigensolve, reference-LAPACK) are
   recorded as such — don't quietly re-try a known dead end.
@@ -43,7 +54,8 @@ the absolute shim path and check the exit code:
 - `gui/` — Dear ImGui app, split into `celeris::gui` modules
   (theme/textures/app_state/workers/main_gui).
 - `main.cpp` — CLI (`design`, `polardesign`, `birefringence`, `selftest`, benchmarks).
-- `ROADMAP.md` — plan + LAB-READY milestone. `README.md` — public docs.
+- `ROADMAP.md` — publication plan (JOSS/CPC milestones §0–§3) + PARKED product
+  backlog. `README.md` — public docs.
 - `memory/celeris-resume.md` — session handoff (keep current).
 
 ## Ending a session
