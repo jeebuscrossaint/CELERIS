@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use CELERIS in your research, please cite it as below."
+title: "CELERIS: a from-scratch RCWA metalens/metasurface design and analysis pipeline"
+abstract: >-
+  CELERIS is an end-to-end metalens/metasurface design tool built on a from-scratch,
+  validated rigorous coupled-wave analysis (RCWA) electromagnetic solver. It spans the
+  full workflow — meta-atom library sweeps, phase mapping, achromatic and
+  Pancharatnam–Berry design, a full optical analysis battery (Strehl/FWHM, PSF, MTF,
+  wavefront/Zernike, through-focus, chromatic, field, tolerance), and fabrication-ready
+  GDSII export — and reproduces canonical published metalens devices end to end.
+type: software
+authors:
+  - given-names: Amarnath
+    family-names: Patel
+    email: am397421@ucf.edu
+    affiliation: "University of Central Florida"
+    orcid: "https://orcid.org/0009-0008-9460-082X"
+license: Apache-2.0
+repository-code: "https://github.com/jeebuscrossaint/CELERIS"
+keywords:
+  - metalens
+  - metasurface
+  - RCWA
+  - rigorous coupled-wave analysis
+  - Fourier modal method
+  - computational optics
+  - nanophotonics
+  - inverse design
+  - GDSII

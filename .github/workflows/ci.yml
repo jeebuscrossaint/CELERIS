@@ -1,0 +1,62 @@
+name: CI
+
+# CPU-only Linux build + physics self-test + Python bindings/examples.
+# CUDA and Intel MKL are optional accelerators and are deliberately NOT required here:
+# reviewers (SciPost / arXiv readers) build on plain Linux without a GPU, so the default
+# path must be green everywhere.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-selftest:
+    name: Linux CPU-only build + selftest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake g++
+
+      - name: Configure (CPU-only, no CUDA/MKL, no GUI)
+        run: >-
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCELERIS_BUILD_GUI=OFF
+          -DCELERIS_USE_CUDA=OFF
+          -DCELERIS_USE_MKL=OFF
+
+      - name: Build CLI
+        run: cmake --build build --target celeris -j
+
+      - name: Run physics self-test (locked regression suite)
+        run: ./build/celeris selftest
+
+  python:
+    name: Python bindings + examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake g++
+
+      - name: Build + install the celeris Python module (CPU-only)
+        env:
+          CMAKE_ARGS: "-DCELERIS_USE_CUDA=OFF -DCELERIS_USE_MKL=OFF -DCELERIS_BUILD_GUI=OFF"
+        run: pip install -v .
+
+      - name: Run a Python example
+        run: python examples/python/01_focusing_lens.py
