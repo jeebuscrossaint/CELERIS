@@ -219,7 +219,18 @@ PYBIND11_MODULE(_celeris, m) {
         .def_readonly("tx0", &Rcwa2DResult::tx0, "complex order-0 transmitted Ex")
         .def_readonly("ty0", &Rcwa2DResult::ty0, "complex order-0 transmitted Ey");
 
-    m.def("solve_rcwa_2d", &solve_rcwa_2d, py::arg("incident"), py::arg("stack"),
+    // Wrap in a lambda that omits the optional std::vector<OrderEfficiency>* out-param
+    // (an in-place output vector, not meaningful in a Python signature). Binding
+    // &solve_rcwa_2d directly would need 11 py::arg annotations for its 11 C++ params;
+    // this keeps the clean 10-argument Python API and passes nullptr for the out-param.
+    m.def("solve_rcwa_2d",
+          [](const Material& incident, const Rcwa2DStack& stack,
+             const Material& substrate, double wavelength_um, double theta_rad,
+             double phi_rad, cdouble Ex0, cdouble Ey0, int Mx, int My) {
+              return solve_rcwa_2d(incident, stack, substrate, wavelength_um,
+                                   theta_rad, phi_rad, Ex0, Ey0, Mx, My);
+          },
+          py::arg("incident"), py::arg("stack"),
           py::arg("substrate"), py::arg("wavelength_um"), py::arg("theta_rad"),
           py::arg("phi_rad"), py::arg("Ex0"), py::arg("Ey0"), py::arg("Mx"),
           py::arg("My"),
