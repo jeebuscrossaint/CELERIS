@@ -107,9 +107,14 @@ target_link_libraries(celeris_core PUBLIC Eigen3::Eigen Threads::Threads)
 # generator can't drive without the VS CUDA integration -- so on a plain VS build
 # you get a clear "use the Ninja path (scripts/build-cuda.bat)" note.
 set(_cel_cuda_dir "")
-foreach(_cand "$ENV{CUDA_PATH}" "$ENV{CUDA_HOME}" "$ENV{USERPROFILE}/scoop/apps/cuda/current")
-    if(_cand AND EXISTS "${_cand}/lib/x64/cudart.lib" AND NOT _cel_cuda_dir)
-        set(_cel_cuda_dir "${_cand}")
+# Windows toolkits keep import libs in lib/x64/*.lib; Linux toolkits keep them in
+# lib64/lib*.a|.so. Accept either, and add the usual Linux install prefixes.
+foreach(_cand "$ENV{CUDA_PATH}" "$ENV{CUDA_HOME}" "$ENV{USERPROFILE}/scoop/apps/cuda/current"
+              "/opt/cuda" "/usr/local/cuda")
+    if(_cand AND NOT _cel_cuda_dir)
+        if(EXISTS "${_cand}/lib/x64/cudart.lib" OR EXISTS "${_cand}/lib64/libcudart_static.a")
+            set(_cel_cuda_dir "${_cand}")
+        endif()
     endif()
 endforeach()
 
@@ -160,25 +165,38 @@ if(_cel_cuda)
     if(_cel_nvcc_ok)
         get_filename_component(_cel_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(_cel_kobj "${CMAKE_BINARY_DIR}/celeris_propagate_cuda${CMAKE_CXX_OUTPUT_EXTENSION}")
+        # Host-compiler pass-through and runtime link differ by platform. On Windows
+        # nvcc drives cl (/MD /EHsc ...) and links lib/x64/cudart_static.lib; on Linux
+        # it drives g++ (-fPIC ...) and links lib64/libcudart_static.a (which needs
+        # culibos + dl/rt/pthread). --use-local-env is a Windows-only nvcc flag.
+        if(WIN32)
+            set(_cel_nvcc_platform --use-local-env -Xcompiler=/MD,/EHsc,/O2,/DNDEBUG)
+            set(_cel_cudart_libs "${CELERIS_CUDA_DIR}/lib/x64/cudart_static.lib")
+        else()
+            set(_cel_nvcc_platform -Xcompiler=-fPIC,-O2,-DNDEBUG)
+            set(_cel_cudart_libs "${CELERIS_CUDA_DIR}/lib64/libcudart_static.a"
+                                 "${CELERIS_CUDA_DIR}/lib64/libculibos.a"
+                                 ${CMAKE_DL_LIBS} rt Threads::Threads)
+        endif()
         add_custom_command(
             OUTPUT "${_cel_kobj}"
             COMMAND "${CELERIS_NVCC}" -c
                     "${CMAKE_CURRENT_SOURCE_DIR}/src/celeris/cuda/propagate.cu"
-                    -o "${_cel_kobj}" -std=c++17 -O3 --cudart static --use-local-env
-                    -allow-unsupported-compiler  # tolerate a cl newer than the toolkit
+                    -o "${_cel_kobj}" -std=c++17 -O3 --cudart static
+                    -allow-unsupported-compiler  # tolerate a host cc newer than the toolkit
                     -ccbin "${_cel_cl_dir}"
                     -gencode=arch=compute_75,code=sm_75
                     -gencode=arch=compute_86,code=sm_86
                     -gencode=arch=compute_89,code=sm_89
                     -I "${CMAKE_CURRENT_SOURCE_DIR}/src" -I "${CELERIS_CUDA_DIR}/include"
-                    -Xcompiler=/MD,/EHsc,/O2,/DNDEBUG
+                    ${_cel_nvcc_platform}
             DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/celeris/cuda/propagate.cu"
             COMMENT "Compiling CUDA far-field kernel via nvcc (generator-agnostic)"
             VERBATIM)
         set_source_files_properties("${_cel_kobj}" PROPERTIES
             EXTERNAL_OBJECT TRUE GENERATED TRUE)
         target_sources(celeris_core PRIVATE "${_cel_kobj}")
-        target_link_libraries(celeris_core PUBLIC "${CELERIS_CUDA_DIR}/lib/x64/cudart_static.lib")
+        target_link_libraries(celeris_core PUBLIC ${_cel_cudart_libs})
         target_compile_definitions(celeris_core PUBLIC CELERIS_USE_CUDA_KERNELS)
         string(APPEND CELERIS_SUMMARY
             "  GPU backend   : CUDA far-field kernel (direct nvcc, static cudart, any generator)\n")
@@ -405,6 +423,10 @@ if(CELERIS_BUILD_PYTHON)
 
     set(_cel_pydir "${CMAKE_BINARY_DIR}/python/celeris")
     pybind11_add_module(_celeris bindings/python/celeris_module.cpp)
+    # celeris_core is a STATIC library; linking it into the _celeris SHARED module
+    # requires position-independent code. (Not needed for the CLI/GUI executables, so
+    # scope PIC to the Python build rather than paying it everywhere.)
+    set_target_properties(celeris_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_libraries(_celeris PRIVATE celeris_core)
     # Pin the extension's output dir across every config (VS multi-config would
     # otherwise scatter it into Release/ Debug/ subfolders).
