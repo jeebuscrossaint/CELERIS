@@ -178,9 +178,13 @@ reprint of the SciPost paper.
 - [ ] **Reproduce a canonical published RCWA benchmark to the digit** (Moharam–Gaylord /
       Li gratings, already cited in `rcwa2d.cpp`). Table: CELERIS vs published vs S4.
 - [ ] **Convergence figure** (promote `validate §1`): efficiency & energy-defect vs M.
-- [ ] **Honest timing benchmark** — state the 600–700× is the **far-field propagation
-      kernel only**; RCWA eigensolve is CPU. Benchmark RCWA solve vs S4/grcwa on identical
-      hardware. Exact truth up front keeps reviewers friendly.
+- [x] **Honest timing benchmark — DONE, and it corrected a bad claim.** The old
+      "600–700×" was NOT reproducible: `psfbench` (GPU vs CELERIS's own optimized 16-core
+      CPU `compute_psf`, RTX 4070) measures **~1.1–5.8×** for far-field propagation, and
+      the speedup *shrinks* with grid size (kernel is memory-bound). README/paper corrected
+      to the measured numbers. The 600–700× was almost certainly vs a single-core or an
+      early un-parallelized CPU path. REMAINING: benchmark the RCWA *solve* vs S4/grcwa on
+      identical hardware (the solve, not propagation, is the real cost — see MKL).
 
 ### 3c. Manuscript
 - [ ] **CPC "Program Summary" block** (title, licensing, languages, nature of problem,
@@ -324,7 +328,8 @@ NOT FDTD.
 - [x] **Materials**: named registry (`by_name`/`catalog`) — analytic Sellmeier (SiO₂, BK7,
       Si₃N₄, Al₂O₃, GaN) + real tabulated n,k (TiO₂, c-Si, a-Si, Au, Ag, Al; CC0 from
       refractiveindex.info) in `data/`; `celeris materials`; selftest **[19]**.
-- [x] **GPU**: far-field propagation kernel (600–700× over CPU — *propagation only*, §3b),
+- [x] **GPU**: far-field propagation kernel (~1–6× over 16-core CPU, measured — *propagation
+      only*, §3b; the old 600–700× claim was unreproducible and has been corrected),
       CPU multicore library build.
 - [x] **AVX2/FMA build** (default, ~2.7×) + **Intel MKL turbo** (opt-in, up to ~11× at
       high M; eigensolve is only ~15% — the cost is dense matmuls/inverses/S-matrix).

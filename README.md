@@ -7,8 +7,9 @@ material — and produces a fabrication-ready GDSII layout plus a full optical
 performance report, from a CLI or a native desktop GUI. It is built around a
 from-scratch, validated electromagnetic solver: every layer of the stack is
 cross-checked against closed-form physics, an independent method, or energy
-conservation. Far-field analysis is GPU-accelerated (600–700× over a 16-core
-CPU on large apertures).
+conservation. Far-field propagation can optionally run on a CUDA GPU (measured
+~1–6× over a 16-core CPU on an RTX 4070, depending on problem size; the RCWA
+solve itself is CPU).
 
 ```
 spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
@@ -91,7 +92,7 @@ What it detects, and the graceful fallback when a piece is missing:
 | Capability | Detected from | If absent |
 |---|---|---|
 | **AVX2/FMA** | on by default (`-DCELERIS_AVX2=OFF` for pre-2013 CPUs) | SSE2 baseline |
-| **CUDA** GPU (far-field kernel, 600–700×; static runtime, no DLLs) | `CUDA_PATH`/`CUDA_HOME`/scoop toolkit + `nvcc` | CPU propagation |
+| **CUDA** GPU (far-field kernel, ~1–6× vs 16-core CPU; static runtime, no DLLs) | `CUDA_PATH`/`CUDA_HOME`/`/opt/cuda` toolkit + `nvcc` | CPU propagation |
 | **Intel MKL** (multithreaded BLAS + eigensolve) | `$MKLROOT`, conda, oneAPI, or a `pip install mkl-devel` prefix | header-only Eigen (AVX2) |
 
 Override any of these explicitly: `-DCELERIS_USE_CUDA=ON|OFF|AUTO`,

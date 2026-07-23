@@ -131,14 +131,29 @@ SciPost requires specific, non-aspirational evidence of use.]
 
 ## Performance
 
-The GPU accelerates far-field propagation only. On an RTX 4070 laptop GPU vs a 16-core
-CPU, a 50 000-pillar × 384$^2$-pixel focal-plane propagation ($7.4\times10^9$ term
-evaluations) runs in 312 ms on the GPU vs 26.1 s on the CPU — a **83× speedup**, with
-GPU (single-precision) and CPU (double-precision) results agreeing to $3.5\times10^{-4}$.
-[TODO: replace with a proper speedup-vs-problem-size sweep against **both** single-core
-and multi-core CPU baselines; state the number tied to a specific size and baseline. The
-current README figure of "600–700×" is unverified at this baseline and MUST be corrected
-or scoped before submission.]
+The GPU accelerates far-field propagation only; the RCWA modal solve runs on the CPU.
+We benchmark the propagation kernel (single precision) against CELERIS's own optimized
+16-core CPU propagation (`compute_psf`, double precision) using the built-in `psfbench`
+command on an RTX 4070 laptop GPU. Results agree to machine precision
+(max$|\Delta$ normalized PSF$| = 0$). Measured speedups (GPU vs 16-core CPU):
+
+| Aperture (pillars) | Focal grid | CPU | GPU | Speedup |
+|---|---|---|---|---|
+| 92 k | 161$^2$ | 178–202 ms | 35–37 ms | **4.8–5.8×** |
+| 92 k | 321$^2$ | 274 ms | 140 ms | 2.0× |
+| 92 k | 641$^2$ | 666 ms | 519 ms | 1.3× |
+| 92 k | 1024$^2$ | 1457 ms | 1312 ms | 1.1× |
+| 256 k | 161$^2$ | 241 ms | 111 ms | 2.2× |
+| 577 k | 161$^2$ | 434 ms | 252 ms | 1.7× |
+
+So on this hardware the GPU gives a **modest ~1–6× over a well-parallelized 16-core CPU**,
+not the order-of-magnitude win a naive single-threaded baseline would suggest. The
+speedup *decreasing* with grid size indicates the current kernel is memory-bound (each
+thread re-reads the full pillar list from global memory); shared-memory tiling is a clear
+future optimization. We report these numbers rather than a headline figure precisely
+because an apples-to-apples multicore comparison is the honest one.
+[TODO: optionally add single-core CPU and larger-GPU data points; regenerate via
+`reproduce_all`.]
 
 ## Limitations
 
