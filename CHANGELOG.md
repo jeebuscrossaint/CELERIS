@@ -34,6 +34,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Full `celeris selftest` passes on Linux** (exit 0, all 21 locked cases): energy
   conservation, RCWA=TMM/EMT, grcwa cross-check, and the Khorasaninejad 2016 / Chen 2018
   device reproductions.
+- **Cross-checked against Stanford S$^4$** (the field-standard FMM reference), built on
+  Linux and run head-to-head on an identical grating: 0th-order transmittance agrees to
+  **7e-8 (TE)** / 3e-4 (TM, slower convergence in both), a three-way match with grcwa
+  (0.93333). Reproducible via `paper/validation/s4_crosscheck.py`.
 - **CUDA path runs on Linux hardware** — `cuda::available()` true,
   `device_name()` = "NVIDIA GeForce RTX 4070 Laptop GPU". (GPU accelerates far-field
   propagation only; the RCWA eigensolve remains CPU — stated precisely for the paper.)

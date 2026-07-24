@@ -172,9 +172,13 @@ reprint of the SciPost paper.
 - [ ] **Statement of need** + **kill "why not just use X"** for each competitor.
 
 ### 3b. External validation (reviewers WILL demand it)
-- [ ] **Cross-check against S4 (Stanford `S⁴`)** — the reference everyone trusts. Match to
-      ~1e-4 on a dielectric lamellar grating (published efficiencies), a metal grating, and
-      a metalens meta-atom. ~1–2 days, high value. (Also strengthens P1's benchmarks.)
+- [x] **Cross-check against S4 (Stanford `S⁴`) — DONE.** Built S4 (phoebe-p fork) on Linux
+      (GCC 16 / Boost 1.91 / OpenBLAS / NumPy 2 — patched a NumPy-2 C-API bug) and ran it
+      head-to-head with CELERIS on an identical freestanding n=1.5 grating: 0th-order T
+      agrees to **7e-8 (TE)** at M=40, 3e-4 (TM, slower Fourier convergence in BOTH).
+      Three-way agreement CELERIS = grcwa = S4 = 0.93333. Reproducible via
+      `paper/validation/s4_crosscheck.py`; written into the paper's validation section.
+      REMAINING (nice-to-have): add a metal grating + 2D meta-atom row.
 - [ ] **Reproduce a canonical published RCWA benchmark to the digit** (Moharam–Gaylord /
       Li gratings, already cited in `rcwa2d.cpp`). Table: CELERIS vs published vs S4.
 - [ ] **Convergence figure** (promote `validate §1`): efficiency & energy-defect vs M.

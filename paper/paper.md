@@ -108,9 +108,19 @@ full pipeline.
 
 Correctness is locked by a self-test suite of 20+ cases, cross-checked against:
 closed-form Fresnel/TMM and Bragg-mirror results; effective-medium theory in the deep-
-subwavelength limit; strict energy conservation ($R+T+A = 1$ to $10^{-6}$); and the
-independent `grcwa` solver (agreement to $\sim10^{-3}$–$10^{-6}$). The suite runs green
-on Linux (GCC) and is enforced by continuous integration.
+subwavelength limit; strict energy conservation ($R+T+A = 1$ to $10^{-6}$); and two
+independent RCWA solvers, `grcwa` and **Stanford S$^4$** (the field-standard FMM
+reference). The suite runs green on Linux (GCC) and is enforced by continuous
+integration.
+
+Running CELERIS and S$^4$ on an *identical* freestanding $n=1.5$ binary grating
+($\Lambda = 0.3\,\mu$m, fill 0.5, thickness $0.5\,\mu$m, $\lambda = 0.5\,\mu$m, normal
+incidence), the zeroth-order transmittance agrees to **$7\times10^{-8}$ (TE)** at $M=40$
+(converging $10^{-5}\to10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM), the
+latter limited by the well-known slower TM Fourier convergence exhibited by *both*
+solvers. This case also equals grcwa's 0.93333 to $\sim10^{-6}$ — a three-way agreement.
+The comparison is reproducible via `paper/validation/s4_crosscheck.py`. [TODO: extend the
+table with a metal grating and a 2D meta-atom case.]
 
 The **full pipeline** is demonstrated by reproducing two canonical published devices
 end to end:
