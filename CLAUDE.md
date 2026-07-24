@@ -9,14 +9,16 @@ CELERIS = a from-scratch, GPU-ready **metalens/metasurface design tool via RCWA*
 Engine is C++23, validated. Scope stays in the lane: metalenses + RCWA. NOT general
 ray tracing, NOT FDTD.
 
-**Primary goal (current): a paper PORTFOLIO from one codebase** — P1 code paper
-(SciPost Physics Codebases, solo, near-term + arXiv), P2 method paper (CPC, *contingent*
-on the analytic adjoint landing), and results papers (R1–R3, optics journals, w/ an
-advisor). **One paper per distinct content — never the same code paper to multiple
-venues** (redundant publication = a red flag, not volume). See `ROADMAP.md` §0–§4; the
-Zemax/Lumerical *product* is the "PARKED" backlog, not the driver. CELERIS ships under a
-**permissive open-source license** (recommend Apache-2.0), which still preserves
-commercial optionality (sell/relicense later).
+**Primary goal (current): publish the CELERIS code paper in _Computer Physics
+Communications_ (CPC)**, solo (undergrad author), + an arXiv preprint. Fallback:
+SoftwareX. (SciPost was dropped — it bars solo undergrad submission; JOSS dropped — 6-mo
+clock + light.) The paper (`paper/paper.md`) is content-complete; next is LaTeX
+(`elsarticle`) → tag v1.0 + Zenodo → submit. Later papers (method/adjoint, results) are
+follow-ons — **one paper per distinct content, never the same paper to multiple venues.**
+**Read `memory/celeris-resume.md` for the full handoff** (venue rationale, session-scratchpad
+warning, exact next steps). The Zemax/Lumerical *product* is the "PARKED" backlog in
+`ROADMAP.md`, not the driver. CELERIS is **Apache-2.0** (permissive; keeps commercial
+optionality).
 
 ## The work loop (do this every session) — Ground → Act → Verify → Record
 1. **Ground**: read `memory/celeris-resume.md` (where we left off), `ROADMAP.md`

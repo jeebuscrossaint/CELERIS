@@ -1,6 +1,8 @@
 ---
 title: "CELERIS: an integrated, validated RCWA pipeline for metalens design, analysis, and fabrication layout"
-# Target: SciPost Physics Codebases (primary) + arXiv (physics.optics / physics.comp-ph)
+# Target: Computer Physics Communications (CPC) + arXiv (physics.comp-ph / physics.optics).
+#   Fallback: SoftwareX. (SciPost dropped: it bars undergrad solo submission.)
+#   Convert to Elsevier `elsarticle` LaTeX for submission (NOT SciPost.cls).
 # STATUS: DRAFT. [TODO] markers flag numbers/figures to generate and claims to verify
 # before submission. Do not submit with any [TODO] remaining.
 author:
@@ -9,6 +11,31 @@ author:
     affiliation: "University of Central Florida, Orlando, FL, USA"
 date: DRAFT
 ---
+
+## Program summary
+
+*(CPC-mandatory block — fill exact fields on the CPC submission form.)*
+
+- **Program title:** CELERIS
+- **Licensing provisions:** Apache License 2.0
+- **Programming languages:** C++23 (engine), CUDA (optional GPU far-field kernel), Python
+  (pybind11 bindings)
+- **Nature of problem:** Designing a metalens/metasurface requires solving Maxwell's
+  equations for periodic subwavelength unit cells, assembling a meta-atom library, mapping
+  a target optical phase profile onto it, analyzing the resulting device's optical
+  performance, and exporting a fabrication mask — a multi-stage workflow that existing RCWA
+  solvers do not provide end to end.
+- **Solution method:** Rigorous coupled-wave analysis / Fourier modal method (1D and
+  2D-vectorial) with Li/Liu–Fan Fourier factorization and a Redheffer S-matrix layer
+  recursion, wrapped in a library builder, phase-mapping/inverse-design layer (including
+  achromatic and Pancharatnam–Berry recipes), an optical analysis battery, GPU-accelerated
+  far-field propagation, and GDSII layout export.
+- **Dependencies:** Eigen (header-only, fetched at configure time); optional Intel MKL and
+  CUDA for acceleration; pybind11 for the Python module. Validated against `grcwa` and
+  Stanford S$^4$.
+- **Restrictions:** Scope is metalenses/metasurfaces via RCWA (not FDTD or ray tracing). The
+  modal eigensolve runs on the CPU; the GPU accelerates far-field propagation only.
+- **Operating systems:** Linux and Windows (CPU build has no external runtime dependencies).
 
 ## Summary
 

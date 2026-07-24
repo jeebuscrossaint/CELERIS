@@ -1,5 +1,15 @@
 # CELERIS — Roadmap
 
+> ## ⚑ CURRENT VENUE DECISION (2026-07-23) — read `memory/celeris-resume.md` first
+> The code paper now targets **Computer Physics Communications (CPC)** — Elsevier, IF~7,
+> computational-physics, **no undergrad-submission gate**, APC waived by UCF's Elsevier
+> Read&Publish deal. **SciPost was dropped** (it bars solo undergrad submission — requires a
+> PhD+ registered submitter). **SoftwareX is the pre-planned fallback** if CPC rejects.
+> The paper (`paper/paper.md`) is **content-complete** (4 figures, grcwa+S4-validated, CPC
+> Program Summary block added). Next: `paper.md` → Elsevier `elsarticle` LaTeX → tag v1.0 +
+> Zenodo → submit. The "§2 SciPost track" below is superseded by CPC, but its requirements
+> (docs, tests, benchmarks, `paper.md` sections) still apply nearly verbatim.
+
 **The goal is a paper *portfolio* out of one codebase — done the way that adds up
 instead of backfiring.** The rule that makes it work: **one paper per distinct piece
 of content.** The same "here is CELERIS" paper cannot go to four journals (that's

@@ -1,0 +1,107 @@
+# CELERIS — session resume (handoff)
+
+**Last updated:** 2026-07-23. **HEAD at handoff:** `33ea0b1` (+ a follow-up commit that
+adds this file, the CPC re-target, and the CPC Program Summary — run `git log --oneline -20`).
+
+## Where we are in one line
+CELERIS has a **content-complete first-paper draft** (`paper/paper.md`, 4 figures, verified
+against grcwa + Stanford S4). The venue is now **Computer Physics Communications (CPC)**.
+The remaining work is: convert the draft to Elsevier `elsarticle` LaTeX, tag a release +
+Zenodo DOI, and submit. Software + validation are done and committed.
+
+## THE VENUE DECISION (this changed twice — do not re-litigate)
+- Goal: a first publication for grad-school recruitment. Author is an **undergraduate**
+  (sophomore), so venue must allow **solo undergrad submission**.
+- **JOSS** → dropped: 6-month public-repo clock (repo public ~2026-06-16 → not submittable
+  until ~Dec 2026) + light for physics.
+- **SciPost Physics Codebases** → **DEAD for us**: registration to submit is restricted to
+  "professional academics (PhD students and above)" — an undergrad cannot be the submitting
+  Contributor. (A PhD+ co-author could submit, but we're going solo-capable.)
+- **CPC (Computer Physics Communications)** → **THE TARGET.** Elsevier, IF~7, the
+  computational-physics software journal; **no academic-level gate** (undergrad can be solo
+  corresponding author); fits the author's "computational physicist" identity.
+- **SoftwareX** → **pre-planned FALLBACK** if CPC rejects (Elsevier, IF~3, lower novelty
+  bar, no gate). Paper barely changes between CPC and SoftwareX.
+- **APC:** UCF has an **Elsevier Read & Publish agreement** that waives OA APCs for UCF
+  authors (auto via `@ucf.edu`; excludes society/Cell/Lancet; through 2028). So CPC/SoftwareX
+  APC is effectively free for this author. CPC is also hybrid → subscription route is free too.
+- A faculty **co-author is now OPTIONAL** (not required for CPC) but strategically valuable
+  (champion + recommendation letter). Author leans solo for now.
+
+## Author identity (baked into LICENSE/CITATION/CoC + git)
+- Paper/citation author: **Amarnath Patel**, University of Central Florida, `am397421@ucf.edu`,
+  ORCID **0009-0008-9460-082X**.
+- Git commits authored as `jeebuscrossaint <thediamond270@gmail.com>` (matches existing
+  history; set in repo-local git config).
+- Repo: https://github.com/jeebuscrossaint/CELERIS (public).
+
+## What shipped this session (all COMMITTED — persists)
+- **Linux CPU-only build verified** (GCC 16 / CMake 4.4 / Ninja) — the whole plan rested on
+  this; it builds + `selftest` passes (all 21 cases) + Python wheel installs + example runs.
+- **3 real portability/perf bugs FIXED:** (1) pybind `solve_rcwa_2d` arg-count mismatch
+  (broke Linux pip build); (2) `celeris_core` not `-fPIC` (broke the Python `.so` link);
+  (3) MKL thread oversubscription — `eig.cpp` now pins `mkl_set_num_threads(1)` by default
+  (MKL was ~5x SLOWER before; now **2.3x faster than AVX2** at M=8).
+- **CUDA made cross-platform** (was Windows-only CMake): now builds on Linux (`/opt/cuda`,
+  `libcudart_static.a` + `libculibos.a`), verified running on an RTX 4070.
+- **Corrected a false claim:** README/ROADMAP said GPU far-field was "600-700x"; measured
+  reality via `psfbench` is **~1-6x vs 16-core CPU** (kernel is memory-bound). Fixed everywhere.
+- **S4 cross-check:** built Stanford S4 (phoebe-p fork) on Linux and matched CELERIS to
+  **7e-8 (TE)** on an identical grating; three-way agreement CELERIS = grcwa = S4 = 0.93333.
+- **Open-source/paper infra:** Apache-2.0 `LICENSE`, `CITATION.cff`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, GitHub Actions CI (`.github/workflows/ci.yml`).
+- **Paper:** `paper/paper.md` (full draft) + `paper/paper.bib`; `paper/reproduce_all.sh`;
+  `paper/validation/s4_crosscheck.py`; `paper/figures/make_figures.py` + **4 committed PDFs**
+  (fig_validation, fig_library, fig_psf, fig_achromatic). Competitor comparison table
+  researched + verified. Honest limitations + AI-usage disclosure written.
+
+## !!! SESSION-ISOLATION WARNING (read before continuing) !!!
+The previous session's **scratchpad is GONE** in a new session (it lives under a
+session-specific `/tmp/claude-.../<SESSION_ID>/scratchpad/`). That means the **built venv,
+the installed `celeris`/`S4`/`matplotlib`/`mkl` wheels, and the S4 source build are NOT
+available** to you. What PERSISTS: the whole repo (all commits above), and the
+**system packages** installed via pacman: **openblas, suitesparse, boost** (system-wide).
+To reproduce the Python/S4/figure work you must recreate a venv:
+```
+python -m venv .venv && . .venv/bin/activate
+pip install .                       # the celeris module (needs network for Eigen/pybind)
+pip install matplotlib numpy mkl-devel mkl-include
+# S4 (optional, for the cross-check/validation figure): clone github.com/phoebe-p/S4,
+#   patch NumPy-2: cast PyArray_ENABLEFLAGS((PyArrayObject*)Earr/Harr,...) in S4/main_python.c,
+#   then: make S4_pyext BOOST_PREFIX=/usr BLAS_LIB=-lopenblas LAPACK_LIB=-lopenblas \
+#         FFTW3_LIB=-lfftw3 CHOLMOD_LIB=-lcholmod CHOLMOD_INC=-I/usr/include/suitesparse \
+#         PTHREAD_LIB=-lpthread   (see paper/validation/s4_crosscheck.py header)
+```
+The committed figures/scripts already capture the results, so you do NOT need to rerun any
+of this unless regenerating figures or extending the validation.
+
+## NEXT STEPS (in order) for the CPC submission
+1. **Author reads `paper/paper.md`** and signs off on every claim (was the standing gate).
+2. **Fill remaining paper `[TODO]`s:** AI-disclosure tool versions/date; optionally a
+   Khorasaninejad-2016 efficiency figure (nice-to-have; pipeline already shown by Figs 2-4).
+3. **Convert `paper/paper.md` → Elsevier `elsarticle` LaTeX** (`paper/paper.tex`), NOT SciPost.
+   The CPC "Program Summary" block is already drafted at the top of `paper.md` — keep it.
+   `paper/paper.bib` is BibTeX (verify the `[check]` competitor citations).
+4. **Tag `v1.0` + mint a Zenodo DOI** for the exact commit; add the DOI to the paper + README.
+5. **Submit to CPC** via Elsevier Editorial Manager (author is solo corresponding author;
+   `@ucf.edu` for the APC waiver). Post the **arXiv preprint** (`physics.comp-ph` +
+   `physics.optics`) the same day — needs a faculty endorsement for arXiv, so line that up.
+6. If CPC desk-rejects/rejects → **SoftwareX** (fallback; minimal changes).
+
+## Follow-on (future papers, NOT this one — keep scope off the SciPost paper)
+- **Paper 2 (method, CPC or Optics Express):** the analytic **adjoint** (differentiable RCWA)
+  — closes the one column CELERIS loses to fmmax/TORCWA/meent (autodiff). Derisk 1D first.
+- **Arbitrary-polygon FFF** (Li normal-vector) to match S4's shape versatility.
+- **GPU-batched library solve** (the real "make it fast" win; the current GPU only does
+  far-field propagation, not the solve — MKL is the current solve-side lever).
+- **Results papers** (Optics Express/Nanophotonics): achromat limit-pusher, wide-FOV doublet,
+  inverse-designed device — co-authored, the source of letters.
+- RULE: one code paper per venue; distinct content per paper; never re-publish the same paper.
+
+## Honest framing to preserve (this is the credibility core)
+- CELERIS is a **metalens design *pipeline*** (solver → library → design → analysis → GDSII),
+  NOT the best raw solver. The GPU/autodiff-native tools (fmmax/TORCWA/meent) beat its
+  *kernel*; CELERIS wins on the integrated, validated, fab-ready workflow none of them ship.
+- Every number in the paper is measured and reproducible. Do NOT reintroduce hype (no
+  "600-700x", no "beats Stanford"). The honest line is "matches S4 to 7e-8, from scratch,
+  plus the whole pipeline." Do not fake commit dates, users, or results.
