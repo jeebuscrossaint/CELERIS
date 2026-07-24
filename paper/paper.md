@@ -119,8 +119,24 @@ incidence), the zeroth-order transmittance agrees to **$7\times10^{-8}$ (TE)** a
 (converging $10^{-5}\to10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM), the
 latter limited by the well-known slower TM Fourier convergence exhibited by *both*
 solvers. This case also equals grcwa's 0.93333 to $\sim10^{-6}$ — a three-way agreement.
-The comparison is reproducible via `paper/validation/s4_crosscheck.py`. [TODO: extend the
-table with a metal grating and a 2D meta-atom case.]
+The comparison is reproducible via `paper/validation/s4_crosscheck.py` and shown in
+Fig. 1. [TODO: extend the table with a metal grating and a 2D meta-atom case.]
+
+![CELERIS vs Stanford S$^4$ on an identical freestanding grating. Left: 0th-order
+transmittance vs Fourier order $M$ — CELERIS (TE) and S$^4$ (TE) sit on grcwa's 0.93333.
+Right: the CELERIS$-$S$^4$ difference falls to $7\times10^{-8}$ (TE); TM converges more
+slowly for both, as expected.](figures/fig_validation.pdf)
+
+The end-to-end pipeline is exercised in Figs. 2–3: sweeping a TiO$_2$ square-pillar's
+fill builds the phase library (Fig. 2), and designing an NA$\approx$0.2 focusing lens
+from it yields a diffraction-limited focal spot — FWHM equal to $\lambda f/D$ to three
+figures (Fig. 3).
+
+![Meta-atom phase library: transmission phase and amplitude $|t|$ vs pillar fill for a
+TiO$_2$ square pillar ($\lambda$=532 nm, $\Lambda$=350 nm, $H$=600 nm).](figures/fig_library.pdf)
+
+![Focal-plane PSF of the designed lens (log scale, left) and its central line cut
+(right): FWHM = 1.330 $\mu$m, exactly the diffraction limit $\lambda f/D$.](figures/fig_psf.pdf)
 
 The **full pipeline** is demonstrated by reproducing two canonical published devices
 end to end:
