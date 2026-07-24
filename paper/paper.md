@@ -60,14 +60,15 @@ integrated design–analysis–fabrication workflow, which the solver kernels do
 provide.
 
 **Table 1.** Feature comparison (`✓` = provided, `~` = partial/possible with user code,
-`✗` = not provided). [TODO: verify each competitor cell against current released
-versions before submission — versions move.]
+`✗` = not provided). Verified against each tool's documentation/publication; released
+versions evolve, so cells should be re-checked at submission.
 
 | Feature | S$^4$ | RETICOLO | grcwa | TORCWA | fmmax | meent | **CELERIS** |
 |---|---|---|---|---|---|---|---|
 | Language | C++/Lua/Py | MATLAB | Python | PyTorch | JAX | np/JAX/torch | **C++/Py** |
+| License | GPL | (MATLAB) | GPL | — | MIT | MIT | **Apache-2.0** |
 | 1D + 2D-vectorial RCWA | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **✓** |
-| Native GPU | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | **✓ (far-field)** |
+| Native GPU (full solve) | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | **✗ (GPU far-field only)** |
 | Automatic differentiation | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | **✗ (FD; adjoint planned)** |
 | Arbitrary meta-atom shapes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **✓** |
 | Integrated metalens **design** | ✗ | ✗ | ~ | ~ | ~ | ~ | **✓** |
@@ -77,9 +78,14 @@ versions before submission — versions move.]
 | Published-device reproductions | — | — | — | — | — | — | **✓** |
 | Desktop GUI | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
 
-The asymmetry is the point: CELERIS gives up the autodiff column and wins, decisively,
-the design + analysis + achromatic/PB + fabrication columns. No listed tool ships the
-full pipeline.
+We state the trade-off plainly: the GPU/autodiff-native solvers (TORCWA, fmmax, meent)
+are *stronger solver kernels* — they run the full modal solve on the GPU with automatic
+differentiation, whereas CELERIS GPU-accelerates only far-field propagation and
+optimizes by finite differences (an analytic adjoint is planned). CELERIS's contribution
+is orthogonal: it is the only tool that wraps the solver in a complete, validated
+**design → analysis → fabrication** workflow — integrated design, the optical analysis
+battery, achromatic/Pancharatnam–Berry recipes, GDSII export, published-device
+reproductions, and a GUI — none of which the solver kernels provide.
 
 ## Software design
 
