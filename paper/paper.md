@@ -154,9 +154,18 @@ end to end:
   diffraction-limited focal spot. [TODO: figure — reproduced efficiency + PSF.]
 - **Chen et al., *Nat. Nanotechnol.* 13, 220 (2018)** — a broadband achromatic visible
   metalens. CELERIS reproduces the central physical limit (the required group-delay span
-  sits at the ~5 fs single-nanofin ceiling, so the aperture is group-delay-limited) and
-  flattens the chromatic focal drift by ~5× in a single etch. [TODO: figure — chromatic
-  focus vs $\lambda$, standard vs achromatic.]
+  sits at the ~5 fs single-nanofin ceiling, so the aperture is group-delay-limited) and,
+  via single-etch group-delay engineering on a birefringent Pancharatnam–Berry library,
+  flattens the chromatic focal shift relative to a dispersion-blind lens built from the
+  same library (Fig. 4).
+
+![Broadband achromatic metalens (Chen 2018 recipe): rigorous focal length vs wavelength
+for a standard Pancharatnam–Berry lens and a group-delay-engineered achromatic lens
+built from the *same* single-etch birefringent library. Group-delay matching flattens
+the chromatic focal shift (drift 4.6 → 1.9 $\mu$m). At this small demonstration aperture
+($D=10\,\mu$m, low Fresnel number) the *absolute* focus of both designs sits below the
+geometric target $f$; the effect shown is the *relative* achromatic flattening, which is
+what the group-delay objective controls.](figures/fig_achromatic.pdf)
 
 [TODO: research-impact — add any external adopters / labmate use before submission;
 SciPost requires specific, non-aspirational evidence of use.]

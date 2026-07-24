@@ -145,9 +145,46 @@ def fig_psf():
     print("  wrote", out, f"[Strehl {foc.strehl:.3f}, FWHM {foc.fwhm_um:.3f} vs DL {foc.diffraction_limit_um:.3f}]")
 
 
+def fig_achromatic():
+    """Chen-2018-style broadband achromatic PB metalens: chromatic focal shift,
+    standard vs group-delay-engineered, from one single-etch birefringent library."""
+    air = cel.materials.air(); glass = cel.materials.bk7()
+    tio2 = cel.Material.constant(2.40 + 0.0j, "TiO2")
+    focal, diameter, lam0, bw, nband, period, height, M, nfill = \
+        30.0, 10.0, 0.532, 0.20, 7, 0.35, 1.10, 6, 12
+    lo, hi = lam0 * (1 - 0.5 * bw), lam0 * (1 + 0.5 * bw)
+    band = [lo + (hi - lo) * j / (nband - 1) for j in range(nband)]
+    lib = cel.build_dispersive_pb_library(
+        pillar=tio2, background=air, incident=air, substrate=glass,
+        period_um=period, band_wavelengths_um=band, center_wavelength_um=lam0,
+        fill_min=0.10, fill_max=0.90, n_fills=nfill, thickness_um=height, M=M)
+    std = cel.design_pb_achromatic_metalens(lib, focal, diameter, handedness=1, gd_weight=0.0)
+    ach = cel.design_pb_achromatic_metalens(lib, focal, diameter, handedness=1, gd_weight=1.0)
+    cs = cel.verify_pb_achromatic_focus(lib, std)
+    ca = cel.verify_pb_achromatic_focus(lib, ach)
+    wl = [p.wavelength_um * 1000 for p in cs]
+    drift_s = max(p.focal_length_um for p in cs) - min(p.focal_length_um for p in cs)
+    drift_a = max(p.focal_length_um for p in ca) - min(p.focal_length_um for p in ca)
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.4))
+    ax.plot(wl, [p.focal_length_um for p in cs], "-o", color=VERM,
+            label=f"standard PB (drift {drift_s:.1f} $\\mu$m)")
+    ax.plot(wl, [p.focal_length_um for p in ca], "-o", color=BLUE,
+            label=f"achromatic PB (drift {drift_a:.1f} $\\mu$m)")
+    ax.axhline(focal, color=GRAY, ls=":", lw=1, label="target $f$")
+    ax.set(xlabel="wavelength (nm)", ylabel="focal length ($\\mu$m)",
+           title="Broadband achromatic metalens (Chen 2018 recipe):\n"
+                 "single-etch group-delay engineering flattens the focal shift")
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    out = os.path.join(HERE, "fig_achromatic.pdf"); fig.savefig(out); plt.close(fig)
+    print("  wrote", out, f"[focal drift {drift_s:.2f} -> {drift_a:.2f} um]")
+
+
 if __name__ == "__main__":
     print("Generating CELERIS paper figures...")
     fig_validation()
     fig_library()
     fig_psf()
+    fig_achromatic()
     print("done.")
