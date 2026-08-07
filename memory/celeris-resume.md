@@ -44,8 +44,21 @@
   (schedule trigger, 07:00 UTC). NOTE the golden reference lives at scratchpad `st2.log`
   (session-scoped — regenerate via `./build-linux/celeris selftest` if re-verifying).
   Real remaining speed lever for the RCWA solve is MKL (build-config), not the selftest.
-- **NEXT STEP is now #4: tag `v1.0` + mint Zenodo DOI**, add DOI to paper.tex/README, then
-  submit to CPC + arXiv (steps 1-3 of the old NEXT STEPS list are complete).
+- **Release prep DONE** (commits through `15c68d0`): `paper.bib` warning-free (grcwa 2020,
+  meent arXiv:2406.12904 2024 filled); `CHANGELOG.md` `[Unreleased]` updated for v1.0
+  (retarget→CPC, CLI split, paper.tex, --quick, CI g++-14 fix, selftest parallelization).
+  Working tree clean except the pre-existing loose `README.md`/`ROADMAP.md`/`imgui.ini`.
+- **NEXT STEP #4 = the v1.0 release — needs HUMAN actions, do in THIS order:**
+  1. *(Amarnath)* Enable the CELERIS repo on **Zenodo** (zenodo.org → GitHub → flip the repo
+     on) BEFORE tagging, so the DOI auto-mints for the tag. One-time.
+  2. Cut + push **`v1.0`** tag (converts CHANGELOG `[Unreleased]`→`[1.0.0] - <date>` first).
+     Claude can do the tag on explicit go — but only AFTER step 1, else re-tag needed.
+  3. Zenodo auto-mints the DOI for v1.0; then drop that DOI into `paper.tex` (Program
+     Summary "CPC Library link"/badge), `README.md` badge, and `CITATION.cff`.
+  4. *(Amarnath)* Submit to **CPC** via Elsevier Editorial Manager (`@ucf.edu` → APC waiver);
+     post **arXiv** `physics.comp-ph`+`physics.optics` same day (needs a faculty endorser —
+     line this up in advance).
+  5. Fallback if CPC rejects → SoftwareX (minimal changes).
 
 ## Where we are in one line
 CELERIS has a **content-complete first-paper draft** (`paper/paper.md`, 4 figures, verified
