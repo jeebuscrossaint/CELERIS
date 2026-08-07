@@ -1,7 +1,31 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-07-23. **HEAD at handoff:** `33ea0b1` (+ a follow-up commit that
-adds this file, the CPC re-target, and the CPC Program Summary — run `git log --oneline -20`).
+**Last updated:** 2026-08-07. **HEAD at handoff:** `06f547e` (run `git log --oneline -20`).
+
+## Update 2026-08-07
+- **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
+  guidelines: (1) NO author-level gate — a solo undergrad can be corresponding author;
+  (2) NO timing clock (unlike JOSS's 6-mo repo rule); (3) **Apache-2.0 is on CPC's approved
+  open-source license list** — the old "CPC Non-Profit Use License Agreement" is the LEGACY
+  (pre-2016) program-library model, NOT layered on new Mendeley-Data deposits, so commercial
+  optionality is preserved. We are a **CPiP** (Computer Programs in Physics) submission.
+  Two real (non-blocking) caveats: review is SLOW (~12 mo to first decision → the arXiv
+  preprint does the near-term recruitment work); the real desk-reject risk is novelty/scope
+  ("another RCWA solver"), mitigated by the pipeline framing. TODO before submit: a 5-min
+  primary read of the Guide for Authors (ScienceDirect 403s bots) to confirm the Program
+  Summary field list verbatim + the Mendeley deposit step.
+- **CLI refactor (commit `06f547e`).** `main.cpp` was a 3325-LOC monolith (25% of the
+  codebase). Split into a 33-line dispatcher + one TU per command family under `cli/`
+  (`cli_common`, `selftest`, `cmd_design`, `cmd_polar`, `cmd_achromatic`, `cmd_reproduce`,
+  `cmd_validate`, `cmd_materials`, `help`, `bench`); shared decls/includes in `cli/cli.hpp`.
+  Verbatim move — behavior identical; builds clean (Ninja/GCC, GUI off), selftest passes all
+  22 cases. Build dir used on this box: `build-linux` (CPU-only, no MKL → selftest ~3 min).
+- **Paper `[TODO]`s still open** in `paper/paper.md`: line 197 research-impact bullet still
+  says "SciPost requires..." (STALE — reword/drop for CPC, which does not require evidence of
+  use); AI-disclosure section (author wants it slimmed to one neutral sentence or removed —
+  note Elsevier requires an AI-in-*writing* declaration, so slim rather than delete);
+  optional metal-grating S4 row + Khorasaninejad figure (both need a venv+S4 rebuild; marked
+  nice-to-have). Bib `[check]` citations (torcwa/fmmax/meent/grcwa/reticolo/redheffer) unverified.
 
 ## Where we are in one line
 CELERIS has a **content-complete first-paper draft** (`paper/paper.md`, 4 figures, verified
