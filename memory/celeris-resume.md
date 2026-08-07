@@ -32,6 +32,18 @@
   arXiv:2308.08573); **stripped inline `%` comments after entry keys — BibTeX has no `%`
   comments so they were silently skipping 5 cited entries.** Remaining bib nit: empty `year`
   on `grcwa`/`meent` @misc (cosmetic warnings; verify in the final citation pass).
+- **CI fixed + selftest parallelized** (commits `12d058e`, `1dedc9b`). CI had been RED on
+  every push (pre-existing, not the refactor): `ubuntu-latest` default g++-13 lacks the C++23
+  `<print>` header → now installs/uses **g++-14**. Also parallelized the self-test: it was
+  ~serial (16 cores gave only 1.7x). Case [8] (2D RCWA convergence) alone was 85% of runtime;
+  its independent solves now run via `std::async`, and the 22 cases run on a thread pool with
+  per-case output buffers. **276s → 88s (3.1x) on 16 cores, stdout byte-identical** to the
+  serial suite (diff-verified vs a golden run — physics gate intact). Added
+  **`selftest --quick`** (fast subset [1]-[7]+[19], <1s); CI runs `--quick` on push/PR
+  (build+test now **1m20s**, was failing ~9m43s) and the **full 22-case suite nightly**
+  (schedule trigger, 07:00 UTC). NOTE the golden reference lives at scratchpad `st2.log`
+  (session-scoped — regenerate via `./build-linux/celeris selftest` if re-verifying).
+  Real remaining speed lever for the RCWA solve is MKL (build-config), not the selftest.
 - **NEXT STEP is now #4: tag `v1.0` + mint Zenodo DOI**, add DOI to paper.tex/README, then
   submit to CPC + arXiv (steps 1-3 of the old NEXT STEPS list are complete).
 
