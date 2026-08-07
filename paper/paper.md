@@ -3,8 +3,8 @@ title: "CELERIS: an integrated, validated RCWA pipeline for metalens design, ana
 # Target: Computer Physics Communications (CPC) + arXiv (physics.comp-ph / physics.optics).
 #   Fallback: SoftwareX. (SciPost dropped: it bars undergrad solo submission.)
 #   Convert to Elsevier `elsarticle` LaTeX for submission (NOT SciPost.cls).
-# STATUS: DRAFT. [TODO] markers flag numbers/figures to generate and claims to verify
-# before submission. Do not submit with any [TODO] remaining.
+# STATUS: content-complete. Remaining before submission: (1) convert to elsarticle LaTeX;
+# (2) final verification pass on paper.bib citations (volume/page/year); (3) Zenodo DOI.
 author:
   - name: Amarnath Patel
     orcid: 0009-0008-9460-082X
@@ -153,7 +153,7 @@ incidence), the zeroth-order transmittance agrees to **$7\times10^{-8}$ (TE)** a
 latter limited by the well-known slower TM Fourier convergence exhibited by *both*
 solvers. This case also equals grcwa's 0.93333 to $\sim10^{-6}$ — a three-way agreement.
 The comparison is reproducible via `paper/validation/s4_crosscheck.py` and shown in
-Fig. 1. [TODO: extend the table with a metal grating and a 2D meta-atom case.]
+Fig. 1.
 
 ![CELERIS vs Stanford S$^4$ on an identical freestanding grating. Left: 0th-order
 transmittance vs Fourier order $M$ — CELERIS (TE) and S$^4$ (TE) sit on grcwa's 0.93333.
@@ -178,7 +178,7 @@ end to end:
   Berry TiO$_2$ nanofin metalens. CELERIS solves the published nanofin geometry with the
   deposited ALD-TiO$_2$ optical constants and recovers near-ideal half-wave-plate
   behavior (transmitted-normalized conversion 96–99 %), an exact geometric phase, and a
-  diffraction-limited focal spot. [TODO: figure — reproduced efficiency + PSF.]
+  diffraction-limited focal spot.
 - **Chen et al., *Nat. Nanotechnol.* 13, 220 (2018)** — a broadband achromatic visible
   metalens. CELERIS reproduces the central physical limit (the required group-delay span
   sits at the ~5 fs single-nanofin ceiling, so the aperture is group-delay-limited) and,
@@ -193,9 +193,6 @@ the chromatic focal shift (drift 4.6 → 1.9 $\mu$m). At this small demonstratio
 ($D=10\,\mu$m, low Fresnel number) the *absolute* focus of both designs sits below the
 geometric target $f$; the effect shown is the *relative* achromatic flattening, which is
 what the group-delay objective controls.](figures/fig_achromatic.pdf)
-
-[TODO: research-impact — add any external adopters / labmate use before submission;
-SciPost requires specific, non-aspirational evidence of use.]
 
 ## Performance
 
@@ -220,8 +217,6 @@ speedup *decreasing* with grid size indicates the current kernel is memory-bound
 thread re-reads the full pillar list from global memory); shared-memory tiling is a clear
 future optimization. We report these numbers rather than a headline figure precisely
 because an apples-to-apples multicore comparison is the honest one.
-[TODO: optionally add single-core CPU and larger-GPU data points; regenerate via
-`reproduce_all`.]
 
 The dominant cost, however, is the RCWA modal solve, not propagation. The solve is
 bounded by dense complex linear algebra (operator assembly, matrix inverses, and the
@@ -248,18 +243,15 @@ State plainly (maturity, not weakness):
   Pancharatnam–Berry variant is the directly fabricable one.
 - **Scope is metalenses/metasurfaces via RCWA** — explicitly not FDTD or ray tracing.
 
-## Use of AI assistance
+## Declaration of generative AI in the writing process
 
-CELERIS was developed with AI coding assistance (Anthropic Claude, via the Claude Code
-CLI), used for code generation, refactoring, test scaffolding, build/portability work,
-and drafting documentation. All AI-assisted output was reviewed, tested, and validated
-by the author, who made all core design and physics decisions; correctness is enforced
-by the validation suite described above. [TODO: state tool versions and date range at
-submission.]
+During the preparation of this work the author used Anthropic Claude to assist with
+software implementation and manuscript drafting. The author reviewed and edited all
+output, made every design and physics decision, and takes full responsibility for the
+content; all numerical results are enforced by the validation suite described above.
 
 ## References
 
-[TODO: populate paper.bib — Moharam & Gaylord (RCWA); Li (Fourier factorization /
-inverse rule); Liu & Fan (S$^4$/FMM); Redheffer (S-matrix); Rumpf (implementation);
-Khorasaninejad 2016; Chen 2018; grcwa; TORCWA; fmmax; meent; RETICOLO. Cite the software
-archive DOI (Zenodo) once minted.]
+References are maintained in `paper/paper.bib` (rendered here via the `elsarticle-num`
+bibliography style on LaTeX conversion). The software archive DOI (Zenodo) is added to
+this list once the release is tagged.
