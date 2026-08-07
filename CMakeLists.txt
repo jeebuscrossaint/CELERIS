@@ -334,7 +334,20 @@ endif()
 # ---------------------------------------------------------------------------
 
 # --- celeris: demo / validation app -----------------------------------------
-add_executable(celeris main.cpp)
+# CLI dispatcher (main.cpp) + one translation unit per subcommand family in cli/.
+add_executable(celeris
+    main.cpp
+    cli/cli_common.cpp
+    cli/selftest.cpp
+    cli/cmd_design.cpp
+    cli/cmd_polar.cpp
+    cli/cmd_achromatic.cpp
+    cli/cmd_reproduce.cpp
+    cli/cmd_validate.cpp
+    cli/cmd_materials.cpp
+    cli/help.cpp
+    cli/bench.cpp)
+target_include_directories(celeris PRIVATE cli)
 target_link_libraries(celeris PRIVATE celeris_core)
 
 # MinGW GCC: std::print/println terminal output lives in libstdc++exp
