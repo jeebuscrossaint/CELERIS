@@ -1,29 +1,58 @@
 #include "cli.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <thread>
+
+namespace {
+// A self-test case: its body writes results via sp() into a per-case buffer, so
+// independent cases can run concurrently and still be printed in declaration
+// order. `heavy` marks the long RCWA cases skipped by `selftest --quick`.
+struct Case {
+    bool heavy;
+    std::function<void()> run;
+};
+
+// Per-case output sink (thread-local so concurrent cases don't interleave).
+thread_local std::string* g_selftest_out = nullptr;
+template <class... Ts>
+void sp(std::format_string<Ts...> fmt, Ts&&... args) {
+    std::string s = std::format(fmt, std::forward<Ts>(args)...);
+    s.push_back('\n');
+    if (g_selftest_out) g_selftest_out->append(s);
+    else std::print("{}", s);
+}
+}  // namespace
 
 // Physics validation suite — every solver checked against closed-form results,
-// an independent solver, or energy conservation. Run with: celeris selftest
-int run_selftest() {
+// an independent solver, or energy conservation. Run with: celeris selftest.
+// `--quick` (quick=true) runs the fast subset, skipping the heavy RCWA cases —
+// used by CI on every push; the full suite runs on a nightly schedule.
+int run_selftest(bool quick) {
     const double lambda = 0.550;  // design wavelength, 550 nm (µm)
     const double normal = 0.0;    // normal incidence
+
+    std::vector<Case> cases;
 
     // ---- Validation 1: bare glass, energy conservation --------------------
     // No layers, air -> N-BK7. Closed form R = ((1-n)/(1+n))^2 ~ 0.0424 at
     // 550 nm, and since glass is lossless here, R + T must equal 1.
-    {
+    cases.push_back(Case{false, [&]() {
         auto res = solve_stack(materials::air(), {}, materials::bk7(),
                                lambda, normal, Pol::TE);
-        std::println("[1] Bare N-BK7 glass at 550 nm:");
-        std::println("    R = {:.4f}  (expect ~0.0424)", res.R);
-        std::println("    T = {:.4f}", res.T);
-        std::println("    R + T = {:.6f}  (expect 1.000000)", res.R + res.T);
-    }
+        sp("[1] Bare N-BK7 glass at 550 nm:");
+        sp("    R = {:.4f}  (expect ~0.0424)", res.R);
+        sp("    T = {:.4f}", res.T);
+        sp("    R + T = {:.6f}  (expect 1.000000)", res.R + res.T);
+    }});
 
     // ---- Validation 2: quarter-wave AR coating ----------------------------
     // A single layer of index n1 = sqrt(n_air * n_glass), one quarter-wave
     // thick, makes reflection vanish at the design wavelength. This is the
     // textbook single-layer anti-reflection coating.
-    {
+    cases.push_back(Case{false, [&]() {
         const cdouble n_glass = materials::bk7().index(lambda);
         const cdouble n1 = std::sqrt(materials::air().index(lambda) * n_glass);
         const double d1 = lambda / (4.0 * n1.real());  // quarter-wave thickness
@@ -31,26 +60,26 @@ int run_selftest() {
         std::vector<Layer> stack = {
             {Material::constant(n1, "ideal-AR"), d1}};
 
-        std::println("[2] Quarter-wave AR coating (n1 = {:.4f}, d = {:.1f} nm):",
+        sp("[2] Quarter-wave AR coating (n1 = {:.4f}, d = {:.1f} nm):",
                      n1.real(), d1 * 1000.0);
         for (double wl : {0.450, 0.550, 0.650}) {
             auto res = solve_stack(materials::air(), stack, materials::bk7(),
                                    wl, normal, Pol::TE);
-            std::println("    lambda = {:.0f} nm:  R = {:.5f}{}", wl * 1000.0,
+            sp("    lambda = {:.0f} nm:  R = {:.5f}{}", wl * 1000.0,
                          res.R, wl == 0.550 ? "   <- ~0 at design" : "");
         }
-    }
+    }});
 
     // ---- Validation 3: distributed Bragg reflector ------------------------
     // Alternating high/low quarter-wave layers build a high-reflectance
     // mirror. Reflectance should climb toward 1 as we add more pairs.
-    {
+    cases.push_back(Case{false, [&]() {
         const cdouble nH{2.30, 0.0};  // high index (e.g. TiO2-like)
         const cdouble nL{1.46, 0.0};  // low index  (e.g. SiO2-like)
         const double dH = lambda / (4.0 * nH.real());
         const double dL = lambda / (4.0 * nL.real());
 
-        std::println("[3] Bragg mirror (nH=2.30 / nL=1.46 quarter-wave pairs):");
+        sp("[3] Bragg mirror (nH=2.30 / nL=1.46 quarter-wave pairs):");
         for (int pairs : {2, 4, 8}) {
             std::vector<Layer> stack;
             for (int p = 0; p < pairs; ++p) {
@@ -59,15 +88,15 @@ int run_selftest() {
             }
             auto res = solve_stack(materials::air(), stack, materials::bk7(),
                                    lambda, normal, Pol::TE);
-            std::println("    {} pairs:  R = {:.5f}", pairs, res.R);
+            sp("    {} pairs:  R = {:.5f}", pairs, res.R);
         }
-    }
+    }});
 
     // ---- Validation 4: RCWA degenerate grating == TMM slab ----------------
     // If a grating's ridge and groove are the SAME material, it's just a
     // uniform slab. RCWA must then reproduce the TMM single-slab result in its
     // zeroth order — a cross-check between two completely independent solvers.
-    {
+    cases.push_back(Case{false, [&]() {
         const auto& glass = materials::bk7();
         const double d = 0.5;  // slab thickness, µm
 
@@ -80,29 +109,29 @@ int run_selftest() {
         // order 0 sits at the middle of the orders vector
         std::size_t zero = rcwa.orders.size() / 2;
 
-        std::println("[4] RCWA (degenerate grating) vs TMM (uniform slab):");
-        std::println("    TMM : R = {:.6f}  T = {:.6f}", tmm.R, tmm.T);
-        std::println("    RCWA: R = {:.6f}  T = {:.6f}  (order 0)",
+        sp("[4] RCWA (degenerate grating) vs TMM (uniform slab):");
+        sp("    TMM : R = {:.6f}  T = {:.6f}", tmm.R, tmm.T);
+        sp("    RCWA: R = {:.6f}  T = {:.6f}  (order 0)",
                      rcwa.de_r[zero], rcwa.de_t[zero]);
-        std::println("    Σ DE = {:.6f}  (expect 1.000000)", rcwa.sum_de);
-    }
+        sp("    Σ DE = {:.6f}  (expect 1.000000)", rcwa.sum_de);
+    }});
 
     // ---- Validation 5: real grating, energy conservation + convergence ----
     // A freestanding glass binary grating in air. At Λ=1.0 µm, λ=0.5 µm,
     // orders m = -1,0,+1 propagate. Lossless ⇒ Σ DE must equal 1, and the
     // split between orders must converge as we keep more harmonics M.
-    {
+    cases.push_back(Case{false, [&]() {
         const auto glass = Material::constant(cdouble{1.5, 0.0}, "n1.5");
         BinaryGrating1D g{glass, materials::air(), 1.0 /*Λ*/, 0.5 /*fill*/, 0.5};
 
-        std::println("[5] Freestanding grating (Λ=1.0µm, λ=0.5µm, normal):");
-        std::println("    {:>3}   {:>10}  {:>10}  {:>10}", "M", "DE_t(0)",
+        sp("[5] Freestanding grating (Λ=1.0µm, λ=0.5µm, normal):");
+        sp("    {:>3}   {:>10}  {:>10}  {:>10}", "M", "DE_t(0)",
                      "DE_t(+1)", "Σ DE");
         for (int M : {2, 5, 10, 20}) {
             auto r = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
                                    0.0, M, Pol::TE);
             std::size_t z = r.orders.size() / 2;
-            std::println("    {:>3}   {:>10.5f}  {:>10.5f}  {:>10.6f}", M,
+            sp("    {:>3}   {:>10.5f}  {:>10.5f}  {:>10.6f}", M,
                          r.de_t[z], r.de_t[z + 1], r.sum_de);
         }
 
@@ -113,17 +142,17 @@ int run_selftest() {
         // companion-admittance sign in the TE path (Y = −j·kz): the wrong sign
         // still conserves energy but converges the split to the wrong value.
         BinaryGrating1D sub{glass, materials::air(), 0.3, 0.5, 0.5};
-        std::println("    1D TE convergence vs grcwa (Λ=0.3µm subwavelength, "
+        sp("    1D TE convergence vs grcwa (Λ=0.3µm subwavelength, "
                      "T0 -> grcwa 0.93333):");
-        std::println("    {:>3}   {:>10}  {:>10}", "M", "TE T0", "|Δ grcwa|");
+        sp("    {:>3}   {:>10}  {:>10}", "M", "TE T0", "|Δ grcwa|");
         for (int M : {4, 10, 20}) {
             auto r = solve_rcwa_1d(materials::air(), sub, materials::air(), 0.5,
                                    0.0, M, Pol::TE);
             std::size_t z = r.orders.size() / 2;
-            std::println("    {:>3}   {:>10.5f}  {:>10.2e}", M, r.de_t[z],
+            sp("    {:>3}   {:>10.5f}  {:>10.2e}", M, r.de_t[z],
                          std::abs(r.de_t[z] - 0.93333));
         }
-    }
+    }});
 
     // ---- Validation 6: TM polarization ------------------------------------
     // (a) Degenerate grating, TM: at normal incidence a uniform slab has
@@ -131,7 +160,7 @@ int run_selftest() {
     // (b) Real grating, TM: energy must still conserve (Σ DE = 1). And note
     //     TE != TM for an actual grating even at normal incidence — the solver
     //     must distinguish them.
-    {
+    cases.push_back(Case{false, [&]() {
         const auto& glass = materials::bk7();
         const double d = 0.5;
         auto tmm = solve_stack(materials::air(), {{glass, d}}, materials::air(),
@@ -140,8 +169,8 @@ int run_selftest() {
         auto rcwa_tm = solve_rcwa_1d(materials::air(), degenerate,
                                      materials::air(), lambda, normal, 8, Pol::TM);
         std::size_t z = rcwa_tm.orders.size() / 2;
-        std::println("[6] TM polarization:");
-        std::println("    (a) degenerate vs TMM-TM:  TMM R={:.6f}  RCWA R={:.6f}",
+        sp("[6] TM polarization:");
+        sp("    (a) degenerate vs TMM-TM:  TMM R={:.6f}  RCWA R={:.6f}",
                      tmm.R, rcwa_tm.de_r[z]);
 
         const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
@@ -151,12 +180,12 @@ int run_selftest() {
         auto tm = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
                                 normal, 20, Pol::TM);
         std::size_t zt = te.orders.size() / 2;
-        std::println("    (b) real grating, M=20:");
-        std::println("        TE: DE_t(+1)={:.5f}  Σ DE={:.6f}", te.de_t[zt + 1],
+        sp("    (b) real grating, M=20:");
+        sp("        TE: DE_t(+1)={:.5f}  Σ DE={:.6f}", te.de_t[zt + 1],
                      te.sum_de);
-        std::println("        TM: DE_t(+1)={:.5f}  Σ DE={:.6f}  (TE != TM ✓)",
+        sp("        TM: DE_t(+1)={:.5f}  Σ DE={:.6f}  (TE != TM ✓)",
                      tm.de_t[zt + 1], tm.sum_de);
-    }
+    }});
 
     // ---- Validation 7: multilayer S-matrix solver -------------------------
     // (a) A one-layer STACK must reproduce the single-layer solver exactly.
@@ -164,7 +193,7 @@ int run_selftest() {
     //     answer (the S-matrix recursion is self-consistent and stable).
     // (c) A genuinely layered device (grating + homogeneous cap) conserves
     //     energy.
-    {
+    cases.push_back(Case{false, [&]() {
         const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
         const int M = 20;
         const double oblique = 15.0 * pi / 180.0;
@@ -184,11 +213,11 @@ int run_selftest() {
                                  oblique, M, Pol::TM);
 
         std::size_t z = ref.orders.size() / 2;
-        std::println("[7] Multilayer S-matrix (TM, 15deg incidence):");
-        std::println("    (a) single-layer solver  DE_t(0) = {:.8f}", ref.de_t[z]);
-        std::println("    (b) 1-layer stack        DE_t(0) = {:.8f}", st1.de_t[z]);
-        std::println("    (c) 5-sublayer stack     DE_t(0) = {:.8f}", stN.de_t[z]);
-        std::println("        max|stack-ref| over all orders = {:.2e}",
+        sp("[7] Multilayer S-matrix (TM, 15deg incidence):");
+        sp("    (a) single-layer solver  DE_t(0) = {:.8f}", ref.de_t[z]);
+        sp("    (b) 1-layer stack        DE_t(0) = {:.8f}", st1.de_t[z]);
+        sp("    (c) 5-sublayer stack     DE_t(0) = {:.8f}", stN.de_t[z]);
+        sp("        max|stack-ref| over all orders = {:.2e}",
                      [&] {
                          double e = 0.0;
                          for (std::size_t i = 0; i < ref.de_t.size(); ++i) {
@@ -197,7 +226,7 @@ int run_selftest() {
                          }
                          return e;
                      }());
-        std::println("        Σ DE: single={:.6f} stack={:.6f} split={:.6f}",
+        sp("        Σ DE: single={:.6f} stack={:.6f} split={:.6f}",
                      ref.sum_de, st1.sum_de, stN.sum_de);
 
         // A real layered device: glass grating with a homogeneous AR-like cap.
@@ -207,8 +236,8 @@ int run_selftest() {
                             GratingLayer1D{n15, materials::air(), 0.5, 0.5}}};
         auto dev = solve_rcwa_1d(materials::air(), device, materials::bk7(), 0.5,
                                  oblique, M, Pol::TM);
-        std::println("    (d) grating + cap on glass:  Σ DE = {:.6f}", dev.sum_de);
-    }
+        sp("    (d) grating + cap on glass:  Σ DE = {:.6f}", dev.sum_de);
+    }});
 
     // ---- Validation 8: 2D RCWA (improved Li factorization) ----------------
     // (a) A y-invariant, subwavelength 2D cell (fill_y=1, single propagating
@@ -217,101 +246,115 @@ int run_selftest() {
     //     inverse-rule factorization (the basic factorization fails it).
     // (b) Energy conservation + convergence for a real high-contrast pillar.
     // (c) Cross-check vs an external solver (grcwa) on the same geometry.
-    {
+    cases.push_back(Case{true, [&]() {
         const auto n15 = Material::constant(cdouble{1.5, 0.0}, "n1.5");
         const int M2 = 10;
-
-        // (a) external cross-check: a subwavelength (Λ=0.3µm < λ=0.5µm, single
-        // propagating order) y-invariant n=1.5 grating, both polarizations,
-        // against grcwa (independently validated vs analytic TMM). The improved
-        // factorization reproduces both — TM in particular needs the inverse rule.
-        Rcwa2DStack ginv{0.3, 0.3, {RectCell2D{n15, materials::air(), 0.5, 1.0, 0.5}}};
-        auto te2d = solve_rcwa_2d(materials::air(), ginv, materials::air(), 0.5,
-                                  0.0, 0.0, /*Ex0=*/0.0, /*Ey0=*/1.0, M2, M2);
-        auto tm2d = solve_rcwa_2d(materials::air(), ginv, materials::air(), 0.5,
-                                  0.0, 0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M2, M2);
-
-        std::println("[8] 2D RCWA (Li factorization):");
-        std::println("    (a) subwavelength grating vs grcwa (external solver):");
-        std::println("        TE (E∥y): 2D T0={:.5f}  (grcwa 0.93334)  |Δ|={:.2e}",
-                     te2d.de_t0, std::abs(te2d.de_t0 - 0.93334));
-        std::println("        TM (E∥x): 2D T0={:.5f}  (grcwa 0.96050)  |Δ|={:.2e}",
-                     tm2d.de_t0, std::abs(tm2d.de_t0 - 0.96050));
-
-        // (b) real high-contrast square TiO2 pillar: energy + convergence vs M.
         const auto tio2 = Material::constant(cdouble{2.45, 0.0}, "TiO2~");
-        std::println("    (b) square TiO2 pillar (n=2.45, Λ=0.35µm, λ=0.532µm, "
-                     "fused silica), convergence:");
-        std::println("        {:>5}  {:>8}  {:>10}  {:>8}", "M", "Σ DE", "T0", "phase°");
-        for (int m : {6, 8, 10, 12}) {
-            Rcwa2DStack cell{0.35, 0.35, {RectCell2D{tio2, materials::air(), 0.5, 0.5, 0.6}}};
-            auto r = solve_rcwa_2d(materials::air(), cell, materials::fused_silica(),
-                                   0.532, 0.0, 0.0, 1.0, 0.0, m, m);
-            std::println("        {:>5}  {:>8.6f}  {:>10.5f}  {:>8.1f}", m, r.sum_de,
-                         r.de_t0, std::arg(r.tx0) * 180.0 / pi);
-        }
 
-        // (c) external cross-check (grcwa, Li/converged): asymmetric rect pillar.
-        std::println("    (c) cross-check vs grcwa (rect fx=0.6 fy=0.3, fused silica):");
+        // Every solve below is independent, and this case dominates the whole
+        // suite's runtime (the high-M 2D eigensolves), so launch them all
+        // concurrently and fetch/print the results in order. Output is identical
+        // to the serial version.
+        Rcwa2DStack ginv{0.3, 0.3, {RectCell2D{n15, materials::air(), 0.5, 1.0, 0.5}}};
         Rcwa2DStack rc{0.35, 0.35, {RectCell2D{tio2, materials::air(), 0.6, 0.3, 0.6}}};
-        auto rx = solve_rcwa_2d(materials::air(), rc, materials::fused_silica(),
-                                0.532, 0.0, 0.0, 1.0, 0.0, 12, 12);
-        auto ry = solve_rcwa_2d(materials::air(), rc, materials::fused_silica(),
-                                0.532, 0.0, 0.0, 0.0, 1.0, 12, 12);
-        std::println("        x-pol T0={:.4f} (grcwa 0.954)   y-pol T0={:.4f} "
-                     "(grcwa 0.972)   ΣDE={:.6f}", rx.de_t0, ry.de_t0, rx.sum_de);
-
-        // (d) Non-separable shapes via the grid (Laurent) factorization. These
-        // route through the sampled-grid path; energy must be conserved, and the
-        // cross (matched to grcwa's same Laurent scheme) must agree with it.
-        std::println("    (d) shaped meta-atoms (grid Laurent factorization, M=8):");
         auto solve_shape = [&](MetaShape sh, double fill, double param) {
             Rcwa2DStack s{0.35, 0.35,
                           {RectCell2D{tio2, materials::air(), fill, fill, 0.6, sh, param}}};
             return solve_rcwa_2d(materials::air(), s, materials::fused_silica(),
                                  0.532, 0.0, 0.0, 1.0, 0.0, 8, 8);
         };
-        auto shc = solve_shape(MetaShape::Ellipse, 0.7, 0.5);
-        auto shp = solve_shape(MetaShape::Cross, 0.8, 0.4);
-        auto shr = solve_shape(MetaShape::Ring, 0.9, 0.5);
-        std::println("        circle(d0.7): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
+        auto sweep = [&](int m) {
+            Rcwa2DStack cell{0.35, 0.35, {RectCell2D{tio2, materials::air(), 0.5, 0.5, 0.6}}};
+            return solve_rcwa_2d(materials::air(), cell, materials::fused_silica(),
+                                 0.532, 0.0, 0.0, 1.0, 0.0, m, m);
+        };
+        auto go = [](auto fn) { return std::async(std::launch::async, fn); };
+        auto f_te2d = go([&] { return solve_rcwa_2d(materials::air(), ginv, materials::air(), 0.5, 0.0, 0.0, 0.0, 1.0, M2, M2); });
+        auto f_tm2d = go([&] { return solve_rcwa_2d(materials::air(), ginv, materials::air(), 0.5, 0.0, 0.0, 1.0, 0.0, M2, M2); });
+        auto f_m6 = go([&] { return sweep(6); });
+        auto f_m8 = go([&] { return sweep(8); });
+        auto f_m10 = go([&] { return sweep(10); });
+        auto f_m12 = go([&] { return sweep(12); });
+        auto f_rx = go([&] { return solve_rcwa_2d(materials::air(), rc, materials::fused_silica(), 0.532, 0.0, 0.0, 1.0, 0.0, 12, 12); });
+        auto f_ry = go([&] { return solve_rcwa_2d(materials::air(), rc, materials::fused_silica(), 0.532, 0.0, 0.0, 0.0, 1.0, 12, 12); });
+        auto f_shc = go([&] { return solve_shape(MetaShape::Ellipse, 0.7, 0.5); });
+        auto f_shp = go([&] { return solve_shape(MetaShape::Cross, 0.8, 0.4); });
+        auto f_shr = go([&] { return solve_shape(MetaShape::Ring, 0.9, 0.5); });
+
+        // (a) subwavelength grating vs grcwa (both polarizations).
+        auto te2d = f_te2d.get();
+        auto tm2d = f_tm2d.get();
+        sp("[8] 2D RCWA (Li factorization):");
+        sp("    (a) subwavelength grating vs grcwa (external solver):");
+        sp("        TE (E∥y): 2D T0={:.5f}  (grcwa 0.93334)  |Δ|={:.2e}",
+                     te2d.de_t0, std::abs(te2d.de_t0 - 0.93334));
+        sp("        TM (E∥x): 2D T0={:.5f}  (grcwa 0.96050)  |Δ|={:.2e}",
+                     tm2d.de_t0, std::abs(tm2d.de_t0 - 0.96050));
+
+        // (b) real high-contrast square TiO2 pillar: energy + convergence vs M.
+        sp("    (b) square TiO2 pillar (n=2.45, Λ=0.35µm, λ=0.532µm, "
+                     "fused silica), convergence:");
+        sp("        {:>5}  {:>8}  {:>10}  {:>8}", "M", "Σ DE", "T0", "phase°");
+        auto row = [&](int m, auto& fut) {
+            auto r = fut.get();
+            sp("        {:>5}  {:>8.6f}  {:>10.5f}  {:>8.1f}", m, r.sum_de,
+                         r.de_t0, std::arg(r.tx0) * 180.0 / pi);
+        };
+        row(6, f_m6);
+        row(8, f_m8);
+        row(10, f_m10);
+        row(12, f_m12);
+
+        // (c) external cross-check (grcwa, Li/converged): asymmetric rect pillar.
+        sp("    (c) cross-check vs grcwa (rect fx=0.6 fy=0.3, fused silica):");
+        auto rx = f_rx.get();
+        auto ry = f_ry.get();
+        sp("        x-pol T0={:.4f} (grcwa 0.954)   y-pol T0={:.4f} "
+                     "(grcwa 0.972)   ΣDE={:.6f}", rx.de_t0, ry.de_t0, rx.sum_de);
+
+        // (d) Non-separable shapes via the grid (Laurent) factorization.
+        sp("    (d) shaped meta-atoms (grid Laurent factorization, M=8):");
+        auto shc = f_shc.get();
+        auto shp = f_shp.get();
+        auto shr = f_shr.get();
+        sp("        circle(d0.7): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
                      shc.de_t0, std::arg(shc.tx0) * 180.0 / pi, shc.sum_de);
-        std::println("        cross(arm0.4): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}   "
+        sp("        cross(arm0.4): T0={:.4f} φ={:.0f}°  ΣDE={:.6f}   "
                      "(grcwa cross @nG201 = 0.977)", shp.de_t0,
                      std::arg(shp.tx0) * 180.0 / pi, shp.sum_de);
-        std::println("        ring(in0.5):  T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
+        sp("        ring(in0.5):  T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
                      shr.de_t0, std::arg(shr.tx0) * 180.0 / pi, shr.sum_de);
-    }
+    }});
 
     // ---- Demo 9: end-to-end metalens design -------------------------------
     // Build a phase library (sweep pillar size), then design a focusing lens
     // and report how well the realized phase matches the ideal profile.
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
-        std::println("[9] Metalens design pipeline (TiO2 pillars, λ=532nm):");
-        std::println("    Building unit-cell library (sweeping pillar size)...");
+        sp("[9] Metalens design pipeline (TiO2 pillars, λ=532nm):");
+        sp("    Building unit-cell library (sweeping pillar size)...");
         auto lib = build_unit_cell_library(tio2, materials::air(),
                                            materials::air(), materials::bk7(),
                                            /*period=*/0.35, /*λ=*/0.532,
                                            /*thickness=*/0.6, /*fill*/ 0.08, 0.92,
                                            /*n_samples=*/18, /*M=*/6);
-        std::println("    Library: {} pillars, phase coverage = {:.0f}° "
+        sp("    Library: {} pillars, phase coverage = {:.0f}° "
                      "(need ~360° for full control)",
                      lib.fill.size(), lib.phase_span() * 180.0 / pi);
 
         auto lens = design_metalens(lib, /*focal=*/50.0, /*diameter=*/20.0);
-        std::println("    Designed lens: {0}x{0} pillars, f=50µm, D=20µm",
+        sp("    Designed lens: {0}x{0} pillars, f=50µm, D=20µm",
                      lens.n_cells);
-        std::println("    RMS phase error vs ideal = {:.1f}°  (lower = sharper "
+        sp("    RMS phase error vs ideal = {:.1f}°  (lower = sharper "
                      "focus)",
                      lens.rms_phase_error_deg);
-        std::println("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
+        sp("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
 
         // Export the fabrication file and validate it round-trips.
         const std::string gds = "metalens.gds";
         int written = write_metalens_gds(lens, gds, /*layer=*/1, /*min_fill=*/0.05);
         int read_back = gds_count_boundaries(gds);
-        std::println("    GDSII export -> {}: {} pillars written, {} read back "
+        sp("    GDSII export -> {}: {} pillars written, {} read back "
                      "({})",
                      gds, written, read_back,
                      (written == read_back && written > 0) ? "valid ✓" : "MISMATCH");
@@ -321,27 +364,27 @@ int run_selftest() {
         // A/B: amplitude-aware pillar selection vs phase-only.
         auto lens_po = design_metalens(lib, 50.0, 20.0, /*amplitude_weight=*/0.0);
         auto foc_po = analyze_focus(lens_po, lib, 50.0, 0.532, 20.0);
-        std::println("    Focal performance:");
-        std::println("      Strehl: phase-only {:.3f} -> amplitude-aware {:.3f}",
+        sp("    Focal performance:");
+        sp("      Strehl: phase-only {:.3f} -> amplitude-aware {:.3f}",
                      foc_po.strehl, foc.strehl);
-        std::println("      Strehl ratio   = {:.3f}  (1.0 = perfect)", foc.strehl);
-        std::println("      spot FWHM      = {:.2f} µm  (diffraction limit "
+        sp("      Strehl ratio   = {:.3f}  (1.0 = perfect)", foc.strehl);
+        sp("      spot FWHM      = {:.2f} µm  (diffraction limit "
                      "λf/D = {:.2f} µm)",
                      foc.fwhm_um, foc.diffraction_limit_um);
-        std::println("      encircled E    = {:.1f}% within first Airy null",
+        sp("      encircled E    = {:.1f}% within first Airy null",
                      foc.encircled_energy * 100.0);
 
         // Chromatic behavior: how the focus shifts across a wavelength band.
         auto chrom = analyze_chromatic(lens, lib, /*f=*/50.0, /*λ0=*/0.532,
                                        /*D=*/20.0, 0.45, 0.65, 5);
-        std::println("    Chromatic focal shift (designed for 532nm):");
-        std::println("      {:>7}  {:>12}  {:>10}  {:>10}", "λ(nm)", "focus(µm)",
+        sp("    Chromatic focal shift (designed for 532nm):");
+        sp("      {:>7}  {:>12}  {:>10}  {:>10}", "λ(nm)", "focus(µm)",
                      "f0·λ0/λ", "rel.peak");
         for (auto& c : chrom)
-            std::println("      {:>7.0f}  {:>12.2f}  {:>10.2f}  {:>10.2f}",
+            sp("      {:>7.0f}  {:>12.2f}  {:>10.2f}  {:>10.2f}",
                          c.wavelength_um * 1000.0, c.focal_length_um,
                          50.0 * 0.532 / c.wavelength_um, c.rel_peak);
-    }
+    }});
 
     // ---- Validation 14: phase profiles + freeform (hologram) reproduction --
     // The analytic profiles (focusing/vortex/deflector/axicon) and an arbitrary
@@ -350,8 +393,8 @@ int run_selftest() {
     // Freeform map, and confirm the bilinear sampler reproduces the analytic phase.
     // A linear ramp (the deflector) is reproduced EXACTLY by bilinear interpolation
     // at every point; a curved profile (focusing) is exact at the grid nodes.
-    {
-        std::println("[14] Phase profiles + freeform (CGH) reproduction:");
+    cases.push_back(Case{true, [&]() {
+        sp("[14] Phase profiles + freeform (CGH) reproduction:");
         const double lambda = 0.532, extent = 14.0;
         const int n = 64;
 
@@ -386,7 +429,7 @@ int run_selftest() {
                     std::abs(phase_profile_value(defl_ff, x, y, lambda) -
                              phase_profile_value(defl, x, y, lambda)));
             }
-        std::println("    deflector ramp via loaded map: max |Δφ| = {:.2e} rad "
+        sp("    deflector ramp via loaded map: max |Δφ| = {:.2e} rad "
                      "(bilinear is exact for a linear ramp) {}",
                      max_err_ramp, max_err_ramp < 1e-9 ? "✓" : "FAIL");
 
@@ -404,9 +447,9 @@ int run_selftest() {
                     std::abs(phase_profile_value(foc_ff, x, y, lambda) -
                              phase_profile_value(foc, x, y, lambda)));
             }
-        std::println("    focusing map at grid nodes: max |Δφ| = {:.2e} rad {}",
+        sp("    focusing map at grid nodes: max |Δφ| = {:.2e} rad {}",
                      max_err_node, max_err_node < 1e-9 ? "✓" : "FAIL");
-    }
+    }});
 
     // ---- Validation 15: achromatic (dispersion-engineered) design ----------
     // A fill x height meta-atom library spans the (phase, group-delay) plane, so
@@ -415,11 +458,11 @@ int run_selftest() {
     // must FLATTEN the chromatic focal drift vs a dispersion-blind baseline
     // (gd_weight=0) while keeping the base phase diffraction-limited. Small,
     // fast instance (10 fills x 6 heights x 3 wavelengths).
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         const double l0 = 0.532, bw = 0.20, D = 6.0, fl = 20.0;
         std::vector<double> band = {l0 * (1 - 0.5 * bw), l0, l0 * (1 + 0.5 * bw)};
-        std::println("[15] Achromatic design (fill×height dispersion engineering, "
+        sp("[15] Achromatic design (fill×height dispersion engineering, "
                      "{:.0f}% band):", bw * 100.0);
         auto dl = build_dispersive_library(tio2, materials::air(), materials::air(),
                                            materials::fused_silica(), 0.35, band, l0,
@@ -434,17 +477,17 @@ int run_selftest() {
             return hi - lo;
         };
         double ds = drift(cs), da = drift(ca);
-        std::println("    GD library span = {:.2f} fs ({} atoms); base-phase RMS: "
+        sp("    GD library span = {:.2f} fs ({} atoms); base-phase RMS: "
                      "standard {:.1f}°, achromatic {:.1f}°",
                      dl.gd_max_fs - dl.gd_min_fs, static_cast<int>(dl.atoms.size()),
                      sd.rms_phase_error_deg, ad.rms_phase_error_deg);
-        std::println("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs",
+        sp("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs",
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs);
-        std::println("    chromatic focal drift: standard {:.2f} µm -> achromatic {:.2f} µm  {}",
+        sp("    chromatic focal drift: standard {:.2f} µm -> achromatic {:.2f} µm  {}",
                      ds, da,
                      (da < ds && ad.rms_phase_error_deg < 25.0) ? "✓ (flatter + still focusing)"
                                                                 : "FAIL");
-    }
+    }});
 
     // ---- Validation 15b: SINGLE-ETCH achromatic (shape-diverse, one height) --
     // The fabricable variant: every atom shares ONE etch depth and the (phase,
@@ -453,28 +496,28 @@ int run_selftest() {
     // here (the low-Fresnel focal-drift metric is noisy at this small aperture)
     // is that adding the group-delay objective REDUCES the group-delay RMS while
     // every chosen atom keeps the single height -- one lithography step.
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         const double l0 = 0.532, bw = 0.20, D = 6.0, fl = 20.0, h = 0.80;
         std::vector<double> band = {l0 * (1 - 0.5 * bw), l0, l0 * (1 + 0.5 * bw)};
-        std::println("[15b] Single-etch achromatic (shape-diverse @ one height {:.2f}µm):", h);
+        sp("[15b] Single-etch achromatic (shape-diverse @ one height {:.2f}µm):", h);
         auto dl = build_single_etch_library(tio2, materials::air(), materials::air(),
                                             materials::fused_silica(), 0.35, band, l0,
                                             0.08, 0.92, /*n_fills=*/5, h, /*M=*/5);
         auto sd = design_achromatic_metalens(dl, fl, D, /*gd_weight=*/0.0);
         auto ad = design_achromatic_metalens(dl, fl, D, /*gd_weight=*/1.0);
-        std::println("    GD library span = {:.2f} fs ({} atoms, all @ {:.2f}µm); "
+        sp("    GD library span = {:.2f} fs ({} atoms, all @ {:.2f}µm); "
                      "base-phase RMS: standard {:.1f}°, achromatic {:.1f}°",
                      dl.gd_max_fs - dl.gd_min_fs, static_cast<int>(dl.atoms.size()), h,
                      sd.rms_phase_error_deg, ad.rms_phase_error_deg);
         bool single = sd.single_height && ad.single_height;
         bool gd_better = ad.rms_group_delay_error_fs < sd.rms_group_delay_error_fs;
-        std::println("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
+        sp("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
                      (single && gd_better && ad.rms_phase_error_deg < 25.0)
                          ? "✓ (GD-matched in ONE etch)"
                          : "FAIL");
-    }
+    }});
 
     // ---- Validation 15c: achromatic Pancharatnam-Berry (PB + dispersion) -----
     // The modern recipe: the geometric (PB) phase sets the base profile EXACTLY by
@@ -484,27 +527,27 @@ int run_selftest() {
     // designs (geometric phase is exact -- no library quantization on phase), and
     // (2) engaging the group-delay objective REDUCES the group-delay RMS, all at a
     // single etch depth. (Focal drift stays a noisy supplement at this aperture.)
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         const double l0 = 0.532, bw = 0.20, D = 6.0, fl = 20.0, h = 1.10;
         std::vector<double> band = {l0 * (1 - 0.5 * bw), l0, l0 * (1 + 0.5 * bw)};
-        std::println("[15c] Achromatic PB (geometric phase + dispersion, one etch {:.2f}µm):", h);
+        sp("[15c] Achromatic PB (geometric phase + dispersion, one etch {:.2f}µm):", h);
         auto lib = build_dispersive_pb_library(tio2, materials::air(), materials::air(),
                                                materials::bk7(), 0.35, band, l0,
                                                0.10, 0.90, /*n_fills=*/6, h, /*M=*/5);
         auto sd = design_pb_achromatic_metalens(lib, fl, D, /*handedness=*/+1, /*gd_weight=*/0.0);
         auto ad = design_pb_achromatic_metalens(lib, fl, D, /*handedness=*/+1, /*gd_weight=*/1.0);
-        std::println("    GD library span = {:.2f} fs ({} atoms @ {:.2f}µm); base-phase RMS: "
+        sp("    GD library span = {:.2f} fs ({} atoms @ {:.2f}µm); base-phase RMS: "
                      "standard {:.1e}°, achromatic {:.1e}° (geometric -> exact)",
                      lib.gd_max_fs - lib.gd_min_fs, static_cast<int>(lib.atoms.size()), h,
                      sd.rms_phase_error_deg, ad.rms_phase_error_deg);
         bool base_exact = sd.rms_phase_error_deg < 1e-6 && ad.rms_phase_error_deg < 1e-6;
         bool gd_better = ad.rms_group_delay_error_fs < sd.rms_group_delay_error_fs;
-        std::println("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
+        sp("    group-delay RMS: standard {:.2f} fs -> achromatic {:.2f} fs  {}",
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
                      (base_exact && gd_better) ? "✓ (exact base phase + GD-matched, ONE etch)"
                                                : "FAIL");
-    }
+    }});
 
     // ---- Reproduction 16: published device (Khorasaninejad 2016, 532 nm) ---
     // The exact NA=0.80 TiO2 nanofin from "Metalenses at visible wavelengths,"
@@ -514,11 +557,11 @@ int run_selftest() {
     // normalized conversion brackets the paper's 73% focusing efficiency from
     // above, and the geometric phase is exact. (Constant n~2.45 stand-in -- the
     // real Siefke n,k matches at 532 nm -- so the test needs no data file.)
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.45, 0.0}, "TiO2~");
         const double lam = 0.532, U = 0.325, H = 0.600;
         const double fx = 0.095 / U, fy = 0.250 / U;
-        std::println("[16] Reproduce Khorasaninejad 2016 NA=0.80 nanofin "
+        sp("[16] Reproduce Khorasaninejad 2016 NA=0.80 nanofin "
                      "(532 nm, W95 x L250 x H600):");
         Rcwa2DStack st{U, U, {RectCell2D{tio2, materials::air(), fx, fy, H}}};
         auto rx = solve_rcwa_2d(materials::air(), st, materials::fused_silica(), lam,
@@ -539,13 +582,13 @@ int run_selftest() {
         const bool brackets = conv_rel > paper_eff;          // upper bound on focusing eff
         const bool phase_ok = d.rms_phase_error_deg < 1e-6;  // geometric phase exact
         const bool retard_ok = std::abs(std::abs(retard) - 180.0) < 15.0;
-        std::println("    transmitted-norm conversion = {:.1f}% (HWP quality), retardance "
+        sp("    transmitted-norm conversion = {:.1f}% (HWP quality), retardance "
                      "{:.0f} deg, geo-phase RMS {:.1e} deg", 100.0 * conv_rel, retard,
                      d.rms_phase_error_deg);
-        std::println("    brackets paper focusing eff ({:.0f}%) from above + exact phase  {}",
+        sp("    brackets paper focusing eff ({:.0f}%) from above + exact phase  {}",
                      100.0 * paper_eff,
                      (hwp_ok && brackets && phase_ok && retard_ok) ? "✓" : "FAIL");
-    }
+    }});
 
     // ---- Wide-FOV 17: quadratic-phase lens vs hyperbolic, off-axis ----------
     // A hyperbolic metalens is perfect on-axis but develops coma off-axis; a
@@ -556,10 +599,10 @@ int run_selftest() {
     // quadratic (vertex-centered parabola), coma-laden for the hyperbolic lens.
     // Lock the contrast -- at the widest angle the quadratic holds its Strehl while
     // the hyperbolic collapses. (See `celeris widefov`.)
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         const double l0 = 0.532, f = 20.0, D = 50.0, stopD = 16.0, stopd = 20.0;
-        std::println("[17] Wide-FOV: quadratic vs hyperbolic phase (stop D={:.0f}µm @ {:.0f}µm "
+        sp("[17] Wide-FOV: quadratic vs hyperbolic phase (stop D={:.0f}µm @ {:.0f}µm "
                      "in front, f={:.0f}µm):", stopD, stopd, f);
         auto lib = build_unit_cell_library(tio2, materials::air(), materials::air(),
                                            materials::bk7(), 0.35, l0, 0.6, 0.08, 0.92,
@@ -572,12 +615,12 @@ int run_selftest() {
         auto fh = analyze_wide_fov(lh, lib, f, l0, D, stopD, stopd, angles);
         auto fq = analyze_wide_fov(lq, lib, f, l0, D, stopD, stopd, angles);
         const double hyp_edge = fh.back().rel_strehl, quad_edge = fq.back().rel_strehl;
-        std::println("    rel. Strehl at {:.0f}°: hyperbolic {:.3f} (coma) -> quadratic {:.3f} "
+        sp("    rel. Strehl at {:.0f}°: hyperbolic {:.3f} (coma) -> quadratic {:.3f} "
                      "(holds focus)", angles.back(), hyp_edge, quad_edge);
         bool win = quad_edge > 0.8 && hyp_edge < 0.6 && quad_edge > hyp_edge + 0.3;
-        std::println("    quadratic-phase lens keeps a wide-field focus where the hyperbolic "
+        sp("    quadratic-phase lens keeps a wide-field focus where the hyperbolic "
                      "fails  {}", win ? "✓" : "FAIL");
-    }
+    }});
 
     // ---- Reproduction 18: broadband achromat (Chen 2018, 470-670 nm) -------
     // Reproduce Chen et al., Nat. Nanotechnol. 13, 220 (2018): a single-layer
@@ -589,14 +632,14 @@ int run_selftest() {
     // (b) the ENGINE behaviour at the published period/height -- the geometric
     //     phase is exact for both std/achromatic and the group-delay objective
     //     reduces the GD RMS, in ONE 600-nm etch. (Small library for speed.)
-    {
+    cases.push_back(Case{true, [&]() {
         // (a) analytic group-delay budget at the published NA=0.20, D=26.4 um.
         const double NA = 0.20, D = 26.4, R = D / 2.0;
         const double f = R / std::tan(std::asin(NA));
         const double gd_req = (std::sqrt(R * R + f * f) - f) * GD_FS_PER_UM;
-        std::println("[18] Reproduce Chen 2018 achromat (NA=0.20, D=26.4µm, H=600nm, 470-670nm):");
+        sp("[18] Reproduce Chen 2018 achromat (NA=0.20, D=26.4µm, H=600nm, 470-670nm):");
         const bool gd_at_ceiling = gd_req > 3.5 && gd_req < 5.0;  // ~4.4 fs, at nanofin limit
-        std::println("    required GD span = {:.2f} fs (600-nm-nanofin ceiling ~5 fs) -> "
+        sp("    required GD span = {:.2f} fs (600-nm-nanofin ceiling ~5 fs) -> "
                      "diameter is GD-limited  {}", gd_req, gd_at_ceiling ? "✓" : "FAIL");
         // (b) engine: single-etch PB library at the published cell, std vs achromatic.
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
@@ -608,42 +651,42 @@ int run_selftest() {
         auto ad = design_pb_achromatic_metalens(lib, /*f=*/8.0, /*D=*/5.0, +1, 1.0);
         const bool base_exact = sd.rms_phase_error_deg < 1e-6 && ad.rms_phase_error_deg < 1e-6;
         const bool gd_better = ad.rms_group_delay_error_fs < sd.rms_group_delay_error_fs;
-        std::println("    one 600-nm etch: base-phase RMS {:.1e}° (geometric exact), GD RMS "
+        sp("    one 600-nm etch: base-phase RMS {:.1e}° (geometric exact), GD RMS "
                      "{:.2f}->{:.2f} fs  {}", ad.rms_phase_error_deg,
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
                      (gd_at_ceiling && base_exact && gd_better) ? "✓" : "FAIL");
-    }
+    }});
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
     // Instead of looking a pillar up from the discrete library, SOLVE for the
     // geometry hitting a target phase with maximum transmission.
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         const double target_deg = 90.0;
         PillarTarget tgt{0.532, target_deg * pi / 180.0, /*amplitude_weight=*/1.0};
-        std::println("[11] Inverse design: optimize pillar for {:.0f}° phase "
+        sp("[11] Inverse design: optimize pillar for {:.0f}° phase "
                      "@532nm (max transmission):", target_deg);
         auto opt = optimize_pillar(tio2, materials::air(), materials::air(),
                                    materials::bk7(), /*period=*/0.35, tgt,
                                    /*M=*/5, /*fill0=*/0.50, /*thickness0=*/0.50,
                                    /*max_iters=*/25);
-        std::println("    converged geometry: fill={:.3f}, thickness={:.3f} µm",
+        sp("    converged geometry: fill={:.3f}, thickness={:.3f} µm",
                      opt.fill, opt.thickness_um);
-        std::println("    achieved phase = {:.1f}°  (target {:.0f}°),  |t| = "
+        sp("    achieved phase = {:.1f}°  (target {:.0f}°),  |t| = "
                      "{:.3f},  loss = {:.2e}",
                      opt.achieved_phase_rad * 180.0 / pi, target_deg,
                      opt.achieved_amplitude, opt.loss);
-    }
+    }});
 
     // ---- Demo 12: form birefringence (polarization-multiplexed basis) -----
     // A rectangular pillar (fill_x != fill_y) responds differently to x- and
     // y-polarized light — "form birefringence." That phase difference is the
     // basis for polarization-multiplexed metalenses (one device, two functions
     // selected by polarization). Here we show it grow with pillar asymmetry.
-    {
+    cases.push_back(Case{true, [&]() {
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
-        std::println("[12] Form birefringence (rectangular TiO2 pillar, 532nm):");
-        std::println("      {:>10}  {:>10}  {:>10}  {:>12}", "fill_x", "fill_y",
+        sp("[12] Form birefringence (rectangular TiO2 pillar, 532nm):");
+        sp("      {:>10}  {:>10}  {:>10}  {:>12}", "fill_x", "fill_y",
                      "φx-φy(°)", "|tx|,|ty|");
         for (auto [fx, fy] : {std::pair{0.5, 0.5}, {0.6, 0.4}, {0.7, 0.3}}) {
             Rcwa2DStack cell{0.35, 0.35, {RectCell2D{tio2, materials::air(), fx, fy, 0.6}}};
@@ -654,11 +697,11 @@ int run_selftest() {
             double dphi = std::arg(rx.tx0) - std::arg(ry.ty0);
             while (dphi > pi) dphi -= 2 * pi;
             while (dphi <= -pi) dphi += 2 * pi;
-            std::println("      {:>10.2f}  {:>10.2f}  {:>10.1f}  {:>5.2f},{:>5.2f}",
+            sp("      {:>10.2f}  {:>10.2f}  {:>10.1f}  {:>5.2f},{:>5.2f}",
                          fx, fy, dphi * 180.0 / pi, std::abs(rx.tx0),
                          std::abs(ry.ty0));
         }
-    }
+    }});
 
     // ---- Validation 13: RCWA vs Effective-Medium Theory --------------------
     // A deeply subwavelength grating (period << λ) behaves as a uniform
@@ -666,15 +709,15 @@ int run_selftest() {
     // grooves), ε⊥ = [f/ε1+(1-f)/ε2]⁻¹ (TM). The grating's RCWA reflectance must
     // converge to the TMM reflectance of those effective films — an independent
     // analytic check of the full TE+TM vectorial solver.
-    {
+    cases.push_back(Case{true, [&]() {
         const double lam = 0.5, d = 0.10, f = 0.5, e1 = 2.1025, e2 = 1.0;  // ridge n=1.45, groove air
         const double eTE = f * e1 + (1 - f) * e2;            // arithmetic mean
         const double eTM = 1.0 / (f / e1 + (1 - f) / e2);    // harmonic mean
         const auto ridge = Material::constant(cdouble{1.45, 0.0}, "n1.45");
         const auto nTE = Material::constant(cdouble{std::sqrt(eTE), 0.0}, "nTE");
         const auto nTM = Material::constant(cdouble{std::sqrt(eTM), 0.0}, "nTM");
-        std::println("[13] RCWA vs effective-medium theory (Λ=λ/20 subwavelength):");
-        std::println("      {:>4}  {:>14}  {:>14}  {:>9}", "pol", "RCWA R", "EMT-film R", "|Δ|");
+        sp("[13] RCWA vs effective-medium theory (Λ=λ/20 subwavelength):");
+        sp("      {:>4}  {:>14}  {:>14}  {:>9}", "pol", "RCWA R", "EMT-film R", "|Δ|");
         for (int te = 1; te >= 0; --te) {
             Pol pol = te ? Pol::TE : Pol::TM;
             BinaryGrating1D g{ridge, materials::air(), 0.025, f, d};  // Λ = λ/20
@@ -682,19 +725,19 @@ int run_selftest() {
             double rcwaR = rg.de_r[rg.orders.size() / 2];
             auto slab = solve_stack(materials::air(), {{te ? nTE : nTM, d}},
                                     materials::air(), lam, 0.0, pol);
-            std::println("      {:>4}  {:>14.4f}  {:>14.4f}  {:>9.4f}",
+            sp("      {:>4}  {:>14.4f}  {:>14.4f}  {:>9.4f}",
                          te ? "TE" : "TM", rcwaR, slab.R, std::abs(rcwaR - slab.R));
         }
-    }
+    }});
 
     // ---- Validation 19: named material registry (real n,k library) ---------
     // The registry maps canonical names + aliases to Materials. Analytic
     // dielectrics are exact published Sellmeier (lossless); tabulated metals &
     // semiconductors carry real loss from refractiveindex.info data. Lock a few
     // literature spot-values so the shipped data/registry can't silently drift.
-    {
+    cases.push_back(Case{false, [&]() {
         using namespace materials;
-        std::println("[19] Material registry (real n,k library):");
+        sp("[19] Material registry (real n,k library):");
         // analytic, lossless: sapphire ordinary at 532nm = 1.7717 (Malitson 1972).
         const cdouble sa = by_name("sapphire").index(0.532);
         const bool sapphire_ok = std::abs(sa.real() - 1.7717) < 2e-3 && sa.imag() == 0.0;
@@ -716,18 +759,18 @@ int run_selftest() {
             ++n_mat;
             if (m.tabulated && !m.available) files_ok = false;
         }
-        std::println("    {} materials | sapphire n@532={:.4f} k=0 {} | gold@600 "
+        sp("    {} materials | sapphire n@532={:.4f} k=0 {} | gold@600 "
                      "n={:.2f} k={:.2f} {} | k(c-Si)={:.3f}<k(a-Si)={:.3f} {} | "
                      "aliases {} | data files {}",
                      n_mat, sa.real(), sapphire_ok ? "✓" : "FAIL", au.real(),
                      au.imag(), au_ok ? "✓" : "FAIL", k_csi, k_asi,
                      si_ok ? "✓" : "FAIL", alias_ok ? "✓" : "FAIL",
                      files_ok ? "✓" : "FAIL");
-    }
+    }});
 
-    {
+    cases.push_back(Case{true, [&]() {
         using namespace materials;
-        std::println("[20] Efficiency budget (per-order / absorption):");
+        sp("[20] Efficiency budget (per-order / absorption):");
         // (a) Lossless TiO2 atom, subwavelength pitch -> energy conserved, no
         // absorption, ALL transmitted power in the single propagating 0th order.
         auto bt = analyze_efficiency(materials::air(), by_name("tio2"),
@@ -745,17 +788,17 @@ int run_selftest() {
                                      0.5, 0.5, 0.10, 0.532, {1.0, 0.0}, {0.0, 0.0}, 6);
         const double sum_g = bg.transmission + bg.reflection + bg.absorption;
         const bool g_ok = std::abs(sum_g - 1.0) < 1e-3 && bg.absorption > 0.2;
-        std::println("    TiO2: R+T+A={:.6f} {} | absorption {:.2e} {} | 0th holds "
+        sp("    TiO2: R+T+A={:.6f} {} | absorption {:.2e} {} | 0th holds "
                      "all T ({} order) {}",
                      sum_t, e_ok ? "✓" : "FAIL", bt.absorption, a_ok ? "✓" : "FAIL",
                      bt.n_prop_t, o0_ok ? "✓" : "FAIL");
-        std::println("    Au:   R+T+A={:.6f}, absorption {:.3f} (lossy metal) {}",
+        sp("    Au:   R+T+A={:.6f}, absorption {:.3f} (lossy metal) {}",
                      sum_g, bg.absorption, g_ok ? "✓" : "FAIL");
-    }
+    }});
 
-    {
+    cases.push_back(Case{true, [&]() {
         using namespace materials;
-        std::println("[21] Field-resolved grid (full-field Strehl map):");
+        sp("[21] Field-resolved grid (full-field Strehl map):");
         // Small focusing lens, 5x5 field grid. Lock the structural invariants: the
         // on-axis node is the rel_strehl=1 reference, the grid is symmetric (the
         // lens is rotationally symmetric), Strehl falls monotonically off-axis, and
@@ -786,19 +829,19 @@ int run_selftest() {
         const double dl = lam * f / D;
         const bool dl_ok = at(c, c).fwhm_x_um <= 1.6 * dl &&
                            at(c, c).fwhm_x_um > 0.0;         // on-axis ~ DL
-        std::println("    on-axis Strehl {:.6f} {} | corner {:.3f}<center {} | "
+        sp("    on-axis Strehl {:.6f} {} | corner {:.3f}<center {} | "
                      "4-corner sym Δ={:.2e} {} | on-axis FWHM {:.2f}µm (DL {:.2f}) {}",
                      s00, ref_ok ? "✓" : "FAIL", corner, fall_ok ? "✓" : "FAIL",
                      cmax - cmin, sym_ok ? "✓" : "FAIL", at(c, c).fwhm_x_um, dl,
                      dl_ok ? "✓" : "FAIL");
-    }
+    }});
 
 #ifdef CELERIS_USE_CUDA
     // ---- Benchmark 10: GPU vs CPU eigensolve ------------------------------
     // The per-layer RCWA eigenproblem is a general complex matrix of size 2N.
     // Honest head-to-head on a representative 578x578 (2N at M=8): cuSOLVER
     // Xgeev (GPU) vs Eigen ComplexEigenSolver (CPU). Verify eigenvalues agree.
-    {
+    cases.push_back(Case{true, [&]() {
         const int n = 578;
         std::mt19937 rng(42);
         std::uniform_real_distribution<double> dist(-1.0, 1.0);
@@ -807,9 +850,9 @@ int run_selftest() {
             for (int i = 0; i < n; ++i)
                 A(i, j) = cdouble{dist(rng), dist(rng)};
 
-        std::println("[10] GPU vs CPU eigensolve ({}x{} general complex):", n, n);
+        sp("[10] GPU vs CPU eigensolve ({}x{} general complex):", n, n);
         if (!cuda::available()) {
-            std::println("     no CUDA device available");
+            sp("     no CUDA device available");
         } else {
             auto t0 = std::chrono::steady_clock::now();
             Eigen::ComplexEigenSolver<Eigen::MatrixXcd> ces(A);
@@ -837,13 +880,44 @@ int run_selftest() {
             for (int i = 0; i < n; ++i)
                 max_diff = std::max(max_diff, std::abs(ec[i] - eg[i]));
 
-            std::println("     CPU (Eigen)      : {:.1f} ms", cpu_ms);
-            std::println("     GPU (cuSOLVER)   : {:.1f} ms   ({:.1f}x)", gpu_ms,
+            sp("     CPU (Eigen)      : {:.1f} ms", cpu_ms);
+            sp("     GPU (cuSOLVER)   : {:.1f} ms   ({:.1f}x)", gpu_ms,
                          cpu_ms / gpu_ms);
-            std::println("     eigenvalue match : max|Δ| = {:.2e}  ok={}",
+            sp("     eigenvalue match : max|Δ| = {:.2e}  ok={}",
                          max_diff, ok);
         }
-    }
+    }});
 #endif
+
+    // --- execute cases concurrently, then print in declaration order --------
+    // The cases are independent (each was a separate scope), so we run them on a
+    // thread pool and buffer each one's output; this turns the largely serial
+    // suite into a parallel one without changing any result.
+    std::vector<std::string> out(cases.size());
+    std::vector<double> ms(cases.size(), 0.0);
+    std::atomic<std::size_t> next{0};
+    unsigned nthreads = std::max(1u, std::thread::hardware_concurrency());
+    if (nthreads > cases.size()) nthreads = static_cast<unsigned>(cases.size());
+    auto worker = [&] {
+        for (std::size_t i = next.fetch_add(1); i < cases.size();
+             i = next.fetch_add(1)) {
+            if (quick && cases[i].heavy) continue;  // fast subset for CI on push
+            g_selftest_out = &out[i];
+            auto t0 = std::chrono::steady_clock::now();
+            cases[i].run();
+            ms[i] = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - t0).count();
+            g_selftest_out = nullptr;
+        }
+    };
+    std::vector<std::thread> pool;
+    for (unsigned t = 0; t < nthreads; ++t) pool.emplace_back(worker);
+    for (auto& th : pool) th.join();
+
+    for (std::size_t i = 0; i < cases.size(); ++i) std::print("{}", out[i]);
+    // Per-case wall time to stderr (keeps stdout identical to the serial suite).
+    for (std::size_t i = 0; i < cases.size(); ++i)
+        if (!out[i].empty())
+            std::println(stderr, "  timing: case#{:<2} {:9.1f} ms", i, ms[i]);
     return 0;
 }

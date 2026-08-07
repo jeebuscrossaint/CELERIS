@@ -10,6 +10,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 7 * * *"   # nightly: run the FULL physics suite (push/PR run --quick)
   workflow_dispatch:
 
 concurrency:
@@ -39,7 +41,14 @@ jobs:
       - name: Build CLI
         run: cmake --build build --target celeris -j
 
-      - name: Run physics self-test (locked regression suite)
+      # On push/PR: the fast subset (~seconds) so CI stays snappy.
+      - name: Run physics self-test (quick subset)
+        if: github.event_name != 'schedule'
+        run: ./build/celeris selftest --quick
+
+      # Nightly: the full 22-case locked regression suite.
+      - name: Run physics self-test (full suite, nightly)
+        if: github.event_name == 'schedule'
         run: ./build/celeris selftest
 
   python:

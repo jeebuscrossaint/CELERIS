@@ -8,7 +8,12 @@
 
 int main(int argc, char** argv) {
     const std::string cmd = argc > 1 ? argv[1] : "help";
-    if (cmd == "selftest") return run_selftest();
+    if (cmd == "selftest") {
+        bool quick = false;
+        for (int i = 2; i < argc; ++i)
+            if (std::string(argv[i]) == "--quick") quick = true;
+        return run_selftest(quick);
+    }
     if (cmd == "shapeconv") return cmd_shapeconv(argc, argv);
     if (cmd == "validate") return cmd_validate(argc, argv);
     if (cmd == "reproduce") return cmd_reproduce(argc, argv);

@@ -91,7 +91,7 @@ ProfileProof profile_optical_proof(const std::vector<double>& px,
 
 // --- subcommand entry points (one per cli/*.cpp) ----------------------------
 
-int run_selftest();
+int run_selftest(bool quick = false);
 int cmd_design(int argc, char** argv);
 int cmd_widefov(int argc, char** argv);
 int cmd_efficiency(int argc, char** argv);
