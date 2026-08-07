@@ -8,8 +8,23 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - Apache-2.0 `LICENSE`, `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and
-  this changelog — publication/open-source readiness (SciPost Physics Codebases, arXiv).
+  this changelog — publication/open-source readiness (Computer Physics Communications, arXiv).
+- `paper/paper.tex` — the manuscript in Elsevier `elsarticle` format (targets CPC), with
+  the CPC Program Summary block; compiles clean (`pdflatex` + `bibtex`, 10 pp).
+- `selftest --quick` — a fast subset (TMM/1D/Bragg/registry, ~1 s) for CI on every push;
+  the full 22-case suite runs on a nightly schedule.
 - GitHub Actions CI: Linux CPU-only build + `celeris selftest` + Python examples.
+
+### Changed
+- Retargeted the code paper from SciPost Physics Codebases to **Computer Physics
+  Communications** (SciPost bars solo-undergraduate submission).
+- Split the 3325-line `main.cpp` CLI monolith into per-command translation units under
+  `cli/` (dispatcher `main.cpp` is now 38 lines); behavior identical.
+
+### Performance
+- Parallelized the physics self-test: **276 s → 88 s** (3.1×) on 16 cores, with output
+  byte-identical to the serial suite. Case-level thread pool + `std::async` on the
+  independent 2D-RCWA eigensolves of the dominant case (which was 85 % of the runtime).
 - **Cross-platform CUDA build.** The GPU far-field kernel now builds on Linux, not just
   Windows: CMake detects `/opt/cuda` (or `CUDA_PATH`) via `lib64/libcudart_static.a`,
   drives `nvcc` with the correct host-compiler flags per platform (`-Xcompiler=-fPIC,…`
@@ -17,6 +32,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`libcudart_static.a` + `libculibos.a` + `dl`/`rt`/`pthread`).
 
 ### Fixed
+- **CI build.** The Linux CI used `ubuntu-latest`'s default `g++-13`, which lacks the
+  C++23 `<print>` header the CLI relies on; CI now installs and selects `g++-14`.
 - **MKL thread oversubscription on Linux.** CELERIS already parallelizes its workloads
   across cores; MKL's own per-call threading nested on top and ran ~5× *slower* than the
   AVX2 build by default (M=8 design: 33 s nested vs 5.9 s pinned). `eig.cpp` now pins MKL
