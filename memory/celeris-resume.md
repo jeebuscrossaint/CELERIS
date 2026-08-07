@@ -1,6 +1,8 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-08-07. **HEAD at handoff:** `06f547e` (run `git log --oneline -20`).
+**Last updated:** 2026-08-07. **HEAD at handoff:** `34b130c` (run `git log --oneline -25`).
+**Resuming in ~2 weeks (~late Aug 2026):** everything below is current; the next action is
+the v1.0 release (see "NEXT STEP #4" — starts with YOU enabling the repo on Zenodo).
 
 ## Update 2026-08-07
 - **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
