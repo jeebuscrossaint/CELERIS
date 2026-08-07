@@ -1,0 +1,22 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.dvi
+*.hd
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.spl
+paper.pdf
+
+# Elsevier class fetched/generated locally to enable an offline build.
+# Install via the `texlive-publishers` package, or regenerate: latex elsarticle.ins
+elsarticle.cls
+elsarticle*.bst
+elsarticle.dtx
+elsarticle.ins
+elsarticle.pdf
