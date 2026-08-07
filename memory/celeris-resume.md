@@ -20,12 +20,20 @@
   `cmd_validate`, `cmd_materials`, `help`, `bench`); shared decls/includes in `cli/cli.hpp`.
   Verbatim move — behavior identical; builds clean (Ninja/GCC, GUI off), selftest passes all
   22 cases. Build dir used on this box: `build-linux` (CPU-only, no MKL → selftest ~3 min).
-- **Paper `[TODO]`s still open** in `paper/paper.md`: line 197 research-impact bullet still
-  says "SciPost requires..." (STALE — reword/drop for CPC, which does not require evidence of
-  use); AI-disclosure section (author wants it slimmed to one neutral sentence or removed —
-  note Elsevier requires an AI-in-*writing* declaration, so slim rather than delete);
-  optional metal-grating S4 row + Khorasaninejad figure (both need a venv+S4 rebuild; marked
-  nice-to-have). Bib `[check]` citations (torcwa/fmmax/meent/grcwa/reticolo/redheffer) unverified.
+- **Paper `[TODO]`s RESOLVED + LaTeX conversion DONE** (commit `03297d8`). `paper/paper.md`
+  is now TODO-free (stale SciPost research-impact bullet dropped; AI-disclosure slimmed to a
+  one-sentence Elsevier-style "Declaration of generative AI"; optional-figure markers removed).
+  **`paper/paper.tex` written in Elsevier `elsarticle`** — full conversion (frontmatter, CPC
+  Program Summary block, comparison table, 4 figures, all `\cite` wired) and it **compiles
+  clean**: `pdflatex paper && bibtex paper && pdflatex×2` → 10-page PDF, 0 undefined refs.
+  Build needs `elsarticle.cls` (NOT in this minimal TeX Live; `texlive-publishers` provides it,
+  or regenerate: `latex elsarticle.ins`). I fetched+gitignored the class + `elsarticle-num.bst`
+  in `paper/`. **Bib fixes:** TORCWA title was WRONG (fixed); fmmax filled (Schubert & Hammond,
+  arXiv:2308.08573); **stripped inline `%` comments after entry keys — BibTeX has no `%`
+  comments so they were silently skipping 5 cited entries.** Remaining bib nit: empty `year`
+  on `grcwa`/`meent` @misc (cosmetic warnings; verify in the final citation pass).
+- **NEXT STEP is now #4: tag `v1.0` + mint Zenodo DOI**, add DOI to paper.tex/README, then
+  submit to CPC + arXiv (steps 1-3 of the old NEXT STEPS list are complete).
 
 ## Where we are in one line
 CELERIS has a **content-complete first-paper draft** (`paper/paper.md`, 4 figures, verified
