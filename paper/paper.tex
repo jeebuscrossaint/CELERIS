@@ -44,7 +44,7 @@ a target optical phase profile onto that library, (iii) analyzing the resulting
 device's optical performance, and (iv) exporting a mask layout for fabrication.
 The standard rigorous electromagnetic method for step (i) is rigorous coupled-wave
 analysis (RCWA), also known as the Fourier modal method (FMM). \textbf{CELERIS} is
-a from-scratch, validated implementation of this \emph{entire} workflow in a single
+a from-scratch, validated implementation of this full workflow in a single
 native package. It couples a C++23 RCWA engine (1D and 2D-vectorial, with Li/Liu--Fan
 Fourier factorization and a Redheffer S-matrix stack) to a meta-atom library builder,
 a phase-mapping and inverse-design layer (including achromatic and Pancharatnam--Berry
@@ -54,8 +54,9 @@ far-field propagation, and fabrication-ready GDSII export. It is scriptable from
 a command-line interface, and Python (via pybind11), and ships with a desktop GUI.
 Correctness is enforced by a locked self-test suite (20+ cases) cross-checked against
 closed-form physics (Fresnel/TMM, effective-medium theory), energy conservation, and
-independent RCWA solvers (\texttt{grcwa} and Stanford~S$^4$), and the full pipeline is
-demonstrated by reproducing two canonical published TiO$_2$ metalenses end to end.
+independent RCWA solvers (\texttt{grcwa} and Stanford~S$^4$). The pipeline is
+demonstrated by reproducing a canonical published TiO$_2$ metalens end to end and by
+recovering the group-delay design limit of a published broadband achromat.
 \end{abstract}
 
 \begin{keyword}
@@ -156,8 +157,9 @@ We state the trade-off plainly: the GPU/autodiff-native solvers (TORCWA, fmmax, 
 are \emph{stronger solver kernels} --- they run the full modal solve on the GPU with
 automatic differentiation, whereas CELERIS GPU-accelerates only far-field propagation
 and optimizes by finite differences (an analytic adjoint is planned). CELERIS's
-contribution is orthogonal: it is the only tool that wraps the solver in a complete,
-validated \textbf{design $\to$ analysis $\to$ fabrication} workflow --- integrated
+contribution is orthogonal: it is, to our knowledge, the only open-source tool that wraps
+the solver in an integrated, validated \textbf{design $\to$ analysis $\to$ fabrication}
+workflow --- integrated
 design, the optical analysis battery, achromatic/Pancharatnam--Berry recipes, GDSII
 export, published-device reproductions, and a GUI --- none of which the solver kernels
 provide.
@@ -265,10 +267,12 @@ t_\times = \tfrac{1}{2}(t_x - t_y)\,e^{\,i\,2\sigma\theta}.
 \label{eq:pb}
 \end{equation}
 A half-wave-plate atom ($t_x \approx -t_y$, $|t_x|=|t_y|$) maximizes $|t_\times|$
-and imparts the pure geometric phase $2\sigma\theta$, set by geometry alone and
-therefore achromatic and exact. Choosing $\theta(\mathbf{r})=\sigma\phi(\mathbf{r})/2$
-realizes any target profile $\phi(\mathbf{r})$ with uniform amplitude, so the
-design is diffraction-limited up to the atom's polarization-conversion efficiency.
+and imparts the geometric phase $2\sigma\theta$, which is set by geometry alone and is
+therefore wavelength-independent (the conversion \emph{amplitude} $|t_\times|$ itself
+remains dispersive). Choosing the fixed orientation $\theta(\mathbf{r})=\phi(\mathbf{r})/2$
+imparts $+\phi(\mathbf{r})$ to one incident helicity and $-\phi(\mathbf{r})$ (the conjugate
+lens) to the other, with uniform amplitude, so the design is diffraction-limited up to the
+polarization-conversion efficiency.
 
 \paragraph{Achromatic design and the group-delay limit}
 For a lens of radius $R$ and focal length $f$ to focus achromatically, the phase
@@ -289,10 +293,11 @@ the meta-atom library to span a group-delay range
 \Delta T = \frac{1}{c}\left(\sqrt{R^2+f^2}-f\right).
 \label{eq:gdspan}
 \end{equation}
-A single-etch meta-atom of height $H$ supplies a bounded group delay of order
-$n_g H/c$ (with $n_g$ the group index), so Eq.~\eqref{eq:gdspan} caps the
-achievable aperture--bandwidth product --- the physical limit CELERIS reproduces
-for the Chen~2018 device (Sec.~\ref{sec:validation}, Fig.~\ref{fig:achromatic}).
+At fixed height $H$ a single-etch library supplies only a bounded group-delay
+\emph{span}, of order $(n_{g,\max}-n_{g,\min})\,H/c$ (set by the spread of group indices
+across meta-atoms), so Eq.~\eqref{eq:gdspan} caps the achievable aperture--bandwidth
+product --- the physical limit CELERIS recovers for the Chen~2018 achromat
+(Sec.~\ref{sec:validation}, Fig.~\ref{fig:achromatic}).
 CELERIS builds a dispersive library spanning the $(\phi,T)$ plane --- by shape and
 fill variety at fixed height, or by a fill$\times$height grid --- and, at each
 radius, selects the atom matching both the base phase $\phi(r,\omega_0)$ and the
@@ -313,7 +318,7 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
 \item \textbf{Engine (\texttt{celeris\_core}, C++23).} 1D RCWA (TE/TM, multilayer,
       S-matrix) and 2D-vectorial RCWA. The 2D solver uses the Li/Liu--Fan inverse-rule
       Fourier factorization~\cite{li1996} for axis-aligned rectangles (correct
-      convergence, energy conserved to machine precision) and a stable Laurent
+      convergence, energy conserved to $\sim$$5\times10^{-12}$) and a stable Laurent
       factorization for arbitrary sampled shapes. Layer coupling uses a Redheffer
       S-matrix recursion~\cite{redheffer1962,rumpf2011}. The dense complex linear
       algebra runs on Eigen (header-only), optionally routed through Intel MKL.
@@ -338,12 +343,15 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
 %% ---------------------------------------------------------------------------
 \section{Validation}
 \label{sec:validation}
-Correctness is locked by a self-test suite of 20+ cases, cross-checked against:
-closed-form Fresnel/TMM and Bragg-mirror results; effective-medium theory in the
-deep-subwavelength limit; strict energy conservation ($R+T+A = 1$ to $10^{-6}$); and
-two independent RCWA solvers, \texttt{grcwa}~\cite{grcwa} and Stanford~S$^4$
-\cite{liu2012s4} (the field-standard FMM reference). The suite runs green on Linux
-(GCC) and is enforced by continuous integration.
+Correctness is checked by a self-test suite of 20+ cases against: closed-form
+Fresnel / transfer-matrix-method (TMM) and Bragg-mirror results; effective-medium theory
+in the deep-subwavelength limit; and two independent RCWA solvers,
+\texttt{grcwa}~\cite{grcwa} and Stanford~S$^4$~\cite{liu2012s4} (the field-standard FMM
+reference). Energy conservation ($R+T+A=1$, to $\sim$$5\times10^{-12}$ for axis-aligned
+cases) is monitored as a necessary consistency check --- it is not by itself sufficient
+(a wrong reflection/transmission split can still conserve energy), so the correctness
+argument rests on the closed-form and cross-solver comparisons. The suite runs on Linux
+(GCC) under continuous integration.
 
 Running CELERIS and S$^4$ on an \emph{identical} freestanding $n=1.5$ binary grating
 ($\Lambda = 0.3~\mu$m, fill 0.5, thickness $0.5~\mu$m, $\lambda = 0.5~\mu$m, normal
@@ -366,8 +374,8 @@ $7\times10^{-8}$ (TE); TM converges more slowly for both, as expected.}
 
 The end-to-end pipeline is exercised in Figs.~\ref{fig:library}--\ref{fig:psf}: sweeping
 a TiO$_2$ square-pillar's fill builds the phase library (Fig.~\ref{fig:library}), and
-designing an NA${\approx}0.2$ focusing lens from it yields a diffraction-limited focal
-spot --- FWHM equal to $\lambda f/D$ to three figures (Fig.~\ref{fig:psf}).
+designing a numerical-aperture (NA) ${\approx}0.2$ focusing lens from it yields a
+diffraction-limited focal spot at the $\lambda f/D$ scale (Fig.~\ref{fig:psf}).
 
 \begin{figure}[t]
 \centering
@@ -381,7 +389,7 @@ for a TiO$_2$ square pillar ($\lambda = 532$~nm, $\Lambda = 350$~nm, $H = 600$~n
 \centering
 \includegraphics[width=\textwidth]{figures/fig_psf.pdf}
 \caption{Focal-plane PSF of the designed lens (log scale, left) and its central line
-cut (right): FWHM $= 1.330~\mu$m, exactly the diffraction limit $\lambda f/D$.}
+cut (right): FWHM $= 1.330~\mu$m, consistent with the diffraction limit ($\sim\lambda f/D$).}
 \label{fig:psf}
 \end{figure}
 
@@ -423,15 +431,15 @@ objective controls.}
 The GPU accelerates far-field propagation only; the RCWA modal solve runs on the CPU.
 We benchmark the propagation kernel (single precision) against CELERIS's own optimized
 16-core CPU propagation (\texttt{compute\_psf}, double precision) using the built-in
-\texttt{psfbench} command on an RTX~4070 laptop GPU. Results agree to machine precision
-(max$|\Delta$ normalized PSF$| = 0$). Measured speedups (GPU vs 16-core CPU) are given
-in Table~\ref{tab:perf}.
+\texttt{psfbench} command on an RTX~4070 laptop GPU. The normalized PSFs agree to
+single-precision rounding (the GPU kernel is single precision, the CPU path double).
+Measured speedups (GPU vs 16-core CPU) are given in Table~\ref{tab:perf}.
 
 \begin{table}[t]
 \centering
 \caption{Far-field propagation: GPU (RTX~4070 laptop) vs optimized 16-core CPU.}
 \label{tab:perf}
-\begin{tabular}{lccccc}
+\begin{tabular}{lcccc}
 \toprule
 Aperture (pillars) & Focal grid & CPU & GPU & Speedup \\
 \midrule
