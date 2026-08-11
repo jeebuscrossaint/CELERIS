@@ -50,17 +50,20 @@ the v1.0 release (see "NEXT STEP #4" — starts with YOU enabling the repo on Ze
   meent arXiv:2406.12904 2024 filled); `CHANGELOG.md` `[Unreleased]` updated for v1.0
   (retarget→CPC, CLI split, paper.tex, --quick, CI g++-14 fix, selftest parallelization).
   Working tree clean except the pre-existing loose `README.md`/`ROADMAP.md`/`imgui.ini`.
-- **NEXT STEP #4 = the v1.0 release — needs HUMAN actions, do in THIS order:**
-  1. *(Amarnath)* Enable the CELERIS repo on **Zenodo** (zenodo.org → GitHub → flip the repo
-     on) BEFORE tagging, so the DOI auto-mints for the tag. One-time.
-  2. Cut + push **`v1.0`** tag (converts CHANGELOG `[Unreleased]`→`[1.0.0] - <date>` first).
-     Claude can do the tag on explicit go — but only AFTER step 1, else re-tag needed.
-  3. Zenodo auto-mints the DOI for v1.0; then drop that DOI into `paper.tex` (Program
-     Summary "CPC Library link"/badge), `README.md` badge, and `CITATION.cff`.
-  4. *(Amarnath)* Submit to **CPC** via Elsevier Editorial Manager (`@ucf.edu` → APC waiver);
-     post **arXiv** `physics.comp-ph`+`physics.optics` same day (needs a faculty endorser —
-     line this up in advance).
-  5. Fallback if CPC rejects → SoftwareX (minimal changes).
+- **v1.0.0 RELEASED + archived (2026-08-11, commit `c38503c`).** GitHub release `v1.0.0`
+  cut via `gh release create` (triggers Zenodo). Zenodo minted: **version DOI
+  `10.5281/zenodo.21891346`** (this exact code), **concept DOI `10.5281/zenodo.21891345`**
+  (always latest). Wired in: `paper.tex` Program Summary (version+concept), README badge +
+  `CITATION.cff` (concept DOI, version 1.0.0, date-released). CHANGELOG stamped `[1.0.0]`.
+- **NEXT STEP = submission (HUMAN — needs Amarnath's accounts):**
+  1. Submit to **CPC** via Elsevier Editorial Manager (upload `paper.tex` + `paper.bib` +
+     `paper/figures/*.pdf`; solo corresponding author; `@ucf.edu` → APC waiver). At submission
+     CPC creates the Mendeley Data / CPC Program Library deposit → fills the Program Summary
+     "CPC Library link" field.
+  2. Post the **arXiv** preprint (`physics.comp-ph` + cross-list `physics.optics`) same day —
+     NEEDS A FACULTY ENDORSER for physics.comp-ph; line this up in advance.
+  3. Fallback if CPC rejects → SoftwareX (minimal changes).
+- Loose in working tree (pre-existing, untouched): `ROADMAP.md`, `imgui.ini`.
 
 ## Where we are in one line
 CELERIS has a **content-complete first-paper draft** (`paper/paper.md`, 4 figures, verified
