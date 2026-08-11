@@ -74,11 +74,21 @@ Fourier modal method \sep inverse design \sep GDSII
 \noindent\emph{(CPC-mandatory block; exact fields are entered on the submission form.)}
 \begin{description}
 \item[Program title:] CELERIS
+\item[CPC Library classification:] Optics; Computational electromagnetics /
+      nanophotonics (final subject-class number confirmed on the Editorial Manager form).
+\item[Developer's repository link:] \url{https://github.com/jeebuscrossaint/CELERIS}
 \item[Licensing provisions:] Apache License 2.0
 \item[Permanent archive:] Zenodo (v1.0.0): \url{https://doi.org/10.5281/zenodo.21891346};
       concept DOI (always latest version): \url{https://doi.org/10.5281/zenodo.21891345}
 \item[Programming languages:] C++23 (engine), CUDA (optional GPU far-field kernel),
       Python (pybind11 bindings)
+\item[No.\ of lines in distributed program:] $\approx$14{,}000 (C++23/CUDA/Python;
+      excludes the bundled Dear ImGui and the configure-time-fetched Eigen).
+\item[Distribution format:] Git repository and \texttt{.tar.gz} source archive
+      (Apache-2.0), permanently archived on Zenodo (DOIs above).
+\item[External routines/libraries:] Eigen (required, header-only, fetched at configure
+      time); optional Intel MKL (CPU acceleration), CUDA (GPU far-field), pybind11
+      (Python module), Dear ImGui (desktop GUI).
 \item[Nature of problem:] Designing a metalens/metasurface requires solving Maxwell's
       equations for periodic subwavelength unit cells, assembling a meta-atom library,
       mapping a target optical phase profile onto it, analyzing the resulting device's
@@ -97,7 +107,43 @@ Fourier modal method \sep inverse design \sep GDSII
       propagation only.
 \item[Operating systems:] Linux and Windows (CPU build has no external runtime
       dependencies).
+\item[Running time:] Seconds for a complete monochromatic metalens design: a
+      $20\,\mu$m-aperture, $f=50\,\mu$m lens (a $57\times57$ meta-atom layout with
+      full focal analysis and GDSII export) completes in $\approx$2.5\,s on a single
+      CPU core. The locked validation suite ($\sim$25 checks, including the 2D
+      convergence study) runs in $\approx$90\,s on 16 cores. Wall time is dominated
+      by the per-unit-cell modal eigensolve and scales with the truncation order.
 \end{description}
+
+%% ---------------------------------------------------------------------------
+\section{Introduction}
+Metasurfaces --- planar arrays of subwavelength scatterers that impose an
+engineered, spatially varying response on an incident wavefront --- have reshaped
+optical component design over the past decade, replacing bulk refractive elements
+with lithographically defined flat optics~\cite{yu2011,yu2014flat,kildishev2013}.
+By locally controlling phase, amplitude, and polarization, a single patterned layer
+realizes lenses, deflectors, holograms, and polarization
+optics~\cite{arbabi2015}. The metalens --- a flat focusing element built from a
+radial phase profile --- is the canonical example and the motivating application of
+this work: dielectric metalenses now reach high numerical aperture and high
+efficiency, so the open design problems are chromatic correction and manufacturable
+layout rather than the basic focusing principle.
+
+Two design strategies recur throughout this literature and are built into CELERIS.
+The first is the \emph{geometric} (Pancharatnam--Berry) phase~\cite{berry1984,bomzon2002}:
+rotating a birefringent meta-atom imprints a wavelength-independent phase equal to
+twice its orientation angle, a robust, dispersionless handle on the base phase
+profile. The second is \emph{dispersion engineering} for broadband achromatic
+focusing~\cite{aieta2015,wang2018}, in which the meta-atom library must supply not
+only the correct phase at the center wavelength but the correct \emph{group delay}
+across a band --- a requirement bounded, as Sec.~\ref{sec:method} makes precise, by a
+physical aperture--bandwidth limit that a single-etch surface can span. Both
+strategies require a rigorous electromagnetic solver in the loop, because the
+meta-atom response is a full solution of Maxwell's equations in a
+subwavelength-structured unit cell, not a thin-element phase mask. What has been
+missing is not the solver but the validated machinery that turns it into a
+fabricated, analyzed device; the remainder of this paper describes that pipeline and
+its validation.
 
 %% ---------------------------------------------------------------------------
 \section{Statement of need}
@@ -341,9 +387,10 @@ group delay $T(r)$.
 \paragraph{Far-field propagation}
 Given the transmission coefficient realized at each lattice site, the aperture
 field is propagated to the focal region by the Rayleigh--Sommerfeld diffraction
-integral, discretized as a direct sum over meta-atoms. The point-spread function,
-Strehl ratio, encircled energy, modulation transfer function, and through-focus
-behavior reported by the analysis battery are computed from this propagated field;
+integral~\cite{goodman}, discretized as a direct sum over meta-atoms. The
+point-spread function, Strehl ratio, encircled energy, modulation transfer function,
+and through-focus behavior reported by the analysis battery are standard
+image-quality metrics~\cite{bornwolf} computed from this propagated field;
 this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
 (Sec.~\ref{sec:performance}).
 
@@ -356,7 +403,7 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
       convergence, energy conserved to $\sim$$5\times10^{-12}$) and a stable Laurent
       factorization for arbitrary sampled shapes. Layer coupling uses a Redheffer
       S-matrix recursion~\cite{redheffer1962,rumpf2011}. The dense complex linear
-      algebra runs on Eigen (header-only), optionally routed through Intel MKL.
+      algebra runs on Eigen~\cite{eigen} (header-only), optionally routed through Intel MKL.
 \item \textbf{Design.} A library builder sweeps meta-atom geometry; phase profiles
       (focusing, vortex/OAM, deflector, axicon, quadratic wide-FOV, freeform) drive both
       a propagation-phase path and an exact geometric (Pancharatnam--Berry) path.
@@ -372,7 +419,7 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
       on the CPU (see Limitations). The CUDA build is cross-platform (Linux and Windows).
 \item \textbf{Interfaces.} A CLI (\texttt{design}, \texttt{pbdesign},
       \texttt{achromatic}, \texttt{reproduce}, \texttt{selftest}, \ldots), Python
-      bindings (pybind11; \texttt{pip install .}), and a Dear ImGui desktop GUI.
+      bindings (pybind11~\cite{pybind11}; \texttt{pip install .}), and a Dear ImGui desktop GUI.
 \end{itemize}
 
 %% ---------------------------------------------------------------------------
@@ -524,6 +571,30 @@ Eigen with AVX2); MKL is opt-in.
 \item \textbf{Scope is metalenses/metasurfaces via RCWA} --- explicitly not FDTD or ray
       tracing.
 \end{itemize}
+
+%% ---------------------------------------------------------------------------
+\section{Conclusions}
+CELERIS is a from-scratch, validated implementation of the complete metalens design
+workflow --- rigorous RCWA/FMM solver, meta-atom library builder, phase-mapping and
+inverse-design layer, optical analysis battery, GPU-accelerated far-field
+propagation, and GDSII export --- delivered as one native package scriptable from
+C++, a CLI, and Python. Its correctness is enforced by a locked self-test suite
+whose tolerances are checked against closed-form physics, energy conservation, and
+the independent solvers \texttt{grcwa} and Stanford~S$^4$ (agreement to
+$\sim$$7\times10^{-8}$ on an identical grating), and its utility is demonstrated by
+reproducing a published TiO$_2$ metalens end to end.
+
+The methodological payoff of integrating these stages, rather than the integration
+itself, is the paper's central point: because the library, design, and analysis
+share one data model, CELERIS computes device-level quantities that a solver called
+in a loop cannot express --- sharply, the group-delay design limit that bounds
+single-etch broadband achromats, which it recovers for a published device. CELERIS
+does not aim to be the fastest raw kernel; the GPU/autodiff-native solvers remain
+stronger at the bare solve. The natural next steps close that gap along the axes
+identified in Limitations: an analytic adjoint for differentiable, gradient-based
+inverse design, and a GPU-batched library solve. The tool is released under Apache-2.0
+and archived on Zenodo so that both the pipeline and every reported number are
+reproducible.
 
 %% ---------------------------------------------------------------------------
 \section*{CRediT authorship contribution statement}
