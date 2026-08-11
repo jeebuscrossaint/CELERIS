@@ -6,6 +6,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-11
+
+First tagged release — the version described by the CELERIS code paper (targeting
+Computer Physics Communications) and archived for its Zenodo DOI.
+
 ### Added
 - Apache-2.0 `LICENSE`, `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and
   this changelog — publication/open-source readiness (Computer Physics Communications, arXiv).
