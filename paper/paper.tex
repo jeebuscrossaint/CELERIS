@@ -11,6 +11,10 @@
 \usepackage{pifont}
 \usepackage{url}
 
+% Double square brackets for the Toeplitz convolution matrices (no extra package).
+\providecommand{\llbracket}{[\![}
+\providecommand{\rrbracket}{]\!]}
+
 % Feature-table glyphs.
 \newcommand{\yes}{\ding{51}}          % provided
 \newcommand{\no}{\ding{55}}           % not provided
@@ -159,6 +163,151 @@ export, published-device reproductions, and a GUI --- none of which the solver k
 provide.
 
 %% ---------------------------------------------------------------------------
+\section{Method}
+\label{sec:method}
+
+CELERIS implements the Fourier modal method (FMM), the frequency-domain,
+Fourier-space formulation of RCWA~\cite{moharam1981,moharam1995}. This section
+summarizes the formulation, the Fourier-factorization rules that govern its
+accuracy, the stable layer-stacking recursion, and the two design principles ---
+geometric-phase and group-delay engineering --- on which the pipeline is built.
+
+\subsection{Fourier modal method}
+
+The device is a stack of layers, each invariant along the propagation direction
+$z$ and biperiodic in the transverse plane with periods $(\Lambda_x,\Lambda_y)$.
+Within a layer the relative permittivity $\varepsilon(x,y)$ is expanded in a
+two-dimensional Fourier series, and the electromagnetic field in
+$(2M{+}1)\times(2N{+}1)$ Bloch--Floquet harmonics. The in-plane wavevector of
+harmonic $(m,n)$ is
+\begin{equation}
+k_{x,m} = k_{x,0} + \frac{2\pi m}{\Lambda_x}, \qquad
+k_{y,n} = k_{y,0} + \frac{2\pi n}{\Lambda_y},
+\end{equation}
+with $(k_{x,0},k_{y,0})$ fixed by the angle of incidence. We collect the
+wavevectors normalized to $k_0=\omega/c$ into diagonal matrices $\mathbf{K}_x$,
+$\mathbf{K}_y$, and the Fourier coefficients of $\varepsilon$ into the Toeplitz
+convolution matrix $\llbracket\varepsilon\rrbracket$.
+
+Eliminating the longitudinal field components from Maxwell's curl equations
+reduces them, within a homogeneous-in-$z$ layer, to a coupled second-order
+system for the tangential electric-field harmonics
+$\mathbf{s}=[\mathbf{s}_x;\,\mathbf{s}_y]$,
+\begin{equation}
+\frac{\mathrm{d}^2 \mathbf{s}}{\mathrm{d}(k_0 z)^2}
+   = \boldsymbol{\Omega}^2\,\mathbf{s},
+   \qquad \boldsymbol{\Omega}^2 = \mathbf{P}\mathbf{Q},
+\label{eq:eig}
+\end{equation}
+where $\mathbf{P}$ and $\mathbf{Q}$ are assembled from $\mathbf{K}_x$,
+$\mathbf{K}_y$ and the convolution matrices of $\varepsilon$ and $1/\varepsilon$;
+in the one-dimensional TE case Eq.~\eqref{eq:eig} reduces to the transparent form
+$\boldsymbol{\Omega}^2 = \mathbf{K}_x^2 - \llbracket\varepsilon\rrbracket$.
+Diagonalizing $\boldsymbol{\Omega}^2 = \mathbf{W}\,\boldsymbol{\Gamma}^2\,
+\mathbf{W}^{-1}$ gives the layer eigenmodes: the columns of $\mathbf{W}$ are the
+modal field profiles and the eigenvalues in $\boldsymbol{\Gamma}^2$ are the
+squared modal propagation constants, so the tangential fields are superpositions
+of forward- and backward-propagating modes $\propto\exp(\mp k_0\boldsymbol{\Gamma}
+z)$. This modal eigendecomposition is the dominant computational cost of a solve
+(Sec.~\ref{sec:performance}).
+
+\subsection{Fourier factorization}
+
+The accuracy of the truncated expansion depends critically on how products of the
+discontinuous permittivity and field are represented in Fourier space. Following
+Li~\cite{li1996}, a product whose result is continuous across a material interface
+is factorized by Laurent's rule (direct convolution,
+$\llbracket\varepsilon\rrbracket$), whereas a product in which a field factor is
+discontinuous at the interface --- the normal electric field, whose product with
+$\varepsilon$ is the continuous normal displacement --- must be factorized by the
+\emph{inverse rule}, i.e.\ with $\llbracket 1/\varepsilon\rrbracket^{-1}$ in place
+of $\llbracket\varepsilon\rrbracket$. Applying Laurent's rule to the discontinuous
+component yields qualitatively wrong TM-polarization efficiencies and fails to
+conserve energy at moderate truncation --- a well-documented artefact the inverse
+rule removes. For axis-aligned rectangular meta-atoms the permittivity is
+separable, and CELERIS applies the directional inverse rule along $x$ and $y$
+independently (the Liu--Fan formulation also used by S$^4$~\cite{liu2012s4}); for
+arbitrary sampled shapes it falls back to Laurent factorization on a rasterized
+$\varepsilon$ grid, which converges more slowly but remains stable.
+
+\subsection{Scattering-matrix layer recursion}
+\label{sec:smatrix}
+
+Matching the tangential $\mathbf{E}$ and $\mathbf{H}$ harmonics across each
+interface relates the modal amplitudes of adjacent layers. The transfer-matrix
+form of this relation contains growing exponentials
+$\exp(+k_0\boldsymbol{\Gamma} d)$ of the evanescent modes and is numerically
+unstable for thick layers or large truncation. CELERIS instead assembles a
+scattering matrix for each layer --- relating outgoing to incoming amplitudes, so
+that only decaying exponentials appear --- and composes the stack with the
+Redheffer star product~\cite{redheffer1962,rumpf2011},
+\begin{equation}
+\mathbf{S} = \mathbf{S}^{(1)} \star \mathbf{S}^{(2)},
+\end{equation}
+which is unconditionally stable. The reflection and transmission coefficients of
+every diffraction order follow from the global scattering matrix; the diffraction
+efficiencies are the $z$-directed Poynting flux of each propagating order
+normalized to the incident flux, and the balance $\sum_j (R_j + T_j) + A = 1$
+(with $A$ the absorbed fraction in lossy media) is evaluated as an intrinsic
+solver check.
+
+\subsection{Design principles}
+
+\paragraph{Geometric (Pancharatnam--Berry) phase}
+A birefringent meta-atom with linear transmission coefficients $t_x,t_y$ along its
+principal axes, rotated in-plane by $\theta$, has the Jones matrix
+$\mathbf{J}(\theta)=\mathbf{R}(\theta)\,\mathrm{diag}(t_x,t_y)\,\mathbf{R}(-\theta)$,
+where $\mathbf{R}$ is the $2\times2$ rotation. Decomposed on circular
+polarizations, an incident spin state $\sigma=\pm1$ produces a co-polarized
+component $\propto (t_x+t_y)/2$ and a spin-flipped component
+\begin{equation}
+t_\times = \tfrac{1}{2}(t_x - t_y)\,e^{\,i\,2\sigma\theta}.
+\label{eq:pb}
+\end{equation}
+A half-wave-plate atom ($t_x \approx -t_y$, $|t_x|=|t_y|$) maximizes $|t_\times|$
+and imparts the pure geometric phase $2\sigma\theta$, set by geometry alone and
+therefore achromatic and exact. Choosing $\theta(\mathbf{r})=\sigma\phi(\mathbf{r})/2$
+realizes any target profile $\phi(\mathbf{r})$ with uniform amplitude, so the
+design is diffraction-limited up to the atom's polarization-conversion efficiency.
+
+\paragraph{Achromatic design and the group-delay limit}
+For a lens of radius $R$ and focal length $f$ to focus achromatically, the phase
+at radius $r$ must satisfy, for every frequency $\omega$ in the band,
+\begin{equation}
+\phi(r,\omega) = -\frac{\omega}{c}\left(\sqrt{r^2+f^2}-f\right).
+\end{equation}
+Expanding about the center frequency $\omega_0$, the constant term is the base
+(geometric) phase --- set exactly by the PB rotation, Eq.~\eqref{eq:pb} --- while
+the first-order term is the required \emph{group delay}
+\begin{equation}
+T(r) = -\left.\frac{\partial\phi}{\partial\omega}\right|_{\omega_0}
+     = \frac{1}{c}\left(\sqrt{r^2+f^2}-f\right),
+\end{equation}
+largest at the aperture edge. A diffraction-limited achromat therefore requires
+the meta-atom library to span a group-delay range
+\begin{equation}
+\Delta T = \frac{1}{c}\left(\sqrt{R^2+f^2}-f\right).
+\label{eq:gdspan}
+\end{equation}
+A single-etch meta-atom of height $H$ supplies a bounded group delay of order
+$n_g H/c$ (with $n_g$ the group index), so Eq.~\eqref{eq:gdspan} caps the
+achievable aperture--bandwidth product --- the physical limit CELERIS reproduces
+for the Chen~2018 device (Sec.~\ref{sec:validation}, Fig.~\ref{fig:achromatic}).
+CELERIS builds a dispersive library spanning the $(\phi,T)$ plane --- by shape and
+fill variety at fixed height, or by a fill$\times$height grid --- and, at each
+radius, selects the atom matching both the base phase $\phi(r,\omega_0)$ and the
+group delay $T(r)$.
+
+\paragraph{Far-field propagation}
+Given the transmission coefficient realized at each lattice site, the aperture
+field is propagated to the focal region by the Rayleigh--Sommerfeld diffraction
+integral, discretized as a direct sum over meta-atoms. The point-spread function,
+Strehl ratio, encircled energy, modulation transfer function, and through-focus
+behavior reported by the analysis battery are computed from this propagated field;
+this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
+(Sec.~\ref{sec:performance}).
+
+%% ---------------------------------------------------------------------------
 \section{Software design}
 \begin{itemize}
 \item \textbf{Engine (\texttt{celeris\_core}, C++23).} 1D RCWA (TE/TM, multilayer,
@@ -188,6 +337,7 @@ provide.
 
 %% ---------------------------------------------------------------------------
 \section{Validation}
+\label{sec:validation}
 Correctness is locked by a self-test suite of 20+ cases, cross-checked against:
 closed-form Fresnel/TMM and Bragg-mirror results; effective-medium theory in the
 deep-subwavelength limit; strict energy conservation ($R+T+A = 1$ to $10^{-6}$); and
@@ -269,6 +419,7 @@ objective controls.}
 
 %% ---------------------------------------------------------------------------
 \section{Performance}
+\label{sec:performance}
 The GPU accelerates far-field propagation only; the RCWA modal solve runs on the CPU.
 We benchmark the propagation kernel (single precision) against CELERIS's own optimized
 16-core CPU propagation (\texttt{compute\_psf}, double precision) using the built-in
