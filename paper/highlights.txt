@@ -1,0 +1,7 @@
+Highlights
+
+Integrated RCWA pipeline: solver, meta-atom library, design, analysis, GDSII
+From-scratch 1D and 2D-vectorial solver with Li/Liu-Fan factorization
+Validated vs closed-form physics, grcwa, and Stanford S4 to 7e-8 (TE)
+Achromatic and Pancharatnam-Berry design; fabrication-ready GDSII export
+Reproduces two published TiO2 metalenses (Khorasaninejad 2016, Chen 2018)
