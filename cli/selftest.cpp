@@ -324,20 +324,25 @@ int run_selftest(bool quick) {
                      te2d.de_t0, std::abs(te2d.de_t0 - 0.93334));
         sp("        TM (E∥x): 2D T0={:.5f}  (grcwa 0.96050)  |Δ|={:.2e}",
                      tm2d.de_t0, std::abs(tm2d.de_t0 - 0.96050));
+        chk(std::abs(te2d.de_t0 - 0.93334) < 2e-3 && std::abs(tm2d.de_t0 - 0.96050) < 5e-3,
+            "[8] 2D subwavelength grating matches grcwa (TE & TM)");
 
         // (b) real high-contrast square TiO2 pillar: energy + convergence vs M.
         sp("    (b) square TiO2 pillar (n=2.45, Λ=0.35µm, λ=0.532µm, "
                      "fused silica), convergence:");
         sp("        {:>5}  {:>8}  {:>10}  {:>8}", "M", "Σ DE", "T0", "phase°");
+        double sweep_maxdef = 0.0;
         auto row = [&](int m, auto& fut) {
             auto r = fut.get();
             sp("        {:>5}  {:>8.6f}  {:>10.5f}  {:>8.1f}", m, r.sum_de,
                          r.de_t0, std::arg(r.tx0) * 180.0 / pi);
+            sweep_maxdef = std::max(sweep_maxdef, std::abs(r.sum_de - 1.0));
         };
         row(6, f_m6);
         row(8, f_m8);
         row(10, f_m10);
         row(12, f_m12);
+        chk(sweep_maxdef < 1e-4, "[8] square TiO2 pillar energy conserved across M");
 
         // (c) external cross-check (grcwa, Li/converged): asymmetric rect pillar.
         sp("    (c) cross-check vs grcwa (rect fx=0.6 fy=0.3, fused silica):");
@@ -345,6 +350,9 @@ int run_selftest(bool quick) {
         auto ry = f_ry.get();
         sp("        x-pol T0={:.4f} (grcwa 0.954)   y-pol T0={:.4f} "
                      "(grcwa 0.972)   ΣDE={:.6f}", rx.de_t0, ry.de_t0, rx.sum_de);
+        chk(std::abs(rx.de_t0 - 0.954) < 0.03 && std::abs(ry.de_t0 - 0.972) < 0.03,
+            "[8] asymmetric rect pillar matches grcwa (x & y pol)");
+        chk(std::abs(rx.sum_de - 1.0) < 1e-4, "[8] rect pillar energy conserved");
 
         // (d) Non-separable shapes via the grid (Laurent) factorization.
         sp("    (d) shaped meta-atoms (grid Laurent factorization, M=8):");
@@ -358,6 +366,8 @@ int run_selftest(bool quick) {
                      std::arg(shp.tx0) * 180.0 / pi, shp.sum_de);
         sp("        ring(in0.5):  T0={:.4f} φ={:.0f}°  ΣDE={:.6f}",
                      shr.de_t0, std::arg(shr.tx0) * 180.0 / pi, shr.sum_de);
+        chk(std::abs(shc.sum_de - 1.0) < 2e-3 && std::abs(shp.sum_de - 1.0) < 2e-3 &&
+            std::abs(shr.sum_de - 1.0) < 2e-3, "[8] shaped meta-atoms energy conserved");
     }});
 
     // ---- Demo 9: end-to-end metalens design -------------------------------
@@ -383,6 +393,8 @@ int run_selftest(bool quick) {
                      "focus)",
                      lens.rms_phase_error_deg);
         sp("    Mean pillar transmission |t| = {:.3f}", lens.mean_amplitude);
+        chk(lib.phase_span() * 180.0 / pi > 300.0, "[9] library phase coverage > 300 deg");
+        chk(lens.rms_phase_error_deg < 20.0, "[9] realized phase error < 20 deg");
 
         // Export the fabrication file and validate it round-trips.
         const std::string gds = "metalens.gds";
@@ -392,6 +404,8 @@ int run_selftest(bool quick) {
                      "({})",
                      gds, written, read_back,
                      (written == read_back && written > 0) ? "valid ✓" : "MISMATCH");
+
+        chk(written == read_back && written > 0, "[9] GDSII layout round-trips");
 
         // Does it actually focus? Propagate to the focal plane and measure.
         auto foc = analyze_focus(lens, lib, /*f=*/50.0, /*λ=*/0.532, /*D=*/20.0);
@@ -407,6 +421,9 @@ int run_selftest(bool quick) {
                      foc.fwhm_um, foc.diffraction_limit_um);
         sp("      encircled E    = {:.1f}% within first Airy null",
                      foc.encircled_energy * 100.0);
+        chk(std::abs(foc.fwhm_um - foc.diffraction_limit_um) < 0.1,
+            "[9] focal spot FWHM at the diffraction limit");
+        chk(foc.strehl > 0.5, "[9] designed lens focuses (Strehl > 0.5)");
 
         // Chromatic behavior: how the focus shifts across a wavelength band.
         auto chrom = analyze_chromatic(lens, lib, /*f=*/50.0, /*λ0=*/0.532,
