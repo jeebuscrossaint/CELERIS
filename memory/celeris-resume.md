@@ -1,12 +1,16 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-08-07. **HEAD at handoff:** `34b130c` (run `git log --oneline -25`).
-**START HERE (fresh session):** v1.0.0 is released + archived (Zenodo DOI wired). The current
-work is the **pre-submission hardening punch list** from the 4-referee review — see the section
-"Pre-submission hardening" below. Do NOT submit to CPC until that list is cleared. First: run
-`scripts/check.bat` equivalent on Linux — `cmake --build build-linux --target celeris && ./build-linux/celeris selftest`
-(must end "SELF-TEST: all locked-tolerance checks passed.", exit 0) — then pick up the punch list
-(next mechanical item = finish heavy-case gating; highest-VALUE item = #4 novelty reframe).
+**Last updated:** 2026-08-11 (session 2). **HEAD at handoff:** `2e0fb06` (run `git log --oneline -25`).
+**START HERE (fresh session):** v1.0.0 released + archived (Zenodo DOI wired). The
+**pre-submission hardening punch list (4-referee review) is now CLEARED for all blocking
+items #1–#5, plus #7 polish** — see "Pre-submission hardening" below for the per-item status.
+The paper is **19 pp**, compiles clean (`pdflatex → bibtex → pdflatex×2`, 0 undefined refs),
+and the selftest gates **55 locked-tolerance assertions** (exit 0). First, re-verify green:
+`cmake --build build-linux --target celeris && ./build-linux/celeris selftest`
+(must end "SELF-TEST: all locked-tolerance checks passed.", exit 0) and
+`cd paper && pdflatex paper && bibtex paper && pdflatex paper && pdflatex paper`.
+**Only OPTIONAL item #6 remains** (needs compute + a rebuilt venv/S4 — see below). Decide with
+Amarnath whether to do #6 or proceed to submission (the human-gated steps at the bottom).
 
 ## Update 2026-08-07
 - **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
@@ -80,32 +84,44 @@ list below is cleared.** Progress so far:
   kildishev2013, arbabi2015, berry1984, bomzon2002, aieta2015, wang2018, goodman, bornwolf, eigen,
   pybind11; fixed authorless meent. Factorization refs wired into Method; Validation wording now
   truthfully states the gating.
-- **STILL TODO (ranked):**
-  1. **Heavy-case gating — PARTLY DONE** (commit `d7c553d`): [8] and [9] now assert via `chk()`
-     (full suite = 25 checks, all PASS, exit 0). REMAINING: add `chk()` to [11],[12],[13],[14] and
-     convert the cosmetic `✓` in [15/15b/15c],[16],[17],[18],[19],[20],[21] to feed the counter, so
-     EVERY case gates (right now those still only print). Read each case's output first (via a full
-     `celeris selftest` log) to set tolerances with margin — don't guess.
-  2. **Method↔code fix:** Eq.(2) presents E-field `Ω²=PQ` but the 2D code solves an **H-field**
-     eigenproblem `ep2·kp − kkT` (Liu–Fan; see `src/celeris/rcwa/rcwa2d.cpp:346-364`). Rewrite Eq.(2)
-     to the H-field form + cite Liu–Fan, and give the explicit 2D block operator.
-  3. **Add Introduction + Conclusions sections;** wire the metasurface/PB \cites (yu2011, yu2014flat,
-     kildishev2013, arbabi2015, berry1984, bomzon2002, aieta2015, wang2018, goodman, bornwolf, eigen,
-     pybind11 are in the .bib but NOT yet \cited). Populate CPC Program Summary fields (Classification
-     number, Running time, No. of lines, Distribution format).
-  4. **Novelty reframe** (biggest desk-reject lever): make the group-delay design *limit* the
-     methodological spine ("a capability calling S4-in-a-loop can't give"); de-bias Table 1 (add a
-     maturity/adoption row, symmetric `∼`, fix `\na`→`\no` for reproductions, fill TORCWA license).
-  5. **Reproducibility:** wire `make_figures.py` + `s4_crosscheck.py` into `reproduce_all.sh` with
-     graceful S4-absent fallback; reword "cross-checked against grcwa/S4" (they're locked literals,
-     not live calls); `find_package(Eigen3)` fallback + pin ImGui to a tag (not `docking` branch);
-     document GCC≥14 requirement in README/Program Summary.
-  6. **Optional/bigger (need runs):** scale the Chen-2018 achromatic demo to an aperture where the
-     absolute focus lands (so it's a real device repro, not toy); add a TM S4-vs-CELERIS
-     common-limit convergence plot (the 3e-4 TM residual at M=40 is asserted-not-shown).
-  7. Minor: remaining acronyms (OAM/OPD/ALD/AVX2), figure-caption axis/units, pipeline schematic
-     figure, extra digits on the 0.93333 three-way-agreement claim.
+- **STATUS after session 2 (2026-08-11) — items #1–#5 + #7 DONE; only #6 (optional) left:**
+  1. **Heavy-case gating — DONE** (commit `1972d12`): added `chk()` to [11],[12],[13],[14] (new
+     tolerances read from real output with margin) and wired the existing `_ok` bools of
+     [15/15b/15c],[16],[17],[18],[19],[20],[21] into the atomic counter. **Full suite = 55
+     assertions, all PASS, exit 0; `--quick` = 20, exit 0.** Every case now gates.
+  2. **Method↔code fix — DONE** (commit `3e987e5`): Eq.(2) rewritten to the H-field eigenproblem
+     `M = diag(Eyy,Exx)(ω²I − J⟦1/ε⟧Jᵀ) − KKᵀ` with `J=[−Ky;Kx]`, matching
+     `src/celeris/rcwa/rcwa2d.cpp:346-364` exactly; added the 1D TE reduction `M_TE=ω²⟦ε⟧−Kx²`
+     as the sanity check; cite Liu–Fan (S4) + grcwa for the convention.
+  3. **Intro + Conclusions + cites + Program Summary — DONE** (commit `49a8ea3`): new Introduction
+     (metasurface/flat-optics context) and Conclusions (spine + outlook); **all 29 bib keys now
+     cited (0 uncited)**; Program Summary filled with classification (flagged for EM form), repo
+     link, No. of lines (~14k), distribution format, external libs, and a **measured Running time**
+     (~2.5 s single design; ~90 s validation suite).
+  4. **Novelty reframe — DONE** (commit `a962597`): group-delay design *limit* is now the
+     methodological spine (abstract headline + a "capability not convenience" paragraph in Statement
+     of need + "stages compose" in State of the field). Table 1 de-biased: added honest
+     "Established user base / maturity" row (CELERIS the sole `✗`), symmetric `∼` on integrated-design,
+     reproductions `\na`→`\no`, TORCWA license filled (**LGPL**, verified).
+  5. **Reproducibility — DONE** (commit `9a20a03`): `find_package(Eigen3≥3.4)` + FetchContent
+     fallback (verified: resolves to system 3.4.0); **ImGui pinned to `v1.92.9b-docking`** tag (GUI
+     build verified to link); `reproduce_all.sh` now runs `make_figures.py` + `s4_crosscheck.py` with
+     graceful skips when celeris/matplotlib/S4 absent; paper reworded (grcwa/S4 = locked literals, the
+     script is the live head-to-head); **GCC≥14 documented** in README + Program Summary.
+  7. **Polish — DONE** (commits `68b985c`, `2e0fb06`): defined OAM/OPD/ALD/AVX2; tightened the
+     0.93333 claim to "within grcwa's last quoted digit (~5e-6)"; **added the pipeline schematic
+     (Fig. 1, TikZ)** — the five-stage flow + coupling→group-delay-limit callout, the novelty thesis
+     visualized (referenced from Statement of need). Figure caption units already present.
+  6. **OPTIONAL / STRETCH — NOT done (needs compute + rebuilt venv/S4):** (a) scale the Chen-2018
+     achromatic demo from the current D=10 µm toy aperture to the real D=26.4 µm so the absolute
+     focus lands (real device repro); (b) add a TM S4-vs-CELERIS common-limit convergence plot (the
+     3e-4 TM residual at M=40 is asserted-not-shown). Both need the Python module (`pip install .`)
+     + matplotlib, and (b) needs S4 rebuilt (see the SESSION-ISOLATION WARNING for the S4 build
+     recipe). Decide with Amarnath: do #6, or treat hardening as complete and submit.
 - Full referee reports were in the 2026-08-11 chat; the above is the distilled punch list.
+- **Build note:** this box HAS a system Eigen3 3.4.0 (CMake now prefers it); GCC 16; `build-linux`
+  is the CPU-only dir. LaTeX toolchain: `elsarticle.cls` + `elsarticle-num.bst` present in `paper/`;
+  `tikz` + `arrows.meta`/`positioning` libs available for Fig. 1.
 
 - **NEXT STEP = submission (HUMAN — needs Amarnath's accounts) — ONLY after the list above:**
   1. Submit to **CPC** via Elsevier Editorial Manager (upload `paper.tex` + `paper.bib` +
