@@ -211,29 +211,44 @@ wavevectors normalized to $k_0=\omega/c$ into diagonal matrices $\mathbf{K}_x$,
 $\mathbf{K}_y$, and the Fourier coefficients of $\varepsilon$ into the Toeplitz
 convolution matrix $\llbracket\varepsilon\rrbracket$.
 
-Eliminating the longitudinal field components from Maxwell's curl equations
-reduces them, within a homogeneous-in-$z$ layer, to a coupled second-order
-system for the tangential electric-field harmonics
-$\mathbf{s}=[\mathbf{s}_x;\,\mathbf{s}_y]$,
+Eliminating the longitudinal field components ($E_z$, $H_z$) from Maxwell's curl
+equations reduces them, within a homogeneous-in-$z$ layer, to a second-order
+eigenproblem for the tangential \emph{magnetic}-field harmonics
+$\boldsymbol{\phi}=[\mathbf{h}_x;\,\mathbf{h}_y]$ --- the Liu--Fan / \texttt{grcwa}
+$\mathbf{H}$-field convention that CELERIS implements~\cite{liu2012s4,grcwa} ---
 \begin{equation}
-\frac{\mathrm{d}^2 \mathbf{s}}{\mathrm{d}(k_0 z)^2}
-   = \boldsymbol{\Omega}^2\,\mathbf{s},
-   \qquad \boldsymbol{\Omega}^2 = \mathbf{P}\mathbf{Q},
+\mathbf{M}\,\boldsymbol{\phi} = q^2\,\boldsymbol{\phi},
+\qquad
+\mathbf{M} = \boldsymbol{\mathcal{E}}\,
+   \big(\omega^2\mathbf{I} - \mathbf{J}\,\llbracket 1/\varepsilon\rrbracket\,
+   \mathbf{J}^{\mathsf{T}}\big) - \mathbf{K}\mathbf{K}^{\mathsf{T}},
 \label{eq:eig}
 \end{equation}
-where $\mathbf{P}$ and $\mathbf{Q}$ are assembled from $\mathbf{K}_x$,
-$\mathbf{K}_y$ and the convolution matrices of $\varepsilon$ and $1/\varepsilon$;
-in the one-dimensional TE case Eq.~\eqref{eq:eig} reduces to the transparent form
-$\boldsymbol{\Omega}^2 = \mathbf{K}_x^2 - \llbracket\varepsilon\rrbracket$.
-Diagonalizing $\boldsymbol{\Omega}^2 = \mathbf{W}\,\boldsymbol{\Gamma}^2\,
+where $q$ is the modal propagation constant ($k_z$) of each layer eigenmode,
+$\mathbf{J}=\left[\begin{smallmatrix}-\mathbf{K}_y\\ \mathbf{K}_x\end{smallmatrix}\right]$,
+$\mathbf{K}\mathbf{K}^{\mathsf{T}}=
+\left[\begin{smallmatrix}\mathbf{K}_x\mathbf{K}_x & \mathbf{K}_x\mathbf{K}_y\\[2pt]
+\mathbf{K}_y\mathbf{K}_x & \mathbf{K}_y\mathbf{K}_y\end{smallmatrix}\right]$,
+$\llbracket 1/\varepsilon\rrbracket$ is the Toeplitz matrix of the reciprocal
+permittivity, and $\boldsymbol{\mathcal{E}}=\mathrm{diag}(\mathbf{E}_{yy},
+\mathbf{E}_{xx})$ collects the directional inverse-rule permittivity operators
+defined in Sec.~\ref{sec:factorization}. The block structure makes the two
+polarizations explicit: setting $\mathbf{K}_y=\mathbf{0}$ (no $y$-variation)
+decouples Eq.~\eqref{eq:eig}, and the $\mathbf{h}_x$ block reduces to the standard
+one-dimensional TE operator
+$\mathbf{M}_{\mathrm{TE}}=\omega^2\llbracket\varepsilon\rrbracket-\mathbf{K}_x^2$
+(there $\mathbf{E}_{yy}\!\to\!\llbracket\varepsilon\rrbracket$), the $\mathbf{h}_y$
+block to the corresponding TM operator built from the inverse-rule matrix
+$\mathbf{E}_{xx}$. Diagonalizing $\mathbf{M}=\mathbf{W}\,\mathbf{Q}^2\,
 \mathbf{W}^{-1}$ gives the layer eigenmodes: the columns of $\mathbf{W}$ are the
-modal field profiles and the eigenvalues in $\boldsymbol{\Gamma}^2$ are the
-squared modal propagation constants, so the tangential fields are superpositions
-of forward- and backward-propagating modes $\propto\exp(\mp k_0\boldsymbol{\Gamma}
-z)$. This modal eigendecomposition is the dominant computational cost of a solve
-(Sec.~\ref{sec:performance}).
+modal field profiles and $q=\sqrt{\text{eig}\,\mathbf{M}}$ (with the branch chosen
+for decay/outgoing behavior) the propagation constants, so the tangential fields
+are superpositions of forward- and backward-propagating modes $\propto
+\exp(\pm\mathrm{i}\,q\,z)$. This modal eigendecomposition is the dominant
+computational cost of a solve (Sec.~\ref{sec:performance}).
 
 \subsection{Fourier factorization}
+\label{sec:factorization}
 
 The accuracy of the truncated expansion depends critically on how products of the
 discontinuous permittivity and field are represented in Fourier space. Following
