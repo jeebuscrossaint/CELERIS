@@ -74,7 +74,12 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
 ## Build
 
 Dependencies (Eigen, and for the GUI: GLFW + Dear ImGui) are fetched
-automatically by CMake. Requires a C++23 compiler.
+automatically by CMake (Eigen is used from the system if a `find_package(Eigen3)`
+install ≥ 3.4 is present, otherwise downloaded at configure time).
+
+**Requires a C++23 compiler** with `<print>` / `std::format` support — **GCC ≥ 14**
+(the version used in CI), or a comparably recent MSVC or Clang. Older GCC (≤ 13)
+lacks the `<print>` header and will not build.
 
 ```sh
 cmake -B build           # auto-detects this machine and builds the best variant

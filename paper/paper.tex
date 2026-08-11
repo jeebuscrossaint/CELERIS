@@ -106,7 +106,8 @@ Fourier modal method \sep inverse design \sep GDSII
       tracing). The modal eigensolve runs on the CPU; the GPU accelerates far-field
       propagation only.
 \item[Operating systems:] Linux and Windows (CPU build has no external runtime
-      dependencies).
+      dependencies). Requires a C++23 compiler with \texttt{<print>}/\texttt{std::format}
+      support --- GCC~$\geq$~14 (as used in CI) or a comparably recent MSVC/Clang.
 \item[Running time:] Seconds for a complete monochromatic metalens design: a
       $20\,\mu$m-aperture, $f=50\,\mu$m lens (a $57\times57$ meta-atom layout with
       full focal analysis and GDSII export) completes in $\approx$2.5\,s on a single
@@ -428,9 +429,10 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
 Correctness is checked by a self-test suite of more than 20 cases (55
 locked-tolerance assertions) against: closed-form
 Fresnel / transfer-matrix-method (TMM) and Bragg-mirror results; effective-medium theory
-in the deep-subwavelength limit; and two independent RCWA solvers,
-\texttt{grcwa}~\cite{grcwa} and Stanford~S$^4$~\cite{liu2012s4} (the field-standard FMM
-reference). Energy conservation ($R+T+A=1$, to $\sim$$5\times10^{-12}$ for axis-aligned
+in the deep-subwavelength limit; and reference values from two independent RCWA
+solvers, \texttt{grcwa}~\cite{grcwa} and Stanford~S$^4$~\cite{liu2012s4} (the
+field-standard FMM reference), locked into the suite as fixed literals so it runs
+without either solver installed. Energy conservation ($R+T+A=1$, to $\sim$$5\times10^{-12}$ for axis-aligned
 cases) is monitored as a necessary consistency check --- it is not by itself sufficient
 (a wrong reflection/transmission split can still conserve energy), so the correctness
 argument rests on the closed-form and cross-solver comparisons. Each check is asserted
@@ -444,8 +446,10 @@ incidence), the zeroth-order transmittance agrees to $7\times10^{-8}$ (TE) at $M
 (converging $10^{-5}\!\to\!10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM),
 the latter limited by the well-known slower TM Fourier convergence exhibited by
 \emph{both} solvers. This case also equals \texttt{grcwa}'s $0.93333$ to $\sim10^{-6}$
---- a three-way agreement. The comparison is reproducible via
-\texttt{paper/validation/s4\_crosscheck.py} and shown in Fig.~\ref{fig:validation}.
+--- a three-way agreement. This live head-to-head (run when \texttt{celeris} and
+S$^4$ are both installed) is the source of the literals locked in the self-test; it
+is reproducible via \texttt{paper/validation/s4\_crosscheck.py} and shown in
+Fig.~\ref{fig:validation}.
 
 \begin{figure}[t]
 \centering

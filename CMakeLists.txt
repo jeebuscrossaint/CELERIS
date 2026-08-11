@@ -50,17 +50,25 @@ endif()
 # --- External libraries -----------------------------------------------------
 include(FetchContent)
 
-# Eigen: header-only linear algebra. Downloaded at configure time, no install.
-FetchContent_Declare(
-    Eigen
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG        3.4.0
-    GIT_SHALLOW    ON
-)
-set(EIGEN_BUILD_DOC OFF)
-set(EIGEN_BUILD_TESTING OFF)
-set(BUILD_TESTING OFF)
-FetchContent_MakeAvailable(Eigen)
+# Eigen: header-only linear algebra. Prefer a system install (offline/packaged
+# builds, distro reviewers); otherwise download it at configure time. Both paths
+# expose the same imported target, Eigen3::Eigen.
+find_package(Eigen3 3.4 QUIET NO_MODULE)
+if(Eigen3_FOUND)
+    message(STATUS "Eigen: using system Eigen3 ${Eigen3_VERSION}")
+else()
+    message(STATUS "Eigen: system Eigen3 not found, fetching 3.4.0")
+    FetchContent_Declare(
+        Eigen
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG        3.4.0
+        GIT_SHALLOW    ON
+    )
+    set(EIGEN_BUILD_DOC OFF)
+    set(EIGEN_BUILD_TESTING OFF)
+    set(BUILD_TESTING OFF)
+    FetchContent_MakeAvailable(Eigen)
+endif()
 # ---------------------------------------------------------------------------
 
 # --- celeris_core: the GUI-agnostic engine library --------------------------
@@ -371,9 +379,10 @@ if(CELERIS_BUILD_GUI)
     FetchContent_MakeAvailable(glfw)
 
     # Dear ImGui ships no CMakeLists — fetch sources and build them ourselves.
-    # Use the docking branch for a dockable/tabbable multi-window workspace.
+    # Pin a specific docking *release tag* (not the floating `docking` branch) so
+    # the GUI build is reproducible; this tag carries the dockable multi-window API.
     FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG docking GIT_SHALLOW ON)
+        GIT_TAG v1.92.9b-docking GIT_SHALLOW ON)
     FetchContent_MakeAvailable(imgui)
 
     find_package(OpenGL REQUIRED)
