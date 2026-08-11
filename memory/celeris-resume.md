@@ -77,8 +77,11 @@ list below is cleared.** Progress so far:
   pybind11; fixed authorless meent. Factorization refs wired into Method; Validation wording now
   truthfully states the gating.
 - **STILL TODO (ranked):**
-  1. **Add `chk()` assertions to the heavy/full-suite cases** [8],[9],[12],[13] (and convert the
-     cosmetic `✓` in [19],[20],[21] to feed the counter) so the FULL suite gates, not just --quick.
+  1. **Heavy-case gating — PARTLY DONE** (commit `d7c553d`): [8] and [9] now assert via `chk()`
+     (full suite = 25 checks, all PASS, exit 0). REMAINING: add `chk()` to [11],[12],[13],[14] and
+     convert the cosmetic `✓` in [15/15b/15c],[16],[17],[18],[19],[20],[21] to feed the counter, so
+     EVERY case gates (right now those still only print). Read each case's output first (via a full
+     `celeris selftest` log) to set tolerances with margin — don't guess.
   2. **Method↔code fix:** Eq.(2) presents E-field `Ω²=PQ` but the 2D code solves an **H-field**
      eigenproblem `ep2·kp − kkT` (Liu–Fan; see `src/celeris/rcwa/rcwa2d.cpp:346-364`). Rewrite Eq.(2)
      to the H-field form + cite Liu–Fan, and give the explicit 2D block operator.
