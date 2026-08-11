@@ -1,8 +1,12 @@
 # CELERIS — session resume (handoff)
 
 **Last updated:** 2026-08-07. **HEAD at handoff:** `34b130c` (run `git log --oneline -25`).
-**Resuming in ~2 weeks (~late Aug 2026):** everything below is current; the next action is
-the v1.0 release (see "NEXT STEP #4" — starts with YOU enabling the repo on Zenodo).
+**START HERE (fresh session):** v1.0.0 is released + archived (Zenodo DOI wired). The current
+work is the **pre-submission hardening punch list** from the 4-referee review — see the section
+"Pre-submission hardening" below. Do NOT submit to CPC until that list is cleared. First: run
+`scripts/check.bat` equivalent on Linux — `cmake --build build-linux --target celeris && ./build-linux/celeris selftest`
+(must end "SELF-TEST: all locked-tolerance checks passed.", exit 0) — then pick up the punch list
+(next mechanical item = finish heavy-case gating; highest-VALUE item = #4 novelty reframe).
 
 ## Update 2026-08-07
 - **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
