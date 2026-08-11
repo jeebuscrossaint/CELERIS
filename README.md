@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/jeebuscrossaint/CELERIS/actions/workflows/ci.yml/badge.svg)](https://github.com/jeebuscrossaint/CELERIS/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21891345.svg)](https://doi.org/10.5281/zenodo.21891345)
 
 **GPU-ready metalens design via rigorous coupled-wave analysis (RCWA).**
 
@@ -56,9 +57,14 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
   chromatic focal shift (with per-wavelength meta-atom dispersion), off-axis
   spot-vs-field diagram, fabrication-tolerance Monte-Carlo, field of view.
 - **GPU acceleration** — the far-field propagation (Rayleigh–Sommerfeld sum over
-  pixels × pillars) runs as a CUDA kernel: **675× faster** at 120 µm / 92k
-  pillars (23.9 s → 35 ms) and **669×** at 250 µm / 401k pillars (147 s → 220 ms)
-  vs a 16-core CPU, agreeing to ~1e-5. Falls back to the CPU automatically.
+  pixels × pillars) runs as a CUDA kernel: **4.8–5.8×** over CELERIS's own
+  optimized 16-core CPU path at 92k pillars / 161² focal grid (178–202 ms →
+  35–37 ms), measured with the built-in `psfbench` on an RTX 4070 laptop GPU and
+  agreeing to machine precision. The speedup *shrinks* with focal-grid size
+  (2.0× at 321², 1.1× at 1024²): the kernel is memory-bound, since each thread
+  re-reads the full pillar list from global memory — shared-memory tiling is the
+  obvious next optimization. We quote the multicore comparison because it is the
+  apples-to-apples one. Falls back to the CPU automatically.
   (The general eigensolve stays on the CPU — cuSOLVER's `Xgeev` is host-serial
   and not competitive; `celeris gpubench` documents this.)
 - **Desktop GUI** — a dockable, utilitarian workspace (Dear ImGui): editable

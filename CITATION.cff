@@ -16,6 +16,9 @@ authors:
     affiliation: "University of Central Florida"
     orcid: "https://orcid.org/0009-0008-9460-082X"
 license: Apache-2.0
+version: "1.0.0"
+date-released: "2026-08-11"
+doi: 10.5281/zenodo.21891345
 repository-code: "https://github.com/jeebuscrossaint/CELERIS"
 keywords:
   - metalens
