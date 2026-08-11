@@ -61,7 +61,46 @@ the v1.0 release (see "NEXT STEP #4" — starts with YOU enabling the repo on Ze
   (proper `\corref`/`\cortext` corresponding-author footnote). Paper now **14 pp**, still
   compiles clean (`\llbracket` defined locally via `\providecommand` — no stmaryrd dep).
   Format verified against the CPC/elsarticle template. Build order unchanged.
-- **NEXT STEP = submission (HUMAN — needs Amarnath's accounts):**
+## Pre-submission hardening — 4-referee adversarial review (2026-08-11)
+Ran 4 parallel hostile-referee agents (physics rigor / novelty-desk-reject / reproducibility /
+presentation). No fatal flaw or fabrication found, but real issues. **DO NOT SUBMIT until the
+list below is cleared.** Progress so far:
+- **DONE wave 1 (commit ~round-1):** honesty/physics wording — PB rule `θ=φ/2` (was `σφ/2`);
+  group-delay *span* not absolute; FWHM "consistent with" not "exactly" λf/D; energy demoted to
+  necessary-not-sufficient check; GPU/CPU "single precision" not "max|Δ|=0"; dropped
+  "only/complete/entire"; fixed Performance table column count (`lccccc`→`lcccc`); defined TMM/NA.
+- **DONE wave 2 (this session):** (1) **BLOCKER — self-test now GATES**: `chk()` + atomic fail
+  counter, `run_selftest` returns non-zero on any failed locked tolerance; cases [1]-[7] have real
+  assertions; `--quick` runs 15 checks, exit 0. (2) **17 citations added to paper.bib**
+  (Crossref-verified): li1997, lalanne1996, granet1996, moharam1995etm, yu2011, yu2014flat,
+  kildishev2013, arbabi2015, berry1984, bomzon2002, aieta2015, wang2018, goodman, bornwolf, eigen,
+  pybind11; fixed authorless meent. Factorization refs wired into Method; Validation wording now
+  truthfully states the gating.
+- **STILL TODO (ranked):**
+  1. **Add `chk()` assertions to the heavy/full-suite cases** [8],[9],[12],[13] (and convert the
+     cosmetic `✓` in [19],[20],[21] to feed the counter) so the FULL suite gates, not just --quick.
+  2. **Method↔code fix:** Eq.(2) presents E-field `Ω²=PQ` but the 2D code solves an **H-field**
+     eigenproblem `ep2·kp − kkT` (Liu–Fan; see `src/celeris/rcwa/rcwa2d.cpp:346-364`). Rewrite Eq.(2)
+     to the H-field form + cite Liu–Fan, and give the explicit 2D block operator.
+  3. **Add Introduction + Conclusions sections;** wire the metasurface/PB \cites (yu2011, yu2014flat,
+     kildishev2013, arbabi2015, berry1984, bomzon2002, aieta2015, wang2018, goodman, bornwolf, eigen,
+     pybind11 are in the .bib but NOT yet \cited). Populate CPC Program Summary fields (Classification
+     number, Running time, No. of lines, Distribution format).
+  4. **Novelty reframe** (biggest desk-reject lever): make the group-delay design *limit* the
+     methodological spine ("a capability calling S4-in-a-loop can't give"); de-bias Table 1 (add a
+     maturity/adoption row, symmetric `∼`, fix `\na`→`\no` for reproductions, fill TORCWA license).
+  5. **Reproducibility:** wire `make_figures.py` + `s4_crosscheck.py` into `reproduce_all.sh` with
+     graceful S4-absent fallback; reword "cross-checked against grcwa/S4" (they're locked literals,
+     not live calls); `find_package(Eigen3)` fallback + pin ImGui to a tag (not `docking` branch);
+     document GCC≥14 requirement in README/Program Summary.
+  6. **Optional/bigger (need runs):** scale the Chen-2018 achromatic demo to an aperture where the
+     absolute focus lands (so it's a real device repro, not toy); add a TM S4-vs-CELERIS
+     common-limit convergence plot (the 3e-4 TM residual at M=40 is asserted-not-shown).
+  7. Minor: remaining acronyms (OAM/OPD/ALD/AVX2), figure-caption axis/units, pipeline schematic
+     figure, extra digits on the 0.93333 three-way-agreement claim.
+- Full referee reports were in the 2026-08-11 chat; the above is the distilled punch list.
+
+- **NEXT STEP = submission (HUMAN — needs Amarnath's accounts) — ONLY after the list above:**
   1. Submit to **CPC** via Elsevier Editorial Manager (upload `paper.tex` + `paper.bib` +
      `paper/figures/*.pdf`; solo corresponding author; `@ucf.edu` → APC waiver). At submission
      CPC creates the Mendeley Data / CPC Program Library deposit → fills the Program Summary
