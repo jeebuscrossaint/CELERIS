@@ -217,7 +217,7 @@ z)$. This modal eigendecomposition is the dominant computational cost of a solve
 
 The accuracy of the truncated expansion depends critically on how products of the
 discontinuous permittivity and field are represented in Fourier space. Following
-Li~\cite{li1996}, a product whose result is continuous across a material interface
+Li~\cite{li1996,li1997}, a product whose result is continuous across a material interface
 is factorized by Laurent's rule (direct convolution,
 $\llbracket\varepsilon\rrbracket$), whereas a product in which a field factor is
 discontinuous at the interface --- the normal electric field, whose product with
@@ -225,8 +225,8 @@ $\varepsilon$ is the continuous normal displacement --- must be factorized by th
 \emph{inverse rule}, i.e.\ with $\llbracket 1/\varepsilon\rrbracket^{-1}$ in place
 of $\llbracket\varepsilon\rrbracket$. Applying Laurent's rule to the discontinuous
 component yields qualitatively wrong TM-polarization efficiencies and fails to
-conserve energy at moderate truncation --- a well-documented artefact the inverse
-rule removes. For axis-aligned rectangular meta-atoms the permittivity is
+conserve energy at moderate truncation --- a well-documented
+artefact~\cite{lalanne1996,granet1996} the inverse rule removes. For axis-aligned rectangular meta-atoms the permittivity is
 separable, and CELERIS applies the directional inverse rule along $x$ and $y$
 independently (the Liu--Fan formulation also used by S$^4$~\cite{liu2012s4}); for
 arbitrary sampled shapes it falls back to Laurent factorization on a rasterized
@@ -242,7 +242,7 @@ $\exp(+k_0\boldsymbol{\Gamma} d)$ of the evanescent modes and is numerically
 unstable for thick layers or large truncation. CELERIS instead assembles a
 scattering matrix for each layer --- relating outgoing to incoming amplitudes, so
 that only decaying exponentials appear --- and composes the stack with the
-Redheffer star product~\cite{redheffer1962,rumpf2011},
+Redheffer star product~\cite{redheffer1962,rumpf2011,moharam1995etm},
 \begin{equation}
 \mathbf{S} = \mathbf{S}^{(1)} \star \mathbf{S}^{(2)},
 \end{equation}
@@ -350,8 +350,10 @@ in the deep-subwavelength limit; and two independent RCWA solvers,
 reference). Energy conservation ($R+T+A=1$, to $\sim$$5\times10^{-12}$ for axis-aligned
 cases) is monitored as a necessary consistency check --- it is not by itself sufficient
 (a wrong reflection/transmission split can still conserve energy), so the correctness
-argument rests on the closed-form and cross-solver comparisons. The suite runs on Linux
-(GCC) under continuous integration.
+argument rests on the closed-form and cross-solver comparisons. Each check is asserted
+against a fixed tolerance and the suite exits with a non-zero status if any assertion is
+violated, so a numerical regression fails the build; it runs on Linux (GCC) under
+continuous integration --- a fast subset on every push, the full suite nightly.
 
 Running CELERIS and S$^4$ on an \emph{identical} freestanding $n=1.5$ binary grating
 ($\Lambda = 0.3~\mu$m, fill 0.5, thickness $0.5~\mu$m, $\lambda = 0.5~\mu$m, normal

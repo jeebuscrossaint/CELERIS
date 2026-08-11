@@ -24,6 +24,15 @@ void sp(std::format_string<Ts...> fmt, Ts&&... args) {
     if (g_selftest_out) g_selftest_out->append(s);
     else std::print("{}", s);
 }
+
+// Suite-level failed-check count (atomic: cases run concurrently). A case records
+// a failed assertion via chk(); the runner returns non-zero if any check failed,
+// so a wrong number makes `celeris selftest` (and therefore CI) fail.
+std::atomic<int> g_selftest_failures{0};
+void chk(bool ok, const std::string& what) {
+    sp("    [{}] {}", ok ? "PASS" : "FAIL", what);
+    if (!ok) g_selftest_failures.fetch_add(1, std::memory_order_relaxed);
+}
 }  // namespace
 
 // Physics validation suite — every solver checked against closed-form results,
@@ -46,6 +55,8 @@ int run_selftest(bool quick) {
         sp("    R = {:.4f}  (expect ~0.0424)", res.R);
         sp("    T = {:.4f}", res.T);
         sp("    R + T = {:.6f}  (expect 1.000000)", res.R + res.T);
+        chk(std::abs(res.R + res.T - 1.0) < 1e-9, "[1] bare glass: R+T = 1");
+        chk(std::abs(res.R - 0.0424) < 3e-3, "[1] bare glass: R ~ 0.0424");
     }});
 
     // ---- Validation 2: quarter-wave AR coating ----------------------------
@@ -62,12 +73,15 @@ int run_selftest(bool quick) {
 
         sp("[2] Quarter-wave AR coating (n1 = {:.4f}, d = {:.1f} nm):",
                      n1.real(), d1 * 1000.0);
+        double R_design = 1.0;
         for (double wl : {0.450, 0.550, 0.650}) {
             auto res = solve_stack(materials::air(), stack, materials::bk7(),
                                    wl, normal, Pol::TE);
             sp("    lambda = {:.0f} nm:  R = {:.5f}{}", wl * 1000.0,
                          res.R, wl == 0.550 ? "   <- ~0 at design" : "");
+            if (wl == 0.550) R_design = res.R;
         }
+        chk(R_design < 1e-3, "[2] quarter-wave AR: R ~ 0 at design wavelength");
     }});
 
     // ---- Validation 3: distributed Bragg reflector ------------------------
@@ -80,6 +94,7 @@ int run_selftest(bool quick) {
         const double dL = lambda / (4.0 * nL.real());
 
         sp("[3] Bragg mirror (nH=2.30 / nL=1.46 quarter-wave pairs):");
+        double R2 = 0.0, R8 = 0.0;
         for (int pairs : {2, 4, 8}) {
             std::vector<Layer> stack;
             for (int p = 0; p < pairs; ++p) {
@@ -89,7 +104,11 @@ int run_selftest(bool quick) {
             auto res = solve_stack(materials::air(), stack, materials::bk7(),
                                    lambda, normal, Pol::TE);
             sp("    {} pairs:  R = {:.5f}", pairs, res.R);
+            if (pairs == 2) R2 = res.R;
+            if (pairs == 8) R8 = res.R;
         }
+        chk(R8 > 0.99, "[3] Bragg mirror: R >= 0.99 at 8 pairs");
+        chk(R8 > R2, "[3] Bragg mirror: R increases with pairs");
     }});
 
     // ---- Validation 4: RCWA degenerate grating == TMM slab ----------------
@@ -114,6 +133,10 @@ int run_selftest(bool quick) {
         sp("    RCWA: R = {:.6f}  T = {:.6f}  (order 0)",
                      rcwa.de_r[zero], rcwa.de_t[zero]);
         sp("    Σ DE = {:.6f}  (expect 1.000000)", rcwa.sum_de);
+        chk(std::abs(rcwa.de_r[zero] - tmm.R) < 1e-4 &&
+            std::abs(rcwa.de_t[zero] - tmm.T) < 1e-4,
+            "[4] RCWA(degenerate grating) == TMM(slab), order 0");
+        chk(std::abs(rcwa.sum_de - 1.0) < 1e-6, "[4] degenerate grating: energy conserved");
     }});
 
     // ---- Validation 5: real grating, energy conservation + convergence ----
@@ -127,13 +150,16 @@ int run_selftest(bool quick) {
         sp("[5] Freestanding grating (Λ=1.0µm, λ=0.5µm, normal):");
         sp("    {:>3}   {:>10}  {:>10}  {:>10}", "M", "DE_t(0)",
                      "DE_t(+1)", "Σ DE");
+        double maxdef = 0.0;
         for (int M : {2, 5, 10, 20}) {
             auto r = solve_rcwa_1d(materials::air(), g, materials::air(), 0.5,
                                    0.0, M, Pol::TE);
             std::size_t z = r.orders.size() / 2;
             sp("    {:>3}   {:>10.5f}  {:>10.5f}  {:>10.6f}", M,
                          r.de_t[z], r.de_t[z + 1], r.sum_de);
+            maxdef = std::max(maxdef, std::abs(r.sum_de - 1.0));
         }
+        chk(maxdef < 1e-6, "[5] freestanding grating: energy conserved (all M)");
 
         // (b) 1D TE convergence to an external reference (grcwa). A subwavelength
         // (Λ=0.3µm < λ=0.5µm) freestanding n=1.5 grating passes ONLY the zeroth
@@ -145,13 +171,16 @@ int run_selftest(bool quick) {
         sp("    1D TE convergence vs grcwa (Λ=0.3µm subwavelength, "
                      "T0 -> grcwa 0.93333):");
         sp("    {:>3}   {:>10}  {:>10}", "M", "TE T0", "|Δ grcwa|");
+        double t0_hiM = 0.0;
         for (int M : {4, 10, 20}) {
             auto r = solve_rcwa_1d(materials::air(), sub, materials::air(), 0.5,
                                    0.0, M, Pol::TE);
             std::size_t z = r.orders.size() / 2;
             sp("    {:>3}   {:>10.5f}  {:>10.2e}", M, r.de_t[z],
                          std::abs(r.de_t[z] - 0.93333));
+            if (M == 20) t0_hiM = r.de_t[z];
         }
+        chk(std::abs(t0_hiM - 0.93333) < 1e-3, "[5] 1D-TE subwavelength T0 -> grcwa 0.93333");
     }});
 
     // ---- Validation 6: TM polarization ------------------------------------
@@ -185,6 +214,11 @@ int run_selftest(bool quick) {
                      te.sum_de);
         sp("        TM: DE_t(+1)={:.5f}  Σ DE={:.6f}  (TE != TM ✓)",
                      tm.de_t[zt + 1], tm.sum_de);
+        chk(std::abs(tmm.R - rcwa_tm.de_r[z]) < 1e-4, "[6] TM degenerate grating == TMM-TM");
+        chk(std::abs(te.sum_de - 1.0) < 1e-6 && std::abs(tm.sum_de - 1.0) < 1e-6,
+            "[6] TE and TM grating energy conserved");
+        chk(std::abs(te.de_t[zt + 1] - tm.de_t[zt + 1]) > 1e-3,
+            "[6] solver distinguishes TE from TM");
     }});
 
     // ---- Validation 7: multilayer S-matrix solver -------------------------
@@ -217,17 +251,16 @@ int run_selftest(bool quick) {
         sp("    (a) single-layer solver  DE_t(0) = {:.8f}", ref.de_t[z]);
         sp("    (b) 1-layer stack        DE_t(0) = {:.8f}", st1.de_t[z]);
         sp("    (c) 5-sublayer stack     DE_t(0) = {:.8f}", stN.de_t[z]);
-        sp("        max|stack-ref| over all orders = {:.2e}",
-                     [&] {
-                         double e = 0.0;
-                         for (std::size_t i = 0; i < ref.de_t.size(); ++i) {
-                             e = std::max(e, std::abs(st1.de_t[i] - ref.de_t[i]));
-                             e = std::max(e, std::abs(stN.de_t[i] - ref.de_t[i]));
-                         }
-                         return e;
-                     }());
+        double stack_err = 0.0;
+        for (std::size_t i = 0; i < ref.de_t.size(); ++i) {
+            stack_err = std::max(stack_err, std::abs(st1.de_t[i] - ref.de_t[i]));
+            stack_err = std::max(stack_err, std::abs(stN.de_t[i] - ref.de_t[i]));
+        }
+        sp("        max|stack-ref| over all orders = {:.2e}", stack_err);
         sp("        Σ DE: single={:.6f} stack={:.6f} split={:.6f}",
                      ref.sum_de, st1.sum_de, stN.sum_de);
+        chk(stack_err < 1e-6, "[7] S-matrix stack reproduces single-layer solver");
+        chk(std::abs(ref.sum_de - 1.0) < 1e-6, "[7] single-grating energy conserved");
 
         // A real layered device: glass grating with a homogeneous AR-like cap.
         Rcwa1DStack device{1.0,
@@ -237,6 +270,7 @@ int run_selftest(bool quick) {
         auto dev = solve_rcwa_1d(materials::air(), device, materials::bk7(), 0.5,
                                  oblique, M, Pol::TM);
         sp("    (d) grating + cap on glass:  Σ DE = {:.6f}", dev.sum_de);
+        chk(std::abs(dev.sum_de - 1.0) < 1e-6, "[7] grating+cap device energy conserved");
     }});
 
     // ---- Validation 8: 2D RCWA (improved Li factorization) ----------------
@@ -919,5 +953,12 @@ int run_selftest(bool quick) {
     for (std::size_t i = 0; i < cases.size(); ++i)
         if (!out[i].empty())
             std::println(stderr, "  timing: case#{:<2} {:9.1f} ms", i, ms[i]);
-    return 0;
+
+    const int fails = g_selftest_failures.load();
+    std::println("");
+    if (fails == 0)
+        std::println("SELF-TEST: all locked-tolerance checks passed.");
+    else
+        std::println("SELF-TEST: {} check(s) FAILED — see [FAIL] lines above.", fails);
+    return fails == 0 ? 0 : 1;
 }
