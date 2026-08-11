@@ -406,12 +406,14 @@ this dense (pixels~$\times$~atoms) reduction is the step accelerated on the GPU
       S-matrix recursion~\cite{redheffer1962,rumpf2011}. The dense complex linear
       algebra runs on Eigen~\cite{eigen} (header-only), optionally routed through Intel MKL.
 \item \textbf{Design.} A library builder sweeps meta-atom geometry; phase profiles
-      (focusing, vortex/OAM, deflector, axicon, quadratic wide-FOV, freeform) drive both
+      (focusing, vortex/orbital-angular-momentum (OAM), deflector, axicon,
+      quadratic wide-FOV, freeform) drive both
       a propagation-phase path and an exact geometric (Pancharatnam--Berry) path.
       Achromatic design engineers group delay across a band via dispersive libraries
       (fill$\times$height, single-etch shape variety, and a PB variant).
 \item \textbf{Analysis.} Strehl/FWHM/encircled energy, PSF, wavefront
-      (OPD/Zernike/Mar\'echal), MTF, through-focus/caustic, chromatic, spot-vs-field,
+      (optical path difference [OPD]/Zernike/Mar\'echal), MTF, through-focus/caustic,
+      chromatic, spot-vs-field,
       full-field grid, tolerance, birefringence, and per-order efficiency/absorption
       budgets.
 \item \textbf{Acceleration.} The far-field Rayleigh--Sommerfeld propagation --- a dense
@@ -445,7 +447,8 @@ Running CELERIS and S$^4$ on an \emph{identical} freestanding $n=1.5$ binary gra
 incidence), the zeroth-order transmittance agrees to $7\times10^{-8}$ (TE) at $M=40$
 (converging $10^{-5}\!\to\!10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM),
 the latter limited by the well-known slower TM Fourier convergence exhibited by
-\emph{both} solvers. This case also equals \texttt{grcwa}'s $0.93333$ to $\sim10^{-6}$
+\emph{both} solvers. This case also matches \texttt{grcwa}'s reported $0.93333$ to
+within its last quoted digit ($\sim$$5\times10^{-6}$)
 --- a three-way agreement. This live head-to-head (run when \texttt{celeris} and
 S$^4$ are both installed) is the source of the literals locked in the self-test; it
 is reproducible via \texttt{paper/validation/s4\_crosscheck.py} and shown in
@@ -488,7 +491,8 @@ to end:
 \item Khorasaninejad et al., \emph{Science} \textbf{352}, 1190 (2016)
       \cite{khorasaninejad2016} --- an NA${=}0.80$ Pancharatnam--Berry TiO$_2$ nanofin
       metalens. CELERIS solves the published nanofin geometry with the deposited
-      ALD-TiO$_2$ optical constants and recovers near-ideal half-wave-plate behavior
+      atomic-layer-deposition (ALD) TiO$_2$ optical constants and recovers
+      near-ideal half-wave-plate behavior
       (transmitted-normalized conversion 96--99\%), an exact geometric phase, and a
       diffraction-limited focal spot.
 \item Chen et al., \emph{Nat.\ Nanotechnol.} \textbf{13}, 220 (2018) \cite{chen2018}
@@ -555,7 +559,8 @@ bounded by dense complex linear algebra (operator assembly, matrix inverses, and
 S-matrix recursion), which an optional Intel MKL backend accelerates. Because CELERIS
 parallelizes its unit-cell sweeps across cores itself, MKL is pinned to a single thread
 to avoid nested oversubscription; composed this way it is $2.3\times$ faster than the
-AVX2 build on an $M=8$ metalens library design (5.9~s vs 13.5~s, 16-core), with larger
+default header-only (AVX2 SIMD) build on an $M=8$ metalens library design
+(5.9~s vs 13.5~s, 16-core), with larger
 gains at higher Fourier order. The default build has no MKL dependency (header-only
 Eigen with AVX2); MKL is opt-in.
 
