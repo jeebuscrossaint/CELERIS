@@ -500,6 +500,8 @@ int run_selftest(bool quick) {
             }
         sp("    focusing map at grid nodes: max |Δφ| = {:.2e} rad {}",
                      max_err_node, max_err_node < 1e-9 ? "✓" : "FAIL");
+        chk(max_err_ramp < 1e-9, "[14] deflector ramp exact via bilinear freeform");
+        chk(max_err_node < 1e-9, "[14] focusing map exact at freeform grid nodes");
     }});
 
     // ---- Validation 15: achromatic (dispersion-engineered) design ----------
@@ -538,6 +540,8 @@ int run_selftest(bool quick) {
                      ds, da,
                      (da < ds && ad.rms_phase_error_deg < 25.0) ? "✓ (flatter + still focusing)"
                                                                 : "FAIL");
+        chk(da < ds && ad.rms_phase_error_deg < 25.0,
+            "[15] group-delay objective flattens chromatic drift, base phase kept");
     }});
 
     // ---- Validation 15b: SINGLE-ETCH achromatic (shape-diverse, one height) --
@@ -568,6 +572,8 @@ int run_selftest(bool quick) {
                      (single && gd_better && ad.rms_phase_error_deg < 25.0)
                          ? "✓ (GD-matched in ONE etch)"
                          : "FAIL");
+        chk(single && gd_better && ad.rms_phase_error_deg < 25.0,
+            "[15b] single-etch achromatic: GD RMS reduced at one height");
     }});
 
     // ---- Validation 15c: achromatic Pancharatnam-Berry (PB + dispersion) -----
@@ -598,6 +604,8 @@ int run_selftest(bool quick) {
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
                      (base_exact && gd_better) ? "✓ (exact base phase + GD-matched, ONE etch)"
                                                : "FAIL");
+        chk(base_exact && gd_better,
+            "[15c] achromatic PB: geometric base phase exact + GD RMS reduced");
     }});
 
     // ---- Reproduction 16: published device (Khorasaninejad 2016, 532 nm) ---
@@ -639,6 +647,10 @@ int run_selftest(bool quick) {
         sp("    brackets paper focusing eff ({:.0f}%) from above + exact phase  {}",
                      100.0 * paper_eff,
                      (hwp_ok && brackets && phase_ok && retard_ok) ? "✓" : "FAIL");
+        chk(hwp_ok, "[16] Khorasaninejad nanofin is a near-ideal HWP (>95% conversion)");
+        chk(brackets, "[16] transmitted-norm conversion brackets paper 73% from above");
+        chk(phase_ok, "[16] geometric (PB) phase exact");
+        chk(retard_ok, "[16] retardance within 15 deg of 180");
     }});
 
     // ---- Wide-FOV 17: quadratic-phase lens vs hyperbolic, off-axis ----------
@@ -671,6 +683,7 @@ int run_selftest(bool quick) {
         bool win = quad_edge > 0.8 && hyp_edge < 0.6 && quad_edge > hyp_edge + 0.3;
         sp("    quadratic-phase lens keeps a wide-field focus where the hyperbolic "
                      "fails  {}", win ? "✓" : "FAIL");
+        chk(win, "[17] quadratic-phase lens holds wide-field Strehl where hyperbolic collapses");
     }});
 
     // ---- Reproduction 18: broadband achromat (Chen 2018, 470-670 nm) -------
@@ -692,6 +705,7 @@ int run_selftest(bool quick) {
         const bool gd_at_ceiling = gd_req > 3.5 && gd_req < 5.0;  // ~4.4 fs, at nanofin limit
         sp("    required GD span = {:.2f} fs (600-nm-nanofin ceiling ~5 fs) -> "
                      "diameter is GD-limited  {}", gd_req, gd_at_ceiling ? "✓" : "FAIL");
+        chk(gd_at_ceiling, "[18] Chen-2018 required GD span (~4.4 fs) sits at the nanofin ceiling");
         // (b) engine: single-etch PB library at the published cell, std vs achromatic.
         const auto tio2 = Material::constant(cdouble{2.40, 0.0}, "TiO2~");
         std::vector<double> band = {0.470, 0.570, 0.670};   // band endpoints + center
@@ -706,6 +720,8 @@ int run_selftest(bool quick) {
                      "{:.2f}->{:.2f} fs  {}", ad.rms_phase_error_deg,
                      sd.rms_group_delay_error_fs, ad.rms_group_delay_error_fs,
                      (gd_at_ceiling && base_exact && gd_better) ? "✓" : "FAIL");
+        chk(base_exact && gd_better,
+            "[18] one-etch PB library: base phase exact + GD RMS reduced");
     }});
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------
@@ -727,6 +743,10 @@ int run_selftest(bool quick) {
                      "{:.3f},  loss = {:.2e}",
                      opt.achieved_phase_rad * 180.0 / pi, target_deg,
                      opt.achieved_amplitude, opt.loss);
+        chk(std::abs(opt.achieved_phase_rad * 180.0 / pi - target_deg) < 10.0,
+            "[11] optimizer reaches the 90 deg target phase (<10 deg)");
+        chk(opt.achieved_amplitude > 0.6,
+            "[11] optimized pillar keeps high transmission (|t| > 0.6)");
     }});
 
     // ---- Demo 12: form birefringence (polarization-multiplexed basis) -----
@@ -739,6 +759,7 @@ int run_selftest(bool quick) {
         sp("[12] Form birefringence (rectangular TiO2 pillar, 532nm):");
         sp("      {:>10}  {:>10}  {:>10}  {:>12}", "fill_x", "fill_y",
                      "φx-φy(°)", "|tx|,|ty|");
+        std::vector<double> retard_deg;  // |φx-φy| per asymmetry, to gate the trend
         for (auto [fx, fy] : {std::pair{0.5, 0.5}, {0.6, 0.4}, {0.7, 0.3}}) {
             Rcwa2DStack cell{0.35, 0.35, {RectCell2D{tio2, materials::air(), fx, fy, 0.6}}};
             auto rx = solve_rcwa_2d(materials::air(), cell, materials::bk7(),
@@ -748,10 +769,14 @@ int run_selftest(bool quick) {
             double dphi = std::arg(rx.tx0) - std::arg(ry.ty0);
             while (dphi > pi) dphi -= 2 * pi;
             while (dphi <= -pi) dphi += 2 * pi;
+            retard_deg.push_back(std::abs(dphi) * 180.0 / pi);
             sp("      {:>10.2f}  {:>10.2f}  {:>10.1f}  {:>5.2f},{:>5.2f}",
                          fx, fy, dphi * 180.0 / pi, std::abs(rx.tx0),
                          std::abs(ry.ty0));
         }
+        chk(retard_deg[0] < 1.0, "[12] symmetric pillar (fx=fy): ~0 form birefringence");
+        chk(retard_deg[2] > retard_deg[1] && retard_deg[1] > retard_deg[0],
+            "[12] retardance grows monotonically with pillar asymmetry");
     }});
 
     // ---- Validation 13: RCWA vs Effective-Medium Theory --------------------
@@ -769,6 +794,7 @@ int run_selftest(bool quick) {
         const auto nTM = Material::constant(cdouble{std::sqrt(eTM), 0.0}, "nTM");
         sp("[13] RCWA vs effective-medium theory (Λ=λ/20 subwavelength):");
         sp("      {:>4}  {:>14}  {:>14}  {:>9}", "pol", "RCWA R", "EMT-film R", "|Δ|");
+        double max_delta = 0.0;
         for (int te = 1; te >= 0; --te) {
             Pol pol = te ? Pol::TE : Pol::TM;
             BinaryGrating1D g{ridge, materials::air(), 0.025, f, d};  // Λ = λ/20
@@ -776,9 +802,12 @@ int run_selftest(bool quick) {
             double rcwaR = rg.de_r[rg.orders.size() / 2];
             auto slab = solve_stack(materials::air(), {{te ? nTE : nTM, d}},
                                     materials::air(), lam, 0.0, pol);
+            max_delta = std::max(max_delta, std::abs(rcwaR - slab.R));
             sp("      {:>4}  {:>14.4f}  {:>14.4f}  {:>9.4f}",
                          te ? "TE" : "TM", rcwaR, slab.R, std::abs(rcwaR - slab.R));
         }
+        chk(max_delta < 2e-3,
+            "[13] subwavelength grating R -> effective-medium film R (TE & TM)");
     }});
 
     // ---- Validation 19: named material registry (real n,k library) ---------
@@ -817,6 +846,11 @@ int run_selftest(bool quick) {
                      au.imag(), au_ok ? "✓" : "FAIL", k_csi, k_asi,
                      si_ok ? "✓" : "FAIL", alias_ok ? "✓" : "FAIL",
                      files_ok ? "✓" : "FAIL");
+        chk(sapphire_ok, "[19] sapphire n@532 = 1.7717 (analytic, lossless)");
+        chk(au_ok, "[19] gold@600 tabulated n,k (small n, large k)");
+        chk(si_ok, "[19] c-Si k < a-Si k at 532nm");
+        chk(alias_ok, "[19] name aliases resolve (gold==au, silica==sio2)");
+        chk(files_ok, "[19] every tabulated material data file present on disk");
     }});
 
     cases.push_back(Case{true, [&]() {
@@ -845,6 +879,10 @@ int run_selftest(bool quick) {
                      bt.n_prop_t, o0_ok ? "✓" : "FAIL");
         sp("    Au:   R+T+A={:.6f}, absorption {:.3f} (lossy metal) {}",
                      sum_g, bg.absorption, g_ok ? "✓" : "FAIL");
+        chk(e_ok, "[20] lossless TiO2 atom: R+T+A = 1");
+        chk(a_ok, "[20] lossless TiO2 atom: ~0 absorption");
+        chk(o0_ok, "[20] single propagating order carries all transmitted power");
+        chk(g_ok, "[20] lossy Au atom: real absorption, energy accounted");
     }});
 
     cases.push_back(Case{true, [&]() {
@@ -885,6 +923,10 @@ int run_selftest(bool quick) {
                      s00, ref_ok ? "✓" : "FAIL", corner, fall_ok ? "✓" : "FAIL",
                      cmax - cmin, sym_ok ? "✓" : "FAIL", at(c, c).fwhm_x_um, dl,
                      dl_ok ? "✓" : "FAIL");
+        chk(ref_ok, "[21] on-axis field-grid point is the rel-Strehl reference");
+        chk(fall_ok, "[21] Strehl degrades off-axis");
+        chk(sym_ok, "[21] 4-corner rotational symmetry of the field grid");
+        chk(dl_ok, "[21] on-axis spot is ~diffraction-limited");
     }});
 
 #ifdef CELERIS_USE_CUDA
