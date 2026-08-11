@@ -10,6 +10,8 @@
 \usepackage{booktabs}
 \usepackage{pifont}
 \usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 
 % Double square brackets for the Toeplitz convolution matrices (no extra package).
 \providecommand{\llbracket}{[\![}
@@ -158,7 +160,8 @@ propagating to a focal plane, computing imaging metrics, running fabrication-tol
 studies, and emitting a GDSII layout. Each researcher re-implements this scaffolding,
 and the glue code is rarely validated or shared.
 
-CELERIS provides that pipeline as a single validated tool. The target audience is
+CELERIS provides that pipeline (Fig.~\ref{fig:pipeline}) as a single validated tool.
+The target audience is
 metasurface and metalens researchers who need to go from an optical specification
 (focal length, aperture, wavelength, material) to a fabrication-ready, performance-
 characterized design without stitching together a solver, a plotting stack, and a
@@ -177,6 +180,46 @@ device lies inside or outside the physically achievable region. Recovering this 
 a published broadband achromat (Sec.~\ref{sec:validation}) is the paper's central
 demonstration that an integrated, validated workflow yields device-level physics that a
 bare kernel wrapped in a hand-written loop does not.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm and 7mm,
+  stage/.style={draw, rounded corners, align=center, minimum height=13mm,
+                minimum width=22mm, fill=black!4, font=\small\sffamily},
+  io/.style={draw, dashed, rounded corners, align=center, font=\footnotesize,
+             fill=black!2, inner sep=3pt},
+  arr/.style={-{Latex[length=2.2mm]}, thick}]
+  \node[stage] (solve)  {RCWA / FMM\\solver\\{\footnotesize 1D, 2D-vec}};
+  \node[stage, right=of solve]  (lib)    {Meta-atom\\library\\{\footnotesize $(\phi,T)$ plane}};
+  \node[stage, right=of lib]    (design) {Design\\{\footnotesize phase map / PB /}\\{\footnotesize achromatic}};
+  \node[stage, right=of design] (ana)    {Analysis\\{\footnotesize Strehl, PSF /}\\{\footnotesize MTF, tolerance}};
+  \node[stage, right=of ana]    (gds)    {Fabrication\\{\footnotesize GDSII}\\{\footnotesize layout}};
+  \draw[arr] (solve)  -- (lib);
+  \draw[arr] (lib)    -- (design);
+  \draw[arr] (design) -- (ana);
+  \draw[arr] (ana)    -- (gds);
+  % one shared data model spanning all stages
+  \node[io, below=8mm of design] (limit)
+    {\textbf{coupled} $\Rightarrow$ group-delay design limit, Eq.~\eqref{eq:gdspan}
+     (not expressible by a solver-in-a-loop)};
+  \draw[arr, dashed] (lib.south)    -- ++(0,-3mm) -| (limit.north);
+  \draw[arr, dashed] (design.south) -- (limit.north);
+  \draw[arr, dashed] (ana.south)    -- ++(0,-3mm) -| (limit.north);
+  % validation (top) + interfaces (bottom) bands, centered to avoid overlap
+  \node[io, above=4mm of design] (val)
+    {Validated against grcwa / S$^4$ / TMM / EMT --- locked self-test};
+  \node[io, below=3mm of limit] (ifc)
+    {Interfaces: C++ / CLI / Python / GUI};
+\end{tikzpicture}
+\caption{The CELERIS pipeline. The five stages share one data model, so the
+integration is not glue but a capability: the coupling of the dispersive
+$(\phi,T)$ library, the design map, and the focal analysis yields the group-delay
+design limit (Sec.~\ref{sec:method}), a device-level result a bare solver called in
+a loop cannot produce. The whole path is validated against independent solvers and
+closed-form physics by a locked self-test.}
+\label{fig:pipeline}
+\end{figure*}
 
 %% ---------------------------------------------------------------------------
 \section{State of the field}
