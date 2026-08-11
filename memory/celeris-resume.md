@@ -55,6 +55,12 @@ the v1.0 release (see "NEXT STEP #4" — starts with YOU enabling the repo on Ze
   `10.5281/zenodo.21891346`** (this exact code), **concept DOI `10.5281/zenodo.21891345`**
   (always latest). Wired in: `paper.tex` Program Summary (version+concept), README badge +
   `CITATION.cff` (concept DOI, version 1.0.0, date-released). CHANGELOG stamped `[1.0.0]`.
+- **Paper strengthened (commits through `214f3bc`).** Added a rigorous **§3 Method**
+  (FMM eigenproblem, Li/Liu–Fan factorization, Redheffer S-matrix, PB spin-flip phase,
+  group-delay achromat limit — correct standard equations, cited); fixed frontmatter
+  (proper `\corref`/`\cortext` corresponding-author footnote). Paper now **14 pp**, still
+  compiles clean (`\llbracket` defined locally via `\providecommand` — no stmaryrd dep).
+  Format verified against the CPC/elsarticle template. Build order unchanged.
 - **NEXT STEP = submission (HUMAN — needs Amarnath's accounts):**
   1. Submit to **CPC** via Elsevier Editorial Manager (upload `paper.tex` + `paper.bib` +
      `paper/figures/*.pdf`; solo corresponding author; `@ucf.edu` → APC waiver). At submission
