@@ -10,6 +10,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_internal.h"  // DockBuilder for the default layout
+#include "roboto_regular.h"  // bundled Roboto (Apache-2.0), compiled into the binary
 
 #include <algorithm>
 #include <atomic>
@@ -116,12 +117,17 @@ int main() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  // dockable/tabbable workspace
-    // Use the system Segoe UI font (present on all Windows) for a real-software
-    // look instead of the pixelated default. Falls back to the default if absent.
+    // Bundled Roboto (Apache-2.0), compiled into the binary as a compressed byte
+    // array -- a crisp, identical UI on every platform with NO external font file
+    // (the old code hard-coded a Windows Segoe UI path, so Linux fell back to the
+    // pixelated ImGui bitmap default). Oversampling keeps small text sharp.
     {
-        const char* font_path = "C:\\Windows\\Fonts\\segoeui.ttf";
-        std::ifstream probe(font_path);
-        if (probe.good()) io.Fonts->AddFontFromFileTTF(font_path, 19.0f);
+        ImFontConfig cfg;
+        cfg.OversampleH = 3;
+        cfg.OversampleV = 1;
+        cfg.PixelSnapH = true;
+        io.Fonts->AddFontFromMemoryCompressedTTF(
+            roboto_regular_compressed_data, roboto_regular_compressed_size, 18.0f, &cfg);
     }
     bool dark_mode = false;
     apply_theme(dark_mode);
