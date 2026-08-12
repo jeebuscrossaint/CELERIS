@@ -108,8 +108,10 @@ Material make_pillar(const Params& p);
 const Material& make_substrate(const Params& p);
 bool save_project(const std::string& path, const Params& p);
 bool load_project(const std::string& path, Params& p);
-bool save_session(const std::string& path, const Params& p, bool dark);
-bool load_session(const std::string& path, Params& p, bool& dark);
+// The session also carries opaque UI prefs the engine doesn't interpret: the
+// dark-mode flag and a window-visibility bitmask (win_flags; -1 = none stored).
+bool save_session(const std::string& path, const Params& p, bool dark, int win_flags);
+bool load_session(const std::string& path, Params& p, bool& dark, int& win_flags);
 
 void set_phase(const char* msg, float progress);
 void run_design(Params p);

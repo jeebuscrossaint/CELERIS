@@ -131,26 +131,25 @@ bool load_project(const std::string& path, Params& p) {
 // The session file is the project format plus a UI-preferences line (dark mode).
 // Written on exit, loaded silently on startup, so the app reopens where you left
 // it. load_project ignores the extra dark_mode key, so we re-scan for it here.
-bool save_session(const std::string& path, const Params& p, bool dark) {
+bool save_session(const std::string& path, const Params& p, bool dark, int win_flags) {
     if (!save_project(path, p)) return false;
     std::ofstream f(path, std::ios::app);
     if (!f) return false;
     f << "dark_mode " << (dark ? 1 : 0) << "\n";
+    f << "win_flags " << win_flags << "\n";
     return static_cast<bool>(f);
 }
 
-bool load_session(const std::string& path, Params& p, bool& dark) {
+bool load_session(const std::string& path, Params& p, bool& dark, int& win_flags) {
     if (!load_project(path, p)) return false;
     std::ifstream f(path);
     std::string line;
     while (std::getline(f, line)) {
         std::istringstream ss(line);
         std::string key;
-        if (ss >> key && key == "dark_mode") {
-            int d = 0;
-            if (ss >> d) dark = (d != 0);
-            break;
-        }
+        if (!(ss >> key)) continue;
+        if (key == "dark_mode") { int d = 0; if (ss >> d) dark = (d != 0); }
+        else if (key == "win_flags") ss >> win_flags;
     }
     return true;
 }

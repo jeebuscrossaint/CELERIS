@@ -117,6 +117,11 @@ int main() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  // dockable/tabbable workspace
+    // Whether a saved layout already exists. ImGui restores dock sizes and the
+    // selected tab of each node from imgui.ini, but only if we DON'T rebuild the
+    // default layout over it -- so we build defaults only on the first-ever run.
+    const bool had_ini = std::ifstream(io.IniFilename ? io.IniFilename
+                                                      : "imgui.ini").good();
     // Bundled Roboto (Apache-2.0), compiled into the binary as a compressed byte
     // array -- a crisp, identical UI on every platform with NO external font file
     // (the old code hard-coded a Windows Segoe UI path, so Linux fell back to the
@@ -135,7 +140,8 @@ int main() {
     const char* kSessionFile = "celeris_session.celeris";
     Params params;
     bool dark_mode = false;
-    load_session(kSessionFile, params, dark_mode);
+    int loaded_win_flags = -1;
+    load_session(kSessionFile, params, dark_mode, loaded_win_flags);
     apply_theme(dark_mode);
     set_titlebar_dark(window, dark_mode);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -144,6 +150,23 @@ int main() {
     unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0, caustic_tex = 0;
     unsigned int polar_psf_x_tex = 0, polar_psf_y_tex = 0;
     int layout_mode = 0, layout_built_mode = -1;
+    bool reset_layout = false;  // set by View > Reset Layout to rebuild the default dock
+
+    // Window-visibility toggles, persisted in the session as a bitmask so the app
+    // reopens with the same panels shown. The order below defines the bit order --
+    // keep it stable (append new windows at the end).
+    bool win_lens = true, win_stack = true, win_mats = true, win_sum = true,
+         win_lib = true, win_layout = true, win_gds = true, win_foc = true,
+         win_psf = true, win_wf = true, win_mtf = true, win_tf = true,
+         win_spot = true, win_polar = true, win_achro = true, win_chr = true,
+         win_tol = true, win_fov = true, win_log = true, win_perf = false;
+    bool* const win_ptrs[] = {
+        &win_lens, &win_stack, &win_mats, &win_sum, &win_lib, &win_layout,
+        &win_gds, &win_foc, &win_psf, &win_wf, &win_mtf, &win_tf, &win_spot,
+        &win_polar, &win_achro, &win_chr, &win_tol, &win_fov, &win_log, &win_perf};
+    const int n_win = static_cast<int>(sizeof(win_ptrs) / sizeof(win_ptrs[0]));
+    if (loaded_win_flags >= 0)
+        for (int i = 0; i < n_win; ++i) *win_ptrs[i] = (loaded_win_flags >> i) & 1;
     std::vector<unsigned int> spot_texs;
     bool have_result = false, have_tol = false, have_fov = false, have_spot = false;
     bool have_polar = false, have_achro = false;
@@ -200,12 +223,7 @@ int main() {
         static bool show_about = false, show_save = false, show_open = false;
         static char proj_path[256] = "metalens.celeris";
         static std::string proj_msg;
-        static bool win_lens = true, win_sum = true, win_foc = true, win_psf = true,
-                    win_chr = true, win_tol = true, win_fov = true, win_log = true,
-                    win_wf = true, win_mtf = true, win_tf = true, win_stack = true,
-                    win_mats = true, win_layout = true, win_spot = true,
-                    win_gds = true, win_polar = true, win_lib = true,
-                    win_achro = true, win_perf = false;
+        // win_* visibility toggles are declared before the loop (persisted session state).
         const bool can_act = have_result && !running;
 
         if (ImGui::BeginMainMenuBar()) {
@@ -256,6 +274,8 @@ int main() {
                     apply_theme(dark_mode);
                     set_titlebar_dark(window, dark_mode);
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Reset Layout")) reset_layout = true;
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Help")) {
@@ -308,11 +328,16 @@ int main() {
             ImGui::EndPopup();
         }
 
-        // Dockable workspace, with a sensible default layout on first launch.
+        // Dockable workspace. Build the default layout only when there is no saved
+        // one to restore (first-ever run, or after Reset Layout); otherwise ImGui
+        // reloads dock sizes and the selected tab of each node from imgui.ini.
         ImGuiID dockid = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
         static bool first_layout = true;
-        if (first_layout) {
+        if (first_layout || reset_layout) {
+            const bool build_default = reset_layout || !had_ini;
             first_layout = false;
+            reset_layout = false;
+            if (build_default) {
             ImGui::DockBuilderRemoveNode(dockid);
             ImGui::DockBuilderAddNode(dockid, ImGuiDockNodeFlags_DockSpace);
             ImGui::DockBuilderSetNodeSize(dockid, ImGui::GetMainViewport()->WorkSize);
@@ -343,6 +368,7 @@ int main() {
             ImGui::DockBuilderDockWindow("Log", cbottom);
             ImGui::DockBuilderDockWindow("Performance", cbottom);
             ImGui::DockBuilderFinish(dockid);
+            }
         }
 
         auto kvrow = [](const char* k, const std::string& v) {
@@ -1529,8 +1555,11 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    // Persist the session (current parameters + dark-mode) for next launch.
-    save_session(kSessionFile, params, dark_mode);
+    // Persist the session (parameters + dark-mode + window visibility) for next launch.
+    int win_flags = 0;
+    for (int i = 0; i < n_win; ++i)
+        if (*win_ptrs[i]) win_flags |= (1 << i);
+    save_session(kSessionFile, params, dark_mode, win_flags);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
