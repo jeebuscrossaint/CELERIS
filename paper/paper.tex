@@ -224,10 +224,13 @@ closed-form physics by a locked self-test.}
 
 %% ---------------------------------------------------------------------------
 \section{State of the field}
-Table~\ref{tab:compare} positions CELERIS against widely used RCWA/FMM codes. CELERIS
-deliberately \emph{does not} compete on automatic differentiation (see Limitations);
-it competes on the integrated design--analysis--fabrication workflow, which the solver
-kernels do not provide.
+Table~\ref{tab:compare} positions CELERIS against widely used open RCWA/FMM
+\emph{solver kernels}; the two integrated open metasurface pipelines closest to
+CELERIS --- \texttt{metabox}~\cite{metabox} and \texttt{MetaCraft}~\cite{metacraft}
+--- are discussed separately below, as they are design/optimization frameworks
+rather than solver kernels. CELERIS deliberately \emph{does not} compete on automatic
+differentiation (see Limitations); it competes on the forward analysis-and-design
+battery that the solver kernels do not provide.
 
 \begin{table*}[t]
 \centering
@@ -263,13 +266,18 @@ Desktop GUI                     & \no & \no & \no & \no & \no & \no & \textbf{\y
 We state the trade-off plainly: the GPU/autodiff-native solvers (TORCWA, fmmax, meent)
 are \emph{stronger solver kernels} --- they run the full modal solve on the GPU with
 automatic differentiation, whereas CELERIS GPU-accelerates only far-field propagation
-and optimizes by finite differences (an analytic adjoint is planned). CELERIS's
-contribution is orthogonal: it is, to our knowledge, the only open-source tool that wraps
-the solver in an integrated, validated \textbf{design $\to$ analysis $\to$ fabrication}
-workflow --- integrated
-design, the optical analysis battery, achromatic/Pancharatnam--Berry recipes, GDSII
-export, published-device reproductions, and a GUI --- none of which the solver kernels
-provide. Crucially, these stages \emph{compose}: sharing one data model lets CELERIS
+and optimizes by finite differences (an analytic adjoint is planned). CELERIS's contribution is orthogonal, and we state its boundary honestly. Open
+pipelines that map a target phase onto an RCWA-characterized library and export GDSII
+already exist: \texttt{metabox}~\cite{metabox}, which additionally supports
+broadband/achromatic optimization, and \texttt{MetaCraft}~\cite{metacraft}. These are
+\emph{inverse-design} frameworks --- they optimize a merit function (e.g.\ a
+modulation-transfer figure) rather than exposing a \emph{forward} optical-analysis
+battery. CELERIS instead couples the solver to PSF, Strehl, MTF, wavefront/Zernike,
+through-focus and tolerance diagnostics, alongside \emph{both} geometric-phase
+(Pancharatnam--Berry) and group-delay (achromatic) closed-form recipes,
+published-device reproductions, and a GUI, on one validated data model. To our
+knowledge this forward analysis-and-recipe bundle is not provided by any other
+open-source tool. Crucially, these stages \emph{compose}: sharing one data model lets CELERIS
 express device-level analyses --- most sharply, the group-delay design limit of
 Sec.~\ref{sec:method} --- that a kernel wrapped in a hand-written loop cannot, because the
 limit is a joint property of the library, the design map, and the focal metrics taken
