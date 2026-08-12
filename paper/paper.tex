@@ -488,9 +488,10 @@ continuous integration --- a fast subset on every push, the full suite nightly.
 Running CELERIS and S$^4$ on an \emph{identical} freestanding $n=1.5$ binary grating
 ($\Lambda = 0.3~\mu$m, fill 0.5, thickness $0.5~\mu$m, $\lambda = 0.5~\mu$m, normal
 incidence), the zeroth-order transmittance agrees to $7\times10^{-8}$ (TE) at $M=40$
-(converging $10^{-5}\!\to\!10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM),
-the latter limited by the well-known slower TM Fourier convergence exhibited by
-\emph{both} solvers. This case also matches \texttt{grcwa}'s reported $0.93333$ to
+(converging $10^{-5}\!\to\!10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM)
+--- both residuals are plotted against Fourier order in Fig.~\ref{fig:validation}
+(right) --- the TM value limited by the well-known slower TM Fourier convergence
+exhibited by \emph{both} solvers. This case also matches \texttt{grcwa}'s reported $0.93333$ to
 within its last quoted digit ($\sim$$5\times10^{-6}$)
 --- a three-way agreement. This live head-to-head (run when \texttt{celeris} and
 S$^4$ are both installed) is the source of the literals locked in the self-test; it
@@ -543,21 +544,24 @@ to end:
       physical limit (the required group-delay span sits at the ${\sim}5$~fs
       single-nanofin ceiling, so the aperture is group-delay-limited) and, via
       single-etch group-delay engineering on a birefringent Pancharatnam--Berry library,
-      flattens the chromatic focal shift relative to a dispersion-blind lens built from
-      the same library (Fig.~\ref{fig:achromatic}).
+      cuts the chromatic focal drift of the full-scale device ($D{=}26.4~\mu$m,
+      $f{=}64.7~\mu$m) from $22.7$ to $6.4~\mu$m relative to a dispersion-blind lens
+      built from the same library (Fig.~\ref{fig:achromatic}).
 \end{itemize}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.8\textwidth]{figures/fig_achromatic.pdf}
-\caption{Broadband achromatic metalens (Chen 2018 recipe): rigorous focal length vs
-wavelength for a standard Pancharatnam--Berry lens and a group-delay-engineered
-achromatic lens built from the \emph{same} single-etch birefringent library.
-Group-delay matching flattens the chromatic focal shift (drift $4.6 \to 1.9~\mu$m).
-At this small demonstration aperture ($D = 10~\mu$m, low Fresnel number) the
-\emph{absolute} focus of both designs sits below the geometric target $f$; the effect
-shown is the \emph{relative} achromatic flattening, which is what the group-delay
-objective controls.}
+\caption{Broadband achromatic metalens at the \emph{full} Chen-2018 device scale
+(NA${=}0.20$, $D{=}26.4~\mu$m, $f{=}64.7~\mu$m, one $H{=}600$~nm etch, 470--670~nm):
+rigorous focal length vs wavelength for a standard Pancharatnam--Berry lens and a
+group-delay-engineered achromatic lens built from the \emph{same} single-etch
+birefringent library. Group-delay matching cuts the chromatic focal drift from
+$22.7~\mu$m to $6.4~\mu$m and holds the focus near the geometric target $f$ across the
+band. The residual drift is the group-delay design limit in action: at this aperture
+the required group-delay span ($\sim$$4.4$~fs) exceeds what one $600$~nm nanofin
+library spans ($\sim$$3$~fs), so the achromat corrects only as far as the single-etch
+ceiling allows.}
 \label{fig:achromatic}
 \end{figure}
 

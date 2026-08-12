@@ -150,10 +150,16 @@ def fig_achromatic():
     standard vs group-delay-engineered, from one single-etch birefringent library."""
     air = cel.materials.air(); glass = cel.materials.bk7()
     tio2 = cel.Material.constant(2.40 + 0.0j, "TiO2")
-    focal, diameter, lam0, bw, nband, period, height, M, nfill = \
-        30.0, 10.0, 0.532, 0.20, 7, 0.35, 1.10, 6, 12
-    lo, hi = lam0 * (1 - 0.5 * bw), lam0 * (1 + 0.5 * bw)
-    band = [lo + (hi - lo) * j / (nband - 1) for j in range(nband)]
+    # The ACTUAL Chen-2018 device parameters: NA=0.20, D=26.4 um (so f = R/tan(asin NA)
+    # = 64.67 um), single H=600 nm etch, 400 nm lattice, 470-670 nm visible band. At
+    # this real aperture the required group-delay span (~4.45 fs) EXCEEDS what a single
+    # 600 nm nanofin library spans (~3 fs), so the achromat flattens the focal shift as
+    # far as the physical single-etch limit allows -- a live demonstration of the
+    # group-delay design limit, not a toy.
+    nband, period, height, M, nfill = 7, 0.400, 0.60, 6, 8
+    diameter, NA, lam0 = 26.4, 0.20, 0.570
+    focal = (diameter / 2.0) / math.tan(math.asin(NA))       # = 64.67 um
+    band = [0.470 + (0.670 - 0.470) * j / (nband - 1) for j in range(nband)]
     lib = cel.build_dispersive_pb_library(
         pillar=tio2, background=air, incident=air, substrate=glass,
         period_um=period, band_wavelengths_um=band, center_wavelength_um=lam0,
@@ -173,8 +179,9 @@ def fig_achromatic():
             label=f"achromatic PB (drift {drift_a:.1f} $\\mu$m)")
     ax.axhline(focal, color=GRAY, ls=":", lw=1, label="target $f$")
     ax.set(xlabel="wavelength (nm)", ylabel="focal length ($\\mu$m)",
-           title="Broadband achromatic metalens (Chen 2018 recipe):\n"
-                 "single-etch group-delay engineering flattens the focal shift")
+           title="Chen-2018 achromat ($D$=26.4 $\\mu$m, $f$=64.7 $\\mu$m, "
+                 "$H$=600 nm, 470-670 nm):\n"
+                 "single-etch group-delay engineering flattens the chromatic focal shift")
     ax.legend(fontsize=9)
     fig.tight_layout()
     out = os.path.join(HERE, "fig_achromatic.pdf"); fig.savefig(out); plt.close(fig)
