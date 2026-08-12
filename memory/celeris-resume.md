@@ -1,16 +1,19 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-08-11 (session 2). **HEAD at handoff:** `2e0fb06` (run `git log --oneline -25`).
+**Last updated:** 2026-08-11 (session 2). **HEAD at handoff:** `264dd7f`+ (run `git log --oneline -25`).
 **START HERE (fresh session):** v1.0.0 released + archived (Zenodo DOI wired). The
-**pre-submission hardening punch list (4-referee review) is now CLEARED for all blocking
-items #1–#5, plus #7 polish** — see "Pre-submission hardening" below for the per-item status.
-The paper is **19 pp**, compiles clean (`pdflatex → bibtex → pdflatex×2`, 0 undefined refs),
-and the selftest gates **55 locked-tolerance assertions** (exit 0). First, re-verify green:
+**pre-submission hardening punch list (4-referee review) is now FULLY CLEARED — ALL items
+#1–#7 done, including the optional #6** — see "Pre-submission hardening" below for per-item
+status. The paper is **20 pp**, compiles clean (`pdflatex → bibtex → pdflatex×2`, 0 undefined
+refs, all 29 bib keys cited), has a pipeline schematic (Fig. 1) and a real-device Chen-2018
+achromat figure; the selftest gates **55 locked-tolerance assertions** (exit 0). Re-verify green:
 `cmake --build build-linux --target celeris && ./build-linux/celeris selftest`
 (must end "SELF-TEST: all locked-tolerance checks passed.", exit 0) and
 `cd paper && pdflatex paper && bibtex paper && pdflatex paper && pdflatex paper`.
-**Only OPTIONAL item #6 remains** (needs compute + a rebuilt venv/S4 — see below). Decide with
-Amarnath whether to do #6 or proceed to submission (the human-gated steps at the bottom).
+**The paper is submission-ready.** NEXT = the human-gated submission steps at the bottom
+(Editorial Manager + arXiv). A Python venv (`.venv`, gitignored) has the built `celeris`
+module + matplotlib if you need to regenerate figures; S4 is NOT built (not needed — the
+S4 comparison lives in the committed fig_validation).
 
 ## Update 2026-08-07
 - **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
@@ -112,12 +115,14 @@ list below is cleared.** Progress so far:
      0.93333 claim to "within grcwa's last quoted digit (~5e-6)"; **added the pipeline schematic
      (Fig. 1, TikZ)** — the five-stage flow + coupling→group-delay-limit callout, the novelty thesis
      visualized (referenced from Statement of need). Figure caption units already present.
-  6. **OPTIONAL / STRETCH — NOT done (needs compute + rebuilt venv/S4):** (a) scale the Chen-2018
-     achromatic demo from the current D=10 µm toy aperture to the real D=26.4 µm so the absolute
-     focus lands (real device repro); (b) add a TM S4-vs-CELERIS common-limit convergence plot (the
-     3e-4 TM residual at M=40 is asserted-not-shown). Both need the Python module (`pip install .`)
-     + matplotlib, and (b) needs S4 rebuilt (see the SESSION-ISOLATION WARNING for the S4 build
-     recipe). Decide with Amarnath: do #6, or treat hardening as complete and submit.
+  6. **OPTIONAL / STRETCH — DONE** (commit `264dd7f`): (a) `fig_achromatic` regenerated at the
+     REAL Chen-2018 device (NA=0.20, D=26.4 µm → f=64.7 µm, single H=600 nm etch, 470–670 nm) via
+     a rebuilt venv; the absolute focus now lands near target and the achromat cuts drift 22.7→6.4 µm,
+     with the residual being the group-delay ceiling (required ~4.4 fs > single-600 nm-nanofin ~3 fs
+     span) — a real device, not a toy. Caption + text carry the true numbers. (b) The TM
+     S4-vs-CELERIS residual (→3e-4) was ALREADY plotted in `fig_validation` (right panel) — verified
+     by rendering it; the prose now points at it explicitly. S4 rebuild was therefore unnecessary.
+     Only `fig_achromatic` was regenerated; the S4-included `fig_validation` is preserved untouched.
 - Full referee reports were in the 2026-08-11 chat; the above is the distilled punch list.
 - **Build note:** this box HAS a system Eigen3 3.4.0 (CMake now prefers it); GCC 16; `build-linux`
   is the CPU-only dir. LaTeX toolchain: `elsarticle.cls` + `elsarticle-num.bst` present in `paper/`;
