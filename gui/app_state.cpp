@@ -80,6 +80,11 @@ bool save_project(const std::string& path, const Params& p) {
     f << "fill_samples " << p.fill_samples << "\n";
     f << "pillar_mat " << p.pillar_mat << "\n";
     f << "substrate_mat " << p.substrate_mat << "\n";
+    f << "focal_y " << p.focal_y << "\n";
+    f << "band_frac " << p.band_frac << "\n";
+    f << "gd_weight " << p.gd_weight << "\n";
+    f << "achro_lib " << p.achro_lib << "\n";
+    f << "etch_height " << p.etch_height << "\n";
     for (const auto& L : p.extra_layers)
         f << "layer " << L.n << " " << L.fill << " " << L.thickness << "\n";
     return static_cast<bool>(f);
@@ -107,6 +112,11 @@ bool load_project(const std::string& path, Params& p) {
         else if (key == "fill_samples") ss >> np.fill_samples;
         else if (key == "pillar_mat") ss >> np.pillar_mat;
         else if (key == "substrate_mat") ss >> np.substrate_mat;
+        else if (key == "focal_y") ss >> np.focal_y;
+        else if (key == "band_frac") ss >> np.band_frac;
+        else if (key == "gd_weight") ss >> np.gd_weight;
+        else if (key == "achro_lib") ss >> np.achro_lib;
+        else if (key == "etch_height") ss >> np.etch_height;
         else if (key == "layer") {
             LayerRow L; ss >> L.n >> L.fill >> L.thickness;
             np.extra_layers.push_back(L);
@@ -114,6 +124,34 @@ bool load_project(const std::string& path, Params& p) {
     }
     if (!header) return false;
     p = std::move(np);
+    return true;
+}
+
+// --- session auto-restore ---------------------------------------------------
+// The session file is the project format plus a UI-preferences line (dark mode).
+// Written on exit, loaded silently on startup, so the app reopens where you left
+// it. load_project ignores the extra dark_mode key, so we re-scan for it here.
+bool save_session(const std::string& path, const Params& p, bool dark) {
+    if (!save_project(path, p)) return false;
+    std::ofstream f(path, std::ios::app);
+    if (!f) return false;
+    f << "dark_mode " << (dark ? 1 : 0) << "\n";
+    return static_cast<bool>(f);
+}
+
+bool load_session(const std::string& path, Params& p, bool& dark) {
+    if (!load_project(path, p)) return false;
+    std::ifstream f(path);
+    std::string line;
+    while (std::getline(f, line)) {
+        std::istringstream ss(line);
+        std::string key;
+        if (ss >> key && key == "dark_mode") {
+            int d = 0;
+            if (ss >> d) dark = (d != 0);
+            break;
+        }
+    }
     return true;
 }
 

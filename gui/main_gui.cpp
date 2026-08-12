@@ -129,13 +129,18 @@ int main() {
         io.Fonts->AddFontFromMemoryCompressedTTF(
             roboto_regular_compressed_data, roboto_regular_compressed_size, 18.0f, &cfg);
     }
+    // Restore the previous session (parameters + dark-mode choice) silently, so
+    // the app reopens where you left it. Absent/invalid file -> defaults. The
+    // manual Save/Load Project menu is still there for named, separate projects.
+    const char* kSessionFile = "celeris_session.celeris";
+    Params params;
     bool dark_mode = false;
+    load_session(kSessionFile, params, dark_mode);
     apply_theme(dark_mode);
     set_titlebar_dark(window, dark_mode);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    Params params;
     unsigned int psf_tex = 0, wf_tex = 0, layout_tex = 0, caustic_tex = 0;
     unsigned int polar_psf_x_tex = 0, polar_psf_y_tex = 0;
     int layout_mode = 0, layout_built_mode = -1;
@@ -1523,6 +1528,9 @@ int main() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+
+    // Persist the session (current parameters + dark-mode) for next launch.
+    save_session(kSessionFile, params, dark_mode);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

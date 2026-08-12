@@ -82,3 +82,6 @@ __pycache__/
 dist/
 wheelhouse/
 examples/python/*.png
+
+# GUI runtime session state (auto-restore)
+celeris_session.celeris

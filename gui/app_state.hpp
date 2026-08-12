@@ -108,6 +108,8 @@ Material make_pillar(const Params& p);
 const Material& make_substrate(const Params& p);
 bool save_project(const std::string& path, const Params& p);
 bool load_project(const std::string& path, Params& p);
+bool save_session(const std::string& path, const Params& p, bool dark);
+bool load_session(const std::string& path, Params& p, bool& dark);
 
 void set_phase(const char* msg, float progress);
 void run_design(Params p);
