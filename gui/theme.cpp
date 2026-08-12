@@ -6,68 +6,120 @@ ImVec4 rgb(int r, int g, int b, float a) {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a);
 }
 
+// CELERIS is a photonics design instrument, so the theme reads as one: a calm,
+// cool-slate ground with a generous spacing rhythm and crisp (not bubbly) corners,
+// and a single SPECTRAL accent -- laser cyan-teal -- spent only on interactive and
+// active states (grabs, checks, selection, plots). The accent is the subject
+// (spectral light); everything else stays quiet so it carries the identity alone.
 void apply_theme(bool dark) {
     if (dark) ImGui::StyleColorsDark();
     else ImGui::StyleColorsLight();
 
     ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding = 0; s.ChildRounding = 0; s.FrameRounding = 0;
-    s.PopupRounding = 0;  s.GrabRounding = 0;  s.TabRounding = 0;
-    s.ScrollbarRounding = 0;
-    s.WindowBorderSize = 1; s.ChildBorderSize = 1; s.FrameBorderSize = 1;
-    s.PopupBorderSize = 1;
-    s.WindowPadding = ImVec2(6, 6);  s.FramePadding = ImVec2(6, 3);
-    s.ItemSpacing = ImVec2(6, 4);    s.ItemInnerSpacing = ImVec2(5, 4);
-    s.CellPadding = ImVec2(6, 3);    s.ScrollbarSize = 14; s.GrabMinSize = 10;
+
+    // Geometry: subtle rounding keeps it precise rather than toy-like; borders are
+    // dropped on frames/children (contrast does the separating) so it stops reading
+    // as a stack of Win32 dialog boxes. Spacing is a consistent, roomy rhythm.
+    s.WindowRounding = 4; s.ChildRounding = 4; s.FrameRounding = 3;
+    s.PopupRounding = 4;  s.GrabRounding = 3;  s.TabRounding = 4;
+    s.ScrollbarRounding = 4;
+    s.WindowBorderSize = 1; s.ChildBorderSize = 0; s.FrameBorderSize = 0;
+    s.PopupBorderSize = 1;  s.SeparatorTextBorderSize = 1;
+    s.WindowPadding = ImVec2(12, 10); s.FramePadding = ImVec2(10, 6);
+    s.ItemSpacing = ImVec2(9, 7);     s.ItemInnerSpacing = ImVec2(8, 6);
+    s.CellPadding = ImVec2(8, 5);     s.ScrollbarSize = 12; s.GrabMinSize = 11;
+    s.WindowTitleAlign = ImVec2(0.0f, 0.5f);
 
     ImVec4* c = s.Colors;
-    const ImVec4 sel = rgb(0, 120, 215);  // classic Windows-blue selection (both)
-    if (!dark) {
-        const ImVec4 face = rgb(238, 238, 238), field = rgb(255, 255, 255),
-                     text = rgb(20, 20, 20), border = rgb(158, 158, 158),
-                     head = rgb(222, 222, 222),
-                     hov = rgb(229, 241, 251), prs = rgb(204, 228, 247);
-        c[ImGuiCol_WindowBg] = face;   c[ImGuiCol_ChildBg] = face;
-        c[ImGuiCol_MenuBarBg] = head;  c[ImGuiCol_PopupBg] = field;
-        c[ImGuiCol_Text] = text;       c[ImGuiCol_Border] = border;
-        c[ImGuiCol_FrameBg] = field;   c[ImGuiCol_FrameBgHovered] = hov;
-        c[ImGuiCol_FrameBgActive] = prs;
-        c[ImGuiCol_Button] = rgb(225, 225, 225); c[ImGuiCol_ButtonHovered] = hov;
-        c[ImGuiCol_ButtonActive] = prs;
-        c[ImGuiCol_Header] = prs;      c[ImGuiCol_HeaderHovered] = hov;
-        c[ImGuiCol_HeaderActive] = sel;
-        c[ImGuiCol_SliderGrab] = sel;  c[ImGuiCol_SliderGrabActive] = rgb(0, 102, 184);
-        c[ImGuiCol_CheckMark] = sel;
-        c[ImGuiCol_TableHeaderBg] = head;
+
+    if (dark) {
+        // Cool-slate instrument ground; two panel depths for quiet hierarchy.
+        const ImVec4 ground = rgb(22, 25, 29),   panel = rgb(28, 32, 37),
+                     field  = rgb(33, 38, 44),    field_hi = rgb(42, 48, 55),
+                     text   = rgb(228, 231, 235), dim = rgb(138, 146, 155),
+                     border = rgb(42, 47, 54),    row_alt = rgb(26, 30, 35),
+                     button = rgb(38, 44, 51),    button_hi = rgb(47, 54, 62);
+        // Spectral accent (cyan-teal) + a muted resting tint for selection fills.
+        const ImVec4 accent = rgb(52, 211, 196), accent_dim = rgb(36, 179, 166),
+                     sel_rest = rgb(29, 74, 71);
+        c[ImGuiCol_WindowBg] = ground;       c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_PopupBg] = panel;         c[ImGuiCol_MenuBarBg] = panel;
+        c[ImGuiCol_Text] = text;             c[ImGuiCol_TextDisabled] = dim;
+        c[ImGuiCol_Border] = border;         c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_FrameBg] = field;         c[ImGuiCol_FrameBgHovered] = field_hi;
+        c[ImGuiCol_FrameBgActive] = field_hi;
+        c[ImGuiCol_Button] = button;         c[ImGuiCol_ButtonHovered] = button_hi;
+        c[ImGuiCol_ButtonActive] = sel_rest;
+        c[ImGuiCol_Header] = sel_rest;       c[ImGuiCol_HeaderHovered] = button_hi;
+        c[ImGuiCol_HeaderActive] = accent_dim;
+        c[ImGuiCol_SliderGrab] = accent;     c[ImGuiCol_SliderGrabActive] = accent_dim;
+        c[ImGuiCol_CheckMark] = accent;
+        c[ImGuiCol_Tab] = panel;             c[ImGuiCol_TabHovered] = button_hi;
+        c[ImGuiCol_TabSelected] = field_hi;    c[ImGuiCol_TabDimmed] = ground;
+        c[ImGuiCol_TabDimmedSelected] = panel;
+        c[ImGuiCol_TitleBg] = panel;         c[ImGuiCol_TitleBgActive] = panel;
+        c[ImGuiCol_TitleBgCollapsed] = ground;
+        c[ImGuiCol_TableHeaderBg] = panel;
         c[ImGuiCol_TableBorderStrong] = border;
-        c[ImGuiCol_TableBorderLight] = rgb(200, 200, 200);
-        c[ImGuiCol_TableRowBg] = field; c[ImGuiCol_TableRowBgAlt] = rgb(247, 247, 247);
-        c[ImGuiCol_TitleBg] = head;     c[ImGuiCol_TitleBgActive] = head;
-        c[ImGuiCol_Separator] = border; c[ImGuiCol_PlotLines] = sel;
-        c[ImGuiCol_ScrollbarBg] = face;
+        c[ImGuiCol_TableBorderLight] = rgb(35, 40, 46);
+        c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_TableRowBgAlt] = row_alt;
+        c[ImGuiCol_Separator] = border;      c[ImGuiCol_SeparatorHovered] = accent_dim;
+        c[ImGuiCol_SeparatorActive] = accent;
+        c[ImGuiCol_ResizeGrip] = border;     c[ImGuiCol_ResizeGripHovered] = accent_dim;
+        c[ImGuiCol_ResizeGripActive] = accent;
+        c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_ScrollbarGrab] = rgb(46, 52, 59);
+        c[ImGuiCol_ScrollbarGrabHovered] = rgb(58, 66, 75);
+        c[ImGuiCol_ScrollbarGrabActive] = accent_dim;
+        c[ImGuiCol_PlotLines] = accent;      c[ImGuiCol_PlotLinesHovered] = accent_dim;
+        c[ImGuiCol_PlotHistogram] = accent;  c[ImGuiCol_PlotHistogramHovered] = accent_dim;
+        c[ImGuiCol_DragDropTarget] = accent;
+        c[ImGuiCol_NavCursor] = accent;
     } else {
-        const ImVec4 face = rgb(37, 37, 38), field = rgb(24, 24, 25),
-                     text = rgb(225, 225, 225), border = rgb(70, 70, 72),
-                     head = rgb(45, 45, 47),
-                     hov = rgb(58, 70, 90), prs = rgb(38, 79, 120);
-        c[ImGuiCol_WindowBg] = face;   c[ImGuiCol_ChildBg] = face;
-        c[ImGuiCol_MenuBarBg] = head;  c[ImGuiCol_PopupBg] = field;
-        c[ImGuiCol_Text] = text;       c[ImGuiCol_Border] = border;
-        c[ImGuiCol_FrameBg] = field;   c[ImGuiCol_FrameBgHovered] = hov;
-        c[ImGuiCol_FrameBgActive] = prs;
-        c[ImGuiCol_Button] = rgb(55, 55, 57); c[ImGuiCol_ButtonHovered] = hov;
-        c[ImGuiCol_ButtonActive] = prs;
-        c[ImGuiCol_Header] = prs;      c[ImGuiCol_HeaderHovered] = hov;
-        c[ImGuiCol_HeaderActive] = sel;
-        c[ImGuiCol_SliderGrab] = sel;  c[ImGuiCol_SliderGrabActive] = rgb(0, 102, 184);
-        c[ImGuiCol_CheckMark] = sel;
-        c[ImGuiCol_TableHeaderBg] = head;
+        // Clean "lab" light: cool off-white ground, white fields, deeper accent so
+        // the spectral cyan-teal keeps contrast on a bright background.
+        const ImVec4 ground = rgb(245, 246, 247), panel = rgb(255, 255, 255),
+                     field  = rgb(255, 255, 255),  field_hi = rgb(236, 240, 242),
+                     text   = rgb(26, 30, 35),      dim = rgb(138, 145, 153),
+                     border = rgb(214, 218, 222),   row_alt = rgb(240, 242, 244),
+                     button = rgb(236, 238, 240),   button_hi = rgb(226, 233, 232);
+        const ImVec4 accent = rgb(15, 181, 170), accent_dim = rgb(12, 143, 134),
+                     sel_rest = rgb(205, 237, 233);
+        c[ImGuiCol_WindowBg] = ground;       c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_PopupBg] = panel;         c[ImGuiCol_MenuBarBg] = panel;
+        c[ImGuiCol_Text] = text;             c[ImGuiCol_TextDisabled] = dim;
+        c[ImGuiCol_Border] = border;         c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_FrameBg] = field;         c[ImGuiCol_FrameBgHovered] = field_hi;
+        c[ImGuiCol_FrameBgActive] = field_hi;
+        c[ImGuiCol_Button] = button;         c[ImGuiCol_ButtonHovered] = button_hi;
+        c[ImGuiCol_ButtonActive] = sel_rest;
+        c[ImGuiCol_Header] = sel_rest;       c[ImGuiCol_HeaderHovered] = button_hi;
+        c[ImGuiCol_HeaderActive] = accent;
+        c[ImGuiCol_SliderGrab] = accent;     c[ImGuiCol_SliderGrabActive] = accent_dim;
+        c[ImGuiCol_CheckMark] = accent_dim;
+        c[ImGuiCol_Tab] = ground;            c[ImGuiCol_TabHovered] = button_hi;
+        c[ImGuiCol_TabSelected] = panel;       c[ImGuiCol_TabDimmed] = ground;
+        c[ImGuiCol_TabDimmedSelected] = panel;
+        c[ImGuiCol_TitleBg] = panel;         c[ImGuiCol_TitleBgActive] = panel;
+        c[ImGuiCol_TitleBgCollapsed] = ground;
+        c[ImGuiCol_TableHeaderBg] = rgb(238, 240, 242);
         c[ImGuiCol_TableBorderStrong] = border;
-        c[ImGuiCol_TableBorderLight] = rgb(60, 60, 62);
-        c[ImGuiCol_TableRowBg] = field; c[ImGuiCol_TableRowBgAlt] = rgb(32, 32, 33);
-        c[ImGuiCol_TitleBg] = head;     c[ImGuiCol_TitleBgActive] = head;
-        c[ImGuiCol_Separator] = border; c[ImGuiCol_PlotLines] = rgb(90, 170, 255);
-        c[ImGuiCol_ScrollbarBg] = face;
+        c[ImGuiCol_TableBorderLight] = rgb(228, 231, 234);
+        c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_TableRowBgAlt] = row_alt;
+        c[ImGuiCol_Separator] = border;      c[ImGuiCol_SeparatorHovered] = accent_dim;
+        c[ImGuiCol_SeparatorActive] = accent_dim;
+        c[ImGuiCol_ResizeGrip] = border;     c[ImGuiCol_ResizeGripHovered] = accent_dim;
+        c[ImGuiCol_ResizeGripActive] = accent_dim;
+        c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
+        c[ImGuiCol_ScrollbarGrab] = rgb(206, 211, 216);
+        c[ImGuiCol_ScrollbarGrabHovered] = rgb(184, 190, 196);
+        c[ImGuiCol_ScrollbarGrabActive] = accent_dim;
+        c[ImGuiCol_PlotLines] = accent_dim;  c[ImGuiCol_PlotLinesHovered] = accent;
+        c[ImGuiCol_PlotHistogram] = accent_dim; c[ImGuiCol_PlotHistogramHovered] = accent;
+        c[ImGuiCol_DragDropTarget] = accent_dim;
+        c[ImGuiCol_NavCursor] = accent_dim;
     }
 }
 
