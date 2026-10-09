@@ -195,9 +195,13 @@ reprint of the SciPost paper.
 - [x] **Honest timing benchmark — DONE, and it corrected a bad claim.** The old
       "600–700×" was NOT reproducible: `psfbench` (GPU vs CELERIS's own optimized 16-core
       CPU `compute_psf`, RTX 4070) measures **~1.1–5.8×** for far-field propagation, and
-      the speedup *shrinks* with grid size (kernel is memory-bound). README/paper corrected
-      to the measured numbers. The 600–700× was almost certainly vs a single-core or an
-      early un-parallelized CPU path. REMAINING: benchmark the RCWA *solve* vs S4/grcwa on
+      the speedup *shrinks* with grid size (kernel is memory-bound). The 600–700× was almost
+      certainly vs a single-core or an early un-parallelized CPU path. **Paper corrected at
+      the time; the README was NOT — it still carried "675×/669× vs a 16-core CPU, ~1e-5"
+      until 2026-07-29, when it was finally corrected to 4.8–5.8× at machine precision.**
+      Lesson: when a claim appears in more than one document, fix every copy in the same
+      commit and grep for the stale number before ticking the box.
+      REMAINING: benchmark the RCWA *solve* vs S4/grcwa on
       identical hardware (the solve, not propagation, is the real cost — see MKL).
 
 ### 3c. Manuscript
@@ -263,6 +267,23 @@ publishing.** Placeholders until scoped with a PI:
 8. **Ongoing — R1–R3** as new results materialize, scoped with an advisor.
 
 ---
+---
+
+## 5. P4 — Certified surrogate models (NEW, proposal) → see `SURROGATE.md`
+
+A learned surrogate for the RCWA forward map, with **distribution-free (conformal) error
+guarantees** and automatic fallback to the exact solver. This is the first item in the plan
+that the autodiff-native tools (fmmax/TORCWA/meent) do **not** ship — the §3d adjoint, by
+contrast, is catch-up on a column they already have.
+
+- Gated strictly **after** the P1 CPC submission is sent, and after/alongside §3d.
+- Tier 1 = the meta-atom library map (low-dim, tractable). Tier 2 (freeform/operator
+  learning) is optional and probably never.
+- **Hard kill criterion:** if cubic-spline/RBF interpolation over the existing library grid
+  matches the network inside tolerance at lower total cost, there is no P4. Evaluate the
+  classical baseline BEFORE training anything.
+- Full plan, honest novelty audit, baselines, locked-test plan and scope guard: **`SURROGATE.md`**.
+
 ---
 
 # PRODUCT BACKLOG (PARKED)
