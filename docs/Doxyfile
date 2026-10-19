@@ -28,6 +28,7 @@ JAVADOC_AUTOBRIEF      = NO
 MARKDOWN_SUPPORT       = YES
 BUILTIN_STL_SUPPORT    = YES
 SOURCE_BROWSER         = NO
+HAVE_DOT               = NO
 
 QUIET                  = YES
 WARNINGS               = YES
