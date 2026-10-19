@@ -180,7 +180,7 @@ list below is cleared.** Progress so far:
 
 - **NEXT STEP = submission (HUMAN — needs Amarnath's accounts) — ONLY after the list above:**
   1. Submit to **CPC** via Elsevier Editorial Manager (upload `paper.tex` + `paper.bib` +
-     `paper/figures/*.pdf`; solo corresponding author; `@ucf.edu` → APC waiver). At submission
+     `paper/figures/*.pdf`; solo corresponding author; `@ucf.edu` → 15% APC discount, NOT a waiver). At submission
      CPC creates the Mendeley Data / CPC Program Library deposit → fills the Program Summary
      "CPC Library link" field.
   2. Post the **arXiv** preprint (`physics.comp-ph` + cross-list `physics.optics`) same day —
@@ -207,9 +207,13 @@ Zenodo DOI, and submit. Software + validation are done and committed.
   corresponding author); fits the author's "computational physicist" identity.
 - **SoftwareX** → **pre-planned FALLBACK** if CPC rejects (Elsevier, IF~3, lower novelty
   bar, no gate). Paper barely changes between CPC and SoftwareX.
-- **APC:** UCF has an **Elsevier Read & Publish agreement** that waives OA APCs for UCF
-  authors (auto via `@ucf.edu`; excludes society/Cell/Lancet; through 2028). So CPC/SoftwareX
-  APC is effectively free for this author. CPC is also hybrid → subscription route is free too.
+- **APC (CORRECTED 2026-10-19):** the old claim that UCF's Elsevier deal *waives* APCs
+  was WRONG. Verified on guides.ucf.edu/OA/articlecharges: UCF corresponding authors get a
+  **15% discount** (not a waiver) on OA APCs in eligible Elsevier journals, auto-applied via
+  an @ucf.edu submission address; Cell/Lancet/some society titles excluded. UCF's OA
+  Publishing Fund (up to $1,000/yr) covers grad students/postdocs only, not undergrads.
+  SoftwareX APC ≈ USD 760 (DOAJ; one listing says 970) → ≈ $650 after 15%; it lists a
+  waiver policy (ask on submission).
 - A faculty **co-author is now OPTIONAL** (not required for CPC) but strategically valuable
   (champion + recommendation letter). Author leans solo for now.
 
@@ -269,7 +273,7 @@ of this unless regenerating figures or extending the validation.
    `paper/paper.bib` is BibTeX (verify the `[check]` competitor citations).
 4. **Tag `v1.0` + mint a Zenodo DOI** for the exact commit; add the DOI to the paper + README.
 5. **Submit to CPC** via Elsevier Editorial Manager (author is solo corresponding author;
-   `@ucf.edu` for the APC waiver). Post the **arXiv preprint** (`physics.comp-ph` +
+   `@ucf.edu` for the 15% APC discount). Post the **arXiv preprint** (`physics.comp-ph` +
    `physics.optics`) the same day — needs a faculty endorsement for arXiv, so line that up.
 6. If CPC desk-rejects/rejects → **SoftwareX** (fallback; minimal changes).
 
