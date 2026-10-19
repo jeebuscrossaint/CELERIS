@@ -100,6 +100,25 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
       needs a faculty endorser). Optional, but a citable preprint before JOSS helps.
 - [ ] **Submit** at joss.theoj.org with the repo URL, version, and archive DOI.
 
+### J-schedule (set 2026-10-19) — one slice per week, each its own PR
+
+| Week of | Work | Who |
+|---|---|---|
+| Oct 19 | Review + merge PR #5 (API docs: core/rcwa/optics) | author |
+| Oct 26 | API docs: `design/` (#1) | Claude → PR, author merges |
+| Nov 2 | API docs: `analysis/` (#1) | Claude → PR |
+| Nov 9 | API docs: `materials/`, `io/`, `cuda/` → close #1 | Claude → PR |
+| Nov 16 | Python binding docstrings (#2) | Claude → PR |
+| Nov 23 | Study prep: read Presutti–Monticone 2020 + the 2 pre-emption papers; open the study issue | both |
+| Nov 30 – Dec 14 | **The study**: single-etch fraction of the group-delay limit (forward RCWA sweeps), one PR per stage (sweep, figures, write-up) | Claude → PRs |
+| Dec 14 | Release v1.1.0 (#3); study write-up → **Zenodo report (DOI)**, also kept in the repo as an example | Claude prepares, author uploads |
+| any time, ideally Nov | Outreach: ask 3–5 metasurface students/groups to try it; any real use → `memory/research-use.md` | author |
+| Dec 17 | JOSS eligibility date (6 months public) | — |
+| early Jan 2027 | Paper: Research impact (cite the report + any outside use), AI model versions; release that matches the paper; **submit at joss.theoj.org** | both |
+
+Optional, not on the critical path: #4 arXiv long-form (needs an endorser and a TeX
+install; it can go to Zenodo instead).
+
 ---
 
 ## 0. Decisions (make these FIRST)
