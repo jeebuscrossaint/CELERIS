@@ -58,7 +58,7 @@ the repo looking like a steadily maintained open project, because it is one.
   use — the author uses CELERIS on their own. The plan is to *create* honest evidence:
   (1) a real CELERIS result posted as a preprint (the single-etch group-delay-limit
   study, see ROADMAP R1), (2) a poster/talk (e.g. UCF's undergrad research showcase),
-  (3) real outside users (metasurface students/groups who run it and file issues).
+  The project is SOLO by design — do not suggest collaborators, testers, or outreach.
   Log each concrete use (date, project, what CELERIS computed, any talk/poster/
   preprint) in `memory/research-use.md` **only from what the author tells you — never
   invent uses**. That log feeds the paper's Research impact statement. The repo is

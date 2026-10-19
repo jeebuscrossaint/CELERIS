@@ -80,7 +80,9 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
       submission, a release that matches the paper exactly.
 - [ ] **Research impact — "compelling and specific, not aspirational".** Weakest gate.
       Today: two published-device reproductions (author's own); no lab/PI use.
-      Plan (2026-10-19): R1 result as a preprint + a poster + outreach for real users.
+      Plan (2026-10-19): **solo** — the author's own study as a Zenodo report (DOI) is the
+      evidence (JOSS: for single-author projects, evidence in the paper can substitute
+      for repository signals). No outside users are expected; don't plan around them.
       **Need at least one of:**
       an outside user (labmate, a UCF group, a course project) using it for a real
       design; a talk/poster presenting results made with it; a preprint with a CELERIS
@@ -114,7 +116,7 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
 | Nov 23 | Study prep: read Presutti–Monticone 2020 + the 2 pre-emption papers; open the study issue | both |
 | Nov 30 – Dec 14 | **The study**: single-etch fraction of the group-delay limit (forward RCWA sweeps), one PR per stage (sweep, figures, write-up) | Claude → PRs |
 | Dec 14 | Release v1.1.0 (#3); study write-up → **Zenodo report (DOI)**, also kept in the repo as an example | Claude prepares, author uploads |
-| any time, ideally Nov | Outreach: ask 3–5 metasurface students/groups to try it; any real use → `memory/research-use.md` | author |
+| optional | Poster of the study at UCF's spring undergrad research showcase (solo) | author |
 | Dec 17 | JOSS eligibility date (6 months public) | — |
 | early Jan 2027 | Paper: Research impact (cite the report + any outside use), AI model versions; release that matches the paper; **submit at joss.theoj.org** | both |
 
