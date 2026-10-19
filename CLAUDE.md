@@ -29,12 +29,36 @@ optionality).
 1. **Ground**: read `memory/celeris-resume.md` (where we left off), `ROADMAP.md`
    (the punch list), and run `git log --oneline -20`. Trust these over memory.
 2. **Act**: take the next item from ROADMAP sequencing (or what resume says).
-3. **Verify** (NON-NEGOTIABLE before claiming done): run **`scripts\check.bat`**
-   (configure → build CLI+GUI → physics selftest, one command). Physics must
+3. **Verify** (NON-NEGOTIABLE before claiming done): on Linux run
+   `cmake -B build-linux -G "Unix Makefiles" -DCELERIS_BUILD_GUI=OFF && cmake --build
+   build-linux --target celeris -j16 && ./build-linux/celeris selftest` (exit 0; on
+   Windows: **`scripts\check.bat`**, configure → build CLI+GUI → physics selftest). Physics must
    still hold (2D=1D ~5e-12, energy=1, RCWA=TMM exact, Strehl ~0.55). If it
    didn't build and pass, it is NOT done — say so.
-4. **Record**: commit + push, update `memory/celeris-resume.md` (state + next),
-   tick the box in `ROADMAP.md`.
+4. **Record**: commit on the branch → PR → CI green → merge (see JOSS process
+   rules); update `memory/celeris-resume.md` (state + next), tick the box in `ROADMAP.md`.
+
+## JOSS process rules (EVERY session — these are the submission gates)
+JOSS desk-rejects on *process*, not just code (ROADMAP §J). Each session must leave
+the repo looking like a steadily maintained open project, because it is one.
+- **Steady development, never bursts.** One issue (or one coherent slice of one) per
+  session, a few focused commits. Do not dump a week of work into one day; if a task
+  is big, split it into PRs on different days. **Never backdate, fake, or pad commits**
+  (no empty/"activity" commits) — real work only.
+- **Everything goes through issues + PRs.** Start from a GitHub issue (open one if
+  none fits), work on a branch, open a PR whose body says `Closes #N`, wait for CI
+  green, then merge (`gh pr merge --merge --delete-branch`). No direct pushes to `main`
+  except handoff/memory updates. Label issues (`enhancement`, `bug`, `documentation`).
+- **API docs are part of "done".** Every public declaration in
+  `src/celeris/**/*.hpp` gets a Doxygen `///` comment (`///<` for members); every
+  pybind11 `m.def`/`py::class_` gets a docstring. `doxygen docs/Doxyfile` must stay
+  warning-free (CI enforces it). A change that adds an undocumented public API is
+  not done.
+- **Research impact = the author's lab use.** The author uses CELERIS in their lab.
+  Log each concrete use (date, project, what CELERIS computed, any talk/poster/
+  preprint) in `memory/research-use.md` **only from what the author tells you — never
+  invent uses**. That log feeds the paper's Research impact statement. The repo is
+  public: record only what the author says may be public.
 
 ## Build / run (IMPORTANT gotcha)
 In the agent bash tool, plain `cmake`/`ninja` sometimes drop off PATH and a
