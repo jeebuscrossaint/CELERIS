@@ -24,6 +24,20 @@ for the later *method* paper (adjoint), which is different content.
 - Issue templates (bug/feature/question), PR template, CONTRIBUTING "Getting help",
   README Testing / Getting help / Citing sections, ROADMAP §J gate checklist.
 
+**Session 2026-10-19 (later) — process + API docs started:**
+- CLAUDE.md now has "JOSS process rules" (steady dev, issue→branch→PR→CI→merge,
+  API docs part of done, research-use log). `memory/research-use.md` created; the
+  author says they use CELERIS in their lab — **ask for lab/PI + project details**.
+- Issues opened: #1 C++ API docs, #2 Python docstrings, #3 v1.1.0, #4 arXiv long-form.
+- **PR #5** (branch `docs/api-rcwa-optics`, part of #1): `docs/Doxyfile` (warnings =
+  errors, HAVE_DOT=NO), `docs/api-overview.md`, Doxygen for core/rcwa/optics, `api-docs`
+  CI job. CI all green. **Left OPEN for the author to review + merge**
+  (`gh pr merge 5 --merge --delete-branch`).
+- Venue question answered: stay JOSS (SoftwareX = only real alternative; SPIE
+  proceedings as an add-on that also builds research impact).
+- **Next session:** after #5 merges, branch `docs/api-design` → document
+  `src/celeris/design/*.hpp`, add `src/celeris/design` to Doxyfile INPUT, PR (part of #1).
+
 **JOSS timing (verified against joss.readthedocs.io on 2026-10-19):**
 - Hard rule: repo "public for more than six months". GitHub repo created
   2026-06-16 → **earliest submission 2026-12-17** (confirm it was public from creation).
