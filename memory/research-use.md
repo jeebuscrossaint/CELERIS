@@ -6,4 +6,4 @@ any output (talk, poster, preprint, fabricated device, thesis chapter) with a li
 
 | Date | Who / where | What CELERIS was used for | Output / link |
 |---|---|---|---|
-| 2026-10 (ongoing) | Author, in their research lab (lab/PI name: TBD from author) | TBD from author | — |
+| 2026-10 | Author, independently (no lab/PI involvement) | Exploratory designs; reproductions of Khorasaninejad 2016 and Chen 2018 | Not yet public — counts as validation, not impact |

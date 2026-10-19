@@ -79,7 +79,9 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
       outside issue promptly. Cut **v1.1.0** (JOSS changes + API docs) and, near
       submission, a release that matches the paper exactly.
 - [ ] **Research impact — "compelling and specific, not aspirational".** Weakest gate.
-      Today: two published-device reproductions (author's own). **Need at least one of:**
+      Today: two published-device reproductions (author's own); no lab/PI use.
+      Plan (2026-10-19): R1 result as a preprint + a poster + outreach for real users.
+      **Need at least one of:**
       an outside user (labmate, a UCF group, a course project) using it for a real
       design; a talk/poster presenting results made with it; a preprint with a CELERIS
       result (e.g. R1, the achromatic-limit map); the arXiv long-form report.

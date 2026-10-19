@@ -54,7 +54,11 @@ the repo looking like a steadily maintained open project, because it is one.
   pybind11 `m.def`/`py::class_` gets a docstring. `doxygen docs/Doxyfile` must stay
   warning-free (CI enforces it). A change that adds an undocumented public API is
   not done.
-- **Research impact = the author's lab use.** The author uses CELERIS in their lab.
+- **Research impact must be real and public.** As of 2026-10-19 there is no lab/PI
+  use — the author uses CELERIS on their own. The plan is to *create* honest evidence:
+  (1) a real CELERIS result posted as a preprint (the single-etch group-delay-limit
+  study, see ROADMAP R1), (2) a poster/talk (e.g. UCF's undergrad research showcase),
+  (3) real outside users (metasurface students/groups who run it and file issues).
   Log each concrete use (date, project, what CELERIS computed, any talk/poster/
   preprint) in `memory/research-use.md` **only from what the author tells you — never
   invent uses**. That log feeds the paper's Research impact statement. The repo is
