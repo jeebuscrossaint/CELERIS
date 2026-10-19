@@ -269,6 +269,12 @@ if any check fails. `celeris selftest --quick` runs a ~1 s subset.
 CI builds CPU-only on Linux and runs `--quick` on every push/PR and the full suite
 nightly. `paper/reproduce_all.sh` regenerates every figure in the paper.
 
+## API reference
+
+The C++ API reference is generated with Doxygen (`doxygen docs/Doxyfile`, output
+in `docs/api/html/`); CI builds it on every push and fails on any undocumented
+public declaration. Start at [`docs/api-overview.md`](docs/api-overview.md).
+
 ## Status & roadmap
 
 CELERIS 1.0 is a complete, validated pipeline (solver → library → design →

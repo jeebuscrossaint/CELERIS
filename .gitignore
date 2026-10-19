@@ -85,3 +85,6 @@ examples/python/*.png
 
 # GUI runtime session state (auto-restore)
 celeris_session.celeris
+
+# Doxygen output (doxygen docs/Doxyfile)
+docs/api/
