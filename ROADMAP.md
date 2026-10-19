@@ -86,8 +86,10 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
       design; a talk/poster presenting results made with it; a preprint with a CELERIS
       result (e.g. R1, the achromatic-limit map); the arXiv long-form report.
       Then fill the paper's Research impact statement with links.
-- [ ] **API documentation.** Doxygen for `celeris_core` public headers + docstrings on
-      the pybind11 bindings + a short API overview page. Missing today.
+- [~] **API documentation** (issues #1, #2). `docs/Doxyfile` + `docs/api-overview.md`
+      + CI job (warnings = errors) landed; `core`, `rcwa/`, `optics/` documented.
+      Remaining: design/, analysis/, materials/, io/, cuda/ headers (one module per
+      session), then the pybind11 docstrings (#2).
 - [x] Install docs with automated dependency handling (CMake + `pip install .`).
 - [x] Example usage (7 Python examples, CLI recipes, published-device reproductions).
 - [x] Automated tests in CI (`selftest`, 55 locked assertions; `--quick` per push).

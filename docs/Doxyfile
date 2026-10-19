@@ -1,0 +1,43 @@
+# CELERIS C++ API reference. Run from the repository root:
+#     doxygen docs/Doxyfile          -> docs/api/html/index.html
+# Only settings that differ from Doxygen's defaults are listed.
+# INPUT grows as each module's headers are documented (issue #1); CI fails on
+# any warning, so every public declaration in INPUT must carry a /// comment.
+
+PROJECT_NAME           = CELERIS
+PROJECT_BRIEF          = "Validated RCWA pipeline for metalens design, analysis, and fabrication layout"
+OUTPUT_DIRECTORY       = docs/api
+STRIP_FROM_PATH        = src
+STRIP_FROM_INC_PATH    = src
+FULL_PATH_NAMES        = YES
+
+INPUT                  = docs/api-overview.md \
+                         src/celeris/core.hpp \
+                         src/celeris/rcwa \
+                         src/celeris/optics
+FILE_PATTERNS          = *.hpp
+RECURSIVE              = YES
+EXCLUDE                = src/celeris/rcwa/smatrix.hpp
+EXCLUDE_SYMBOLS        = celeris::detail
+USE_MDFILE_AS_MAINPAGE = docs/api-overview.md
+
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+JAVADOC_AUTOBRIEF      = NO
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+SOURCE_BROWSER         = NO
+HAVE_DOT               = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_COLORSTYLE        = AUTO_LIGHT
+GENERATE_TREEVIEW      = YES
