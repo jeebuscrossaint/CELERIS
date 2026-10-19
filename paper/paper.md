@@ -1,257 +1,172 @@
 ---
 title: "CELERIS: an integrated, validated RCWA pipeline for metalens design, analysis, and fabrication layout"
-# Target: Computer Physics Communications (CPC) + arXiv (physics.comp-ph / physics.optics).
-#   Fallback: SoftwareX. (SciPost dropped: it bars undergrad solo submission.)
-#   Convert to Elsevier `elsarticle` LaTeX for submission (NOT SciPost.cls).
-# STATUS: content-complete. Remaining before submission: (1) convert to elsarticle LaTeX;
-# (2) final verification pass on paper.bib citations (volume/page/year); (3) Zenodo DOI.
-author:
+tags:
+  - C++
+  - Python
+  - optics
+  - metasurfaces
+  - metalenses
+  - rigorous coupled-wave analysis
+  - Fourier modal method
+  - GDSII
+authors:
   - name: Amarnath Patel
     orcid: 0009-0008-9460-082X
-    affiliation: "University of Central Florida, Orlando, FL, USA"
-date: DRAFT
+    corresponding: true
+    affiliation: 1
+affiliations:
+  - name: University of Central Florida, Orlando, FL, United States
+    index: 1
+date: 19 October 2026
+bibliography: paper.bib
 ---
 
-## Program summary
+<!-- JOSS paper (target: Journal of Open Source Software). Body must stay 750-1750 words.
+     The long-form methods/validation write-up (former CPC manuscript) lives in
+     paper/longform/ and is intended as an arXiv preprint, not a second journal paper. -->
 
-*(CPC-mandatory block — fill exact fields on the CPC submission form.)*
+# Summary
 
-- **Program title:** CELERIS
-- **Licensing provisions:** Apache License 2.0
-- **Programming languages:** C++23 (engine), CUDA (optional GPU far-field kernel), Python
-  (pybind11 bindings)
-- **Nature of problem:** Designing a metalens/metasurface requires solving Maxwell's
-  equations for periodic subwavelength unit cells, assembling a meta-atom library, mapping
-  a target optical phase profile onto it, analyzing the resulting device's optical
-  performance, and exporting a fabrication mask — a multi-stage workflow that existing RCWA
-  solvers do not provide end to end.
-- **Solution method:** Rigorous coupled-wave analysis / Fourier modal method (1D and
-  2D-vectorial) with Li/Liu–Fan Fourier factorization and a Redheffer S-matrix layer
-  recursion, wrapped in a library builder, phase-mapping/inverse-design layer (including
-  achromatic and Pancharatnam–Berry recipes), an optical analysis battery, GPU-accelerated
-  far-field propagation, and GDSII layout export.
-- **Dependencies:** Eigen (header-only, fetched at configure time); optional Intel MKL and
-  CUDA for acceleration; pybind11 for the Python module. Validated against `grcwa` and
-  Stanford S$^4$.
-- **Restrictions:** Scope is metalenses/metasurfaces via RCWA (not FDTD or ray tracing). The
-  modal eigensolve runs on the CPU; the GPU accelerates far-field propagation only.
-- **Operating systems:** Linux and Windows (CPU build has no external runtime dependencies).
+Metalenses are flat lenses made of millions of sub-wavelength pillars
+("meta-atoms") patterned on a chip. Each pillar delays light by an amount set by
+its shape, so a lens is designed by choosing the right pillar at every point of
+the aperture. In practice this is a four-step workflow: (i) simulate one periodic
+unit cell with a rigorous electromagnetic solver to build a library of pillar
+responses, (ii) map a target phase profile onto that library, (iii) predict how
+well the resulting device focuses, and (iv) export a mask layout that a
+nanofabrication facility can write.
 
-## Summary
+CELERIS implements this whole workflow in one package. Its core is a
+from-scratch C++23 solver based on rigorous coupled-wave analysis (RCWA), also
+called the Fourier modal method [@moharam1981; @moharam1995], in 1D and
+2D-vectorial form. Around the solver CELERIS provides a meta-atom library
+builder, propagation-phase, geometric-phase (Pancharatnam–Berry), and broadband
+achromatic design recipes, a battery of optical analyses (point-spread function,
+Strehl ratio, MTF, wavefront/Zernike, through-focus, chromatic and tolerance
+studies), optional GPU-accelerated far-field propagation, and GDSII layout
+export. It is driven from a command-line interface, a Python module, or a
+desktop GUI, and its physics is locked by a self-test suite that runs in
+continuous integration.
 
-Metasurfaces and metalenses — flat optical elements built from subwavelength
-scatterers ("meta-atoms") — are designed by (i) solving Maxwell's equations for a
-periodic unit cell to build a library of meta-atom responses, (ii) mapping a target
-optical phase profile onto that library, (iii) analyzing the resulting device's optical
-performance, and (iv) exporting a mask layout for fabrication. The standard rigorous
-electromagnetic method for step (i) is **rigorous coupled-wave analysis (RCWA)**, also
-known as the Fourier modal method (FMM).
+# Statement of need
 
-**CELERIS** is a from-scratch, validated implementation of this *entire* workflow in a
-single native package. It couples a C++23 RCWA engine (1D and 2D-vectorial, with
-Li/Liu–Fan Fourier factorization and a Redheffer S-matrix stack) to a meta-atom library
-builder, a phase-mapping and inverse-design layer (including achromatic and
-Pancharatnam–Berry designs), a full optical analysis battery
-(Strehl ratio, PSF, MTF, wavefront/Zernike, through-focus, chromatic, field-resolved,
-and tolerance analyses), GPU-accelerated far-field propagation, and fabrication-ready
-GDSII export. It is scriptable from C++, a command-line interface, and Python
-(via pybind11), and ships with a desktop GUI. Correctness is enforced by a locked
-self-test suite (20+ cases) cross-checked against closed-form physics (Fresnel/TMM,
-effective-medium theory), energy conservation, and an independent RCWA solver (`grcwa`),
-and the full pipeline is demonstrated by reproducing two canonical published TiO$_2$
-metalenses end to end.
+Open RCWA codes such as S$^4$ [@liu2012s4], RETICOLO [@reticolo], `grcwa`
+[@grcwa], TORCWA [@torcwa], `fmmax` [@fmmax], and `meent` [@meent] are solver
+kernels: given a periodic structure, they return its diffraction efficiencies
+and fields. A metalens researcher who starts from one of them still has to write
+the surrounding workflow — library sweeps, phase mapping, focal-plane
+propagation, imaging metrics, tolerance studies, and layout export — and that
+glue code is rarely validated or shared.
 
-## Statement of need
+CELERIS is aimed at metasurface researchers and students who want to go from an
+optical specification (focal length, aperture, wavelength band, material) to an
+analyzed, fabrication-ready design with a single, tested tool. Because all stages
+share one data model, CELERIS can also answer device-level questions that a
+solver called in a loop does not expose directly. The main example is the
+*group-delay design limit* of single-etch broadband achromats [@chen2018;
+@wang2018]: the aperture–bandwidth trade-off set jointly by the dispersive
+library, the design map, and the focal analysis.
 
-Existing open-source RCWA codes — S$^4$, RETICOLO, `grcwa`, TORCWA, `fmmax`, `meent` —
-are **solver kernels**: they compute the electromagnetic response of a given periodic
-structure. Turning a solver into a *fabricated, analyzed metalens* still requires the
-user to hand-assemble the surrounding workflow: sweeping a meta-atom library, mapping a
-phase profile onto it, propagating to a focal plane, computing imaging metrics, running
-fabrication-tolerance studies, and emitting a GDSII layout. Each researcher re-implements
-this scaffolding, and the glue code is rarely validated or shared.
+# State of the field
 
-CELERIS provides that pipeline as a single validated tool. The target audience is
-metasurface and metalens researchers who need to go from an optical specification
-(focal length, aperture, wavelength, material) to a fabrication-ready, performance-
-characterized design without stitching together a solver, a plotting stack, and a
-layout tool. The contribution is not a new solver kernel but the **integration** —
-solver → library → design → analysis → layout — validated end to end against published
-devices.
+The solver kernels above are mature, and several of them (TORCWA, `fmmax`,
+`meent`) are stronger than CELERIS as kernels: they run the full modal solve on a
+GPU and provide automatic differentiation, whereas CELERIS solves on the CPU,
+accelerates only far-field propagation on the GPU, and optimizes by finite
+differences. Two open projects also go beyond a kernel: `metabox` [@metabox]
+provides RCWA-characterized libraries, differentiable end-to-end optimization
+(including broadband objectives), and GDSII export, and `MetaCraft`
+[@metacraft] provides database-driven metalens design and optimization. Both
+are inverse-design frameworks built around optimizing a merit function.
 
-## State of the field
+CELERIS was built as a new package, rather than as a contribution to one of
+these, for two reasons. First, its focus is *forward* design and diagnosis — a
+broad optical-analysis battery, closed-form geometric-phase and group-delay
+recipes, and reproductions of published devices on one validated model — which
+does not fit the architecture of a differentiable-optimization framework.
+Second, it is written as a native C++ library with thin Python and GUI layers, so
+a complete design runs in seconds on a laptop CPU without a GPU or an autodiff
+stack. The two approaches are complementary: a lens found by an inverse-design
+tool can be checked with CELERIS's analysis battery, and adding an analytic
+adjoint to CELERIS is planned work.
 
-Table 1 positions CELERIS against widely used RCWA/FMM codes. CELERIS deliberately
-*does not* compete on automatic differentiation (see Limitations); it competes on the
-integrated design–analysis–fabrication workflow, which the solver kernels do not
-provide.
+# Software design
 
-**Table 1.** Feature comparison (`✓` = provided, `~` = partial/possible with user code,
-`✗` = not provided). Verified against each tool's documentation/publication; released
-versions evolve, so cells should be re-checked at submission.
+- **Engine (`celeris_core`, C++23).** 1D RCWA (TE/TM, multilayer) and
+  2D-vectorial RCWA. The 2D solver uses Li's inverse-rule Fourier
+  factorization [@li1996; @li1997] for axis-aligned rectangles and a Laurent
+  factorization for arbitrary sampled shapes; layers are combined with a
+  Redheffer scattering-matrix recursion [@redheffer1962; @rumpf2011]. Dense
+  linear algebra uses Eigen [@eigen], with an optional Intel MKL backend.
+- **Design.** Library sweeps over pillar geometry and height; phase profiles
+  (focusing, vortex, deflector, axicon, quadratic wide-field, freeform) drive
+  both a propagation-phase path and a Pancharatnam–Berry path [@berry1984;
+  @bomzon2002]; achromatic design matches phase and group delay across a band.
+- **Analysis.** Rayleigh–Sommerfeld far-field propagation [@goodman], with an
+  optional CUDA kernel and automatic CPU fallback, feeding PSF, Strehl,
+  encircled energy, MTF, Zernike wavefront, through-focus, field-of-view,
+  tolerance, and per-order efficiency analyses.
+- **Output and interfaces.** GDSII export (square, rectangular, and rotated
+  pillars); a CLI (`design`, `pbdesign`, `achromatic`, `reproduce`, `selftest`,
+  …); Python bindings via pybind11 [@pybind11] (`pip install .`); and a Dear
+  ImGui desktop GUI. The default build needs only a C++23 compiler and CMake;
+  CUDA, MKL, and the GUI are optional.
 
-| Feature | S$^4$ | RETICOLO | grcwa | TORCWA | fmmax | meent | **CELERIS** |
-|---|---|---|---|---|---|---|---|
-| Language | C++/Lua/Py | MATLAB | Python | PyTorch | JAX | np/JAX/torch | **C++/Py** |
-| License | GPL | (MATLAB) | GPL | — | MIT | MIT | **Apache-2.0** |
-| 1D + 2D-vectorial RCWA | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **✓** |
-| Native GPU (full solve) | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | **✗ (GPU far-field only)** |
-| Automatic differentiation | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | **✗ (FD; adjoint planned)** |
-| Arbitrary meta-atom shapes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **✓** |
-| Integrated metalens **design** | ✗ | ✗ | ~ | ~ | ~ | ~ | **✓** |
-| Optical **analysis battery** | ✗ | ~ | ✗ | ✗ | ✗ | ✗ | **✓** |
-| Achromatic + PB design | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
-| Fabrication-ready **GDSII** export | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
-| Published-device reproductions | — | — | — | — | — | — | **✓** |
-| Desktop GUI | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
+**Testing.** `celeris selftest` runs 55 locked-tolerance assertions and exits
+non-zero if any fails. The checks include energy conservation, agreement of the
+2D solver with the 1D solver (~$5\times10^{-12}$), RCWA against the transfer-matrix
+method and effective-medium theory, and agreement with external solvers. On an
+identical binary grating, CELERIS matches Stanford S$^4$ to $7\times10^{-8}$ in
+TE transmittance at Fourier order $M=40$ (\autoref{fig:validation}), and it matches
+`grcwa`'s reference value of 0.93333. Continuous integration builds CELERIS on
+Linux with CPU only and runs a fast subset on every push, plus the full suite
+nightly; `paper/reproduce_all.sh` regenerates every figure.
 
-We state the trade-off plainly: the GPU/autodiff-native solvers (TORCWA, fmmax, meent)
-are *stronger solver kernels* — they run the full modal solve on the GPU with automatic
-differentiation, whereas CELERIS GPU-accelerates only far-field propagation and
-optimizes by finite differences (an analytic adjoint is planned). CELERIS's contribution
-is orthogonal: it is the only tool that wraps the solver in a complete, validated
-**design → analysis → fabrication** workflow — integrated design, the optical analysis
-battery, achromatic/Pancharatnam–Berry recipes, GDSII export, published-device
-reproductions, and a GUI — none of which the solver kernels provide.
+![CELERIS versus Stanford S$^4$ on an identical freestanding $n=1.5$ grating
+($\Lambda=0.3\,\mu$m, fill 0.5, thickness $0.5\,\mu$m, $\lambda=0.5\,\mu$m).
+Left: zeroth-order transmittance against Fourier order. Right: the CELERIS–S$^4$
+difference falls to $7\times10^{-8}$ (TE); TM converges more slowly in both
+solvers.\label{fig:validation}](figures/fig_validation.png)
 
-## Software design
+# Research impact statement
 
-- **Engine (`celeris_core`, C++23).** 1D RCWA (TE/TM, multilayer, S-matrix) and
-  2D-vectorial RCWA. The 2D solver uses the Li/Liu–Fan inverse-rule Fourier
-  factorization for axis-aligned rectangles (correct convergence, energy conserved to
-  machine precision) and a stable Laurent factorization for arbitrary sampled shapes.
-  Layer coupling uses a Redheffer S-matrix recursion. The dense complex linear algebra
-  runs on Eigen (header-only), optionally routed through Intel MKL.
-- **Design.** A library builder sweeps meta-atom geometry; phase profiles
-  (focusing, vortex/OAM, deflector, axicon, quadratic wide-FOV, freeform) drive both a
-  propagation-phase path and an exact geometric (Pancharatnam–Berry) path. Achromatic
-  design engineers group delay across a band via dispersive libraries (fill×height,
-  single-etch shape variety, and a PB variant).
-- **Analysis.** Strehl/FWHM/encircled energy, PSF, wavefront (OPD/Zernike/Maréchal),
-  MTF, through-focus/caustic, chromatic, spot-vs-field, full-field grid, tolerance,
-  birefringence, and per-order efficiency/absorption budgets.
-- **Acceleration.** The far-field Rayleigh–Sommerfeld propagation — a dense
-  (pixels × pillars) reduction — runs as a CUDA kernel (static runtime; CPU auto-
-  fallback when no device is present). **The RCWA eigensolve itself remains on the CPU**
-  (see Limitations). The CUDA build is cross-platform (Linux and Windows).
-- **Interfaces.** A CLI (`design`, `pbdesign`, `achromatic`, `reproduce`, `selftest`,
-  …), Python bindings (pybind11; `pip install .`), and a Dear ImGui desktop GUI.
+<!-- AUTHOR: JOSS requires this to be "compelling and specific, not aspirational".
+     Before submitting, add concrete external use (another group, a course, a lab
+     project, a poster/talk, a preprint that uses CELERIS) with links. What is below is
+     the honest current state. -->
 
-## Validation and research impact
+CELERIS reproduces two published devices end to end, and these serve as its
+worked research examples. For the NA = 0.80 Pancharatnam–Berry TiO$_2$ metalens
+of @khorasaninejad2016, it solves the published nanofin geometry with deposited
+TiO$_2$ optical constants and recovers near-ideal half-wave-plate behavior
+(96–99 % transmission-normalized conversion) and a diffraction-limited focus.
+For the broadband achromat of @chen2018 (NA = 0.20, $D=26.4\,\mu$m, one
+600 nm etch, 470–670 nm), single-etch group-delay engineering cuts the chromatic
+focal drift from 22.7 µm to 6.4 µm compared with a dispersion-blind lens built
+from the same library (\autoref{fig:achromatic}). The remaining drift is the
+group-delay limit: the aperture needs a span of about 4.4 fs, while a single
+600 nm nanofin library spans about 3 fs. Version 1.0.0 is
+archived on Zenodo (doi:10.5281/zenodo.21891346).
 
-Correctness is locked by a self-test suite of 20+ cases, cross-checked against:
-closed-form Fresnel/TMM and Bragg-mirror results; effective-medium theory in the deep-
-subwavelength limit; strict energy conservation ($R+T+A = 1$ to $10^{-6}$); and two
-independent RCWA solvers, `grcwa` and **Stanford S$^4$** (the field-standard FMM
-reference). The suite runs green on Linux (GCC) and is enforced by continuous
-integration.
+![Chen-2018 achromat at full device scale: rigorous focal length against
+wavelength for a standard Pancharatnam–Berry lens and a group-delay-engineered
+lens built from the same single-etch library.\label{fig:achromatic}](figures/fig_achromatic.png)
 
-Running CELERIS and S$^4$ on an *identical* freestanding $n=1.5$ binary grating
-($\Lambda = 0.3\,\mu$m, fill 0.5, thickness $0.5\,\mu$m, $\lambda = 0.5\,\mu$m, normal
-incidence), the zeroth-order transmittance agrees to **$7\times10^{-8}$ (TE)** at $M=40$
-(converging $10^{-5}\to10^{-7}$ with Fourier order), and to $3\times10^{-4}$ (TM), the
-latter limited by the well-known slower TM Fourier convergence exhibited by *both*
-solvers. This case also equals grcwa's 0.93333 to $\sim10^{-6}$ — a three-way agreement.
-The comparison is reproducible via `paper/validation/s4_crosscheck.py` and shown in
-Fig. 1.
+# AI usage disclosure
 
-![CELERIS vs Stanford S$^4$ on an identical freestanding grating. Left: 0th-order
-transmittance vs Fourier order $M$ — CELERIS (TE) and S$^4$ (TE) sit on grcwa's 0.93333.
-Right: the CELERIS$-$S$^4$ difference falls to $7\times10^{-8}$ (TE); TM converges more
-slowly for both, as expected.](figures/fig_validation.pdf)
+<!-- AUTHOR: confirm the exact model versions used over the project's lifetime. -->
 
-The end-to-end pipeline is exercised in Figs. 2–3: sweeping a TiO$_2$ square-pillar's
-fill builds the phase library (Fig. 2), and designing an NA$\approx$0.2 focusing lens
-from it yields a diffraction-limited focal spot — FWHM equal to $\lambda f/D$ to three
-figures (Fig. 3).
+CELERIS was developed with substantial assistance from generative AI. The author
+used Anthropic's Claude Code (Claude Opus-family models, 2026) to help write and
+refactor source code, tests, build scripts, documentation, and drafts of this
+paper. The author chose the scope, architecture, numerical methods, and
+validation targets, and reviewed, edited, and tested all AI-assisted output.
+Every numerical result reported here is checked by the locked self-test suite or
+regenerated by the scripts in `paper/`. No AI tools were used for correspondence
+with editors or reviewers.
 
-![Meta-atom phase library: transmission phase and amplitude $|t|$ vs pillar fill for a
-TiO$_2$ square pillar ($\lambda$=532 nm, $\Lambda$=350 nm, $H$=600 nm).](figures/fig_library.pdf)
+# Acknowledgements
 
-![Focal-plane PSF of the designed lens (log scale, left) and its central line cut
-(right): FWHM = 1.330 $\mu$m, exactly the diffraction limit $\lambda f/D$.](figures/fig_psf.pdf)
+This work received no dedicated financial support.
 
-The **full pipeline** is demonstrated by reproducing two canonical published devices
-end to end:
-
-- **Khorasaninejad et al., *Science* 352, 1190 (2016)** — an NA = 0.80 Pancharatnam–
-  Berry TiO$_2$ nanofin metalens. CELERIS solves the published nanofin geometry with the
-  deposited ALD-TiO$_2$ optical constants and recovers near-ideal half-wave-plate
-  behavior (transmitted-normalized conversion 96–99 %), an exact geometric phase, and a
-  diffraction-limited focal spot.
-- **Chen et al., *Nat. Nanotechnol.* 13, 220 (2018)** — a broadband achromatic visible
-  metalens. CELERIS reproduces the central physical limit (the required group-delay span
-  sits at the ~5 fs single-nanofin ceiling, so the aperture is group-delay-limited) and,
-  via single-etch group-delay engineering on a birefringent Pancharatnam–Berry library,
-  flattens the chromatic focal shift relative to a dispersion-blind lens built from the
-  same library (Fig. 4).
-
-![Broadband achromatic metalens (Chen 2018 recipe): rigorous focal length vs wavelength
-for a standard Pancharatnam–Berry lens and a group-delay-engineered achromatic lens
-built from the *same* single-etch birefringent library. Group-delay matching flattens
-the chromatic focal shift (drift 4.6 → 1.9 $\mu$m). At this small demonstration aperture
-($D=10\,\mu$m, low Fresnel number) the *absolute* focus of both designs sits below the
-geometric target $f$; the effect shown is the *relative* achromatic flattening, which is
-what the group-delay objective controls.](figures/fig_achromatic.pdf)
-
-## Performance
-
-The GPU accelerates far-field propagation only; the RCWA modal solve runs on the CPU.
-We benchmark the propagation kernel (single precision) against CELERIS's own optimized
-16-core CPU propagation (`compute_psf`, double precision) using the built-in `psfbench`
-command on an RTX 4070 laptop GPU. Results agree to machine precision
-(max$|\Delta$ normalized PSF$| = 0$). Measured speedups (GPU vs 16-core CPU):
-
-| Aperture (pillars) | Focal grid | CPU | GPU | Speedup |
-|---|---|---|---|---|
-| 92 k | 161$^2$ | 178–202 ms | 35–37 ms | **4.8–5.8×** |
-| 92 k | 321$^2$ | 274 ms | 140 ms | 2.0× |
-| 92 k | 641$^2$ | 666 ms | 519 ms | 1.3× |
-| 92 k | 1024$^2$ | 1457 ms | 1312 ms | 1.1× |
-| 256 k | 161$^2$ | 241 ms | 111 ms | 2.2× |
-| 577 k | 161$^2$ | 434 ms | 252 ms | 1.7× |
-
-So on this hardware the GPU gives a **modest ~1–6× over a well-parallelized 16-core CPU**,
-not the order-of-magnitude win a naive single-threaded baseline would suggest. The
-speedup *decreasing* with grid size indicates the current kernel is memory-bound (each
-thread re-reads the full pillar list from global memory); shared-memory tiling is a clear
-future optimization. We report these numbers rather than a headline figure precisely
-because an apples-to-apples multicore comparison is the honest one.
-
-The dominant cost, however, is the RCWA modal solve, not propagation. The solve is
-bounded by dense complex linear algebra (operator assembly, matrix inverses, and the
-S-matrix recursion), which an optional Intel MKL backend accelerates. Because CELERIS
-parallelizes its unit-cell sweeps across cores itself, MKL is pinned to a single thread
-to avoid nested oversubscription; composed this way it is **2.3× faster than the AVX2
-build** on an M = 8 metalens library design (5.9 s vs 13.5 s, 16-core), with larger gains
-at higher Fourier order. The default build has no MKL dependency (header-only Eigen with
-AVX2); MKL is opt-in.
-
-## Limitations
-
-State plainly (maturity, not weakness):
-
-- **The RCWA eigensolve is CPU-only.** The GPU accelerates far-field propagation, not
-  the modal solve. A GPU eigensolve was prototyped (cuSOLVER) and found no faster than
-  the CPU path; the promising direction is batching the many independent unit-cell solves
-  of a library, which is future work.
-- **Inverse design uses finite-difference optimization** over low-dimensional parametric
-  meta-atoms; an analytic adjoint (true gradient-based / differentiable RCWA) is planned.
-- **Curved shapes (circle/ellipse) converge slowly** (staircasing of a curved interface),
-  a known RCWA property confirmed against `grcwa`.
-- **Achromatic multi-height designs imply a grayscale/multi-level etch**; the single-etch
-  Pancharatnam–Berry variant is the directly fabricable one.
-- **Scope is metalenses/metasurfaces via RCWA** — explicitly not FDTD or ray tracing.
-
-## Declaration of generative AI in the writing process
-
-During the preparation of this work the author used Anthropic Claude to assist with
-software implementation and manuscript drafting. The author reviewed and edited all
-output, made every design and physics decision, and takes full responsibility for the
-content; all numerical results are enforced by the validation suite described above.
-
-## References
-
-References are maintained in `paper/paper.bib` (rendered here via the `elsarticle-num`
-bibliography style on LaTeX conversion). The software archive DOI (Zenodo) is added to
-this list once the release is tagged.
+# References

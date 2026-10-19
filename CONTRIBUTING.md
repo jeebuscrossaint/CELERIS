@@ -13,6 +13,13 @@ and analysis pipeline. This guide covers how to build, test, and propose changes
   that CELERIS's scope is deliberately **metalenses/metasurfaces via RCWA** (not FDTD,
   not general ray tracing).
 
+## Getting help
+
+Questions about setting up a design, choosing parameters, or interpreting a result
+are welcome: open an issue with the **Question / usage help** template. Bugs and
+feature requests have their own templates. The maintainer aims to reply within a
+week.
+
 ## Building from source (Linux, CPU-only)
 
 CELERIS needs a C++23 compiler, CMake ≥ 3.20, and network access at configure time

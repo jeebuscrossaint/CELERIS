@@ -254,20 +254,51 @@ src/celeris/
 gui/                   Dear ImGui desktop application (celeris_gui)
 ```
 
+## Testing
+
+`celeris selftest` is the physics regression suite: 55 locked-tolerance assertions
+(energy conservation, 2D = 1D, RCWA = TMM, effective-medium limit, agreement with
+`grcwa` and Stanford S⁴, and the published-device reproductions). It exits non-zero
+if any check fails. `celeris selftest --quick` runs a ~1 s subset.
+
+```sh
+./build/celeris selftest          # full suite (~90 s on 16 cores)
+./build/celeris selftest --quick  # fast subset, as run by CI on every push
+```
+
+CI builds CPU-only on Linux and runs `--quick` on every push/PR and the full suite
+nightly. `paper/reproduce_all.sh` regenerates every figure in the paper.
+
 ## Status & roadmap
 
-CELERIS is a complete, validated MVP with a CLI, a desktop GUI, and a
-GPU-accelerated analysis path. Notable items still ahead:
+CELERIS 1.0 is a complete, validated pipeline (solver → library → design →
+analysis → GDSII) with a CLI, Python bindings, and a desktop GUI. Known limits and
+planned work:
 
-- Faster CPU eigensolve (OpenBLAS/LAPACK `zgeev`) — the remaining bottleneck is
-  the RCWA library build, which the GPU eigensolve cannot accelerate.
-- Full-2π / thickness-swept libraries and broadband / achromatic optimization.
-- Arbitrary geometric-phase profiles (vortex/OAM, deflectors) on the
-  Pancharatnam–Berry path — focusing is already built (`pbdesign`).
-- Validation against a published metalens; Linux/macOS GUI.
+- The RCWA eigensolve runs on the CPU; the GPU accelerates far-field propagation
+  only. Batching many unit-cell solves on the GPU is future work.
+- Optimization uses finite differences; an analytic adjoint (differentiable RCWA)
+  is planned.
+- Curved meta-atoms (circles, ellipses) converge slowly in Fourier order, as in
+  other RCWA codes.
+
+See [`ROADMAP.md`](ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
+
+## Getting help & contributing
+
+Questions, bug reports, and feature requests go in
+[GitHub issues](https://github.com/jeebuscrossaint/CELERIS/issues) (templates are
+provided). Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Citing
+
+If you use CELERIS in research, please cite the archived release via
+[`CITATION.cff`](CITATION.cff) (Zenodo concept DOI
+[10.5281/zenodo.21891345](https://doi.org/10.5281/zenodo.21891345)). A software
+paper is in preparation for the *Journal of Open Source Software*.
 
 ## License
 
 CELERIS is released under the **Apache License 2.0** (see [`LICENSE`](LICENSE)) — a
-permissive license with an explicit patent grant. If you use CELERIS in research,
-please cite it via [`CITATION.cff`](CITATION.cff).
+permissive license with an explicit patent grant. See [Citing](#citing) above.

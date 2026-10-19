@@ -1,14 +1,14 @@
 # CELERIS — Roadmap
 
-> ## ⚑ CURRENT VENUE DECISION (2026-07-23) — read `memory/celeris-resume.md` first
-> The code paper now targets **Computer Physics Communications (CPC)** — Elsevier, IF~7,
-> computational-physics, **no undergrad-submission gate**, APC waived by UCF's Elsevier
-> Read&Publish deal. **SciPost was dropped** (it bars solo undergrad submission — requires a
-> PhD+ registered submitter). **SoftwareX is the pre-planned fallback** if CPC rejects.
-> The paper (`paper/paper.md`) is **content-complete** (4 figures, grcwa+S4-validated, CPC
-> Program Summary block added). Next: `paper.md` → Elsevier `elsarticle` LaTeX → tag v1.0 +
-> Zenodo → submit. The "§2 SciPost track" below is superseded by CPC, but its requirements
-> (docs, tests, benchmarks, `paper.md` sections) still apply nearly verbatim.
+> ## ⚑ CURRENT VENUE DECISION (2026-10-19) — read `memory/celeris-resume.md` first
+> The code paper now targets the **Journal of Open Source Software (JOSS)**. CPC was
+> dropped for the code paper: its novelty bar is a stretch for a solo first paper, while
+> JOSS reviews the *software* (scholarly effort, docs, tests, open development), which is
+> where CELERIS is strong. `paper/paper.md` is now a JOSS-format paper (~1,000 words);
+> the old CPC manuscript lives in `paper/longform/` as an **arXiv companion report**, not
+> a second journal paper. **Earliest legal JOSS submission: 2026-12-17** (repo public
+> 2026-06-16 + "more than six months"). See §J for the gate checklist — the 6-month clock
+> is the easy part; the commit-burst history and zero issues/PRs are the real risks.
 
 **The goal is a paper *portfolio* out of one codebase — done the way that adds up
 instead of backfiring.** The rule that makes it work: **one paper per distinct piece
@@ -30,24 +30,20 @@ genuinely different papers. That's how the codebase becomes a factory.
 
 | # | Paper | Venue | Content (why it's distinct) | Author | Status |
 |---|-------|-------|------------------------------|--------|--------|
-| **P1** | **Code paper** | **SciPost Physics Codebases** | "Here is CELERIS, the end-to-end pipeline." | **Solo** | Primary near-term target |
-| **P2** | **Method paper** | **CPC** | "A from-scratch **differentiable/adjoint** RCWA." | Solo / +advisor | **Contingent on the adjoint (§3) landing** |
+| **P1** | **Code paper** | **JOSS** (+ arXiv long-form report) | "Here is CELERIS, the end-to-end pipeline." | **Solo** | Paper drafted; gated on §J (earliest 2026-12-17) |
+| **P2** | **Method paper** | Optics Express / CPC | "A from-scratch **differentiable/adjoint** RCWA." | Solo / +advisor | **Contingent on the adjoint (§3) landing** |
 | **R1** | Results | Optics Express / Nanophotonics | A single-etch achromat pushing the Chen-2018 group-delay limit | +advisor | Needs a new result |
 | **R2** | Results | Optics Express / Optica | Wide-FOV doublet / aplanatic design | +advisor | Needs a new result |
 | **R3** | Results | Optics Express / ACS Photonics | An inverse-designed device (rides on the adjoint) | +advisor | Needs adjoint + result |
 
 **Read this table honestly:**
-- **P1 (SciPost code paper) is the guaranteed, solo, near-term win.** No calendar gate,
-  no fee, physicist-respected. **Submission-ready in ~2–4 weeks** of real work; arXiv
-  preprint the same day; SciPost acceptance is a normal multi-month review after that.
-- **P2 (CPC) only exists as a *separate* paper if the adjoint (§3) lands.** The adjoint
-  is what makes CPC *distinct content* from P1 ("differentiable RCWA method" ≠ "here is
-  the tool"). **If the adjoint doesn't land, do NOT also submit CPC** — it would overlap
-  P1 and read as double-publishing. In that case the portfolio is P1 + results papers.
-- **R1–R3 are where the volume legitimately lives**, but each needs an *actual new
-  result*, not a reprint — that's real work, usually **co-authored with an advisor**
-  (Eikenberry?), which is a feature: results papers are how the champion + comparative
-  letters get built. The **solo flex stays P1.**
+- **P1 (JOSS code paper) is the solo, near-term win.** JOSS is free, reviewed in the
+  open on GitHub, and judges the software. Its gates are calendar + process, not novelty.
+- **P2 only exists if the adjoint (§3d) lands**, and it is *distinct content* from P1
+  (a new method, not the tool again). Never resubmit the JOSS paper elsewhere.
+- **R1–R3 are where the volume lives**, each needing a genuinely new result, usually
+  co-authored with an advisor. Any of them, once public, is also P1's best
+  research-impact evidence.
 
 > **Reality check.** These are solid CV bricks that get cold emails **read and answered**
 > — a peer-reviewed solo code paper + preprints in a subfield is most of what most
@@ -58,13 +54,49 @@ genuinely different papers. That's how the codebase becomes a factory.
 
 ## ⭐ Milestones
 
-**P1-SUBMITTABLE (the near-term target)** = §1 (shared infra) + §2 (SciPost code paper:
-docs, community files, benchmarks, `paper.md`). No calendar gate. Ship the **arXiv
-preprint the same day** — that's the instant, citable win.
+**P1-SUBMITTABLE (JOSS)** = every box in §J ticked, on or after **2026-12-17**.
 
-**P2-SUBMITTABLE** = §1 + the adjoint landing (§3d) + §3a–c (novelty framing, S4
-validation, manuscript). **Contingent:** only pursue if the adjoint makes it genuinely
-distinct from P1.
+**P2-SUBMITTABLE** = §1 + the adjoint landing (§3d) + §3a–c. Contingent.
+
+---
+
+## J. JOSS submission gates (P1) — desk-reject criteria, check each honestly
+
+Source: JOSS submission requirements + review criteria (read 2026-10-19,
+joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed).
+
+- [~] **Public > 6 months.** GitHub repo created 2026-06-16 → **eligible from
+      2026-12-17**. Confirm it was public from creation (if it was flipped public later,
+      the clock starts at that date).
+- [ ] **Sustained development, not bursts.** JOSS rejects history "concentrated into a
+      few days or weeks". Today: 160 commits on 12 distinct days; 104 of them in
+      2026-06-16…22; a 2-month gap (2026-08-12 → 2026-10-09). **Fix: steady, real work
+      every week from now to submission** (small dated commits, not one sprint). Never
+      fake or backdate commits.
+- [ ] **Open development: issues + PRs.** Today: **0 issues, 0 PRs**, 1 release.
+      **Fix:** file planned work as GitHub issues; land changes through PRs that close
+      them (even solo — the PR template enforces the selftest check); answer any
+      outside issue promptly. Cut **v1.1.0** (JOSS changes + API docs) and, near
+      submission, a release that matches the paper exactly.
+- [ ] **Research impact — "compelling and specific, not aspirational".** Weakest gate.
+      Today: two published-device reproductions (author's own). **Need at least one of:**
+      an outside user (labmate, a UCF group, a course project) using it for a real
+      design; a talk/poster presenting results made with it; a preprint with a CELERIS
+      result (e.g. R1, the achromatic-limit map); the arXiv long-form report.
+      Then fill the paper's Research impact statement with links.
+- [ ] **API documentation.** Doxygen for `celeris_core` public headers + docstrings on
+      the pybind11 bindings + a short API overview page. Missing today.
+- [x] Install docs with automated dependency handling (CMake + `pip install .`).
+- [x] Example usage (7 Python examples, CLI recipes, published-device reproductions).
+- [x] Automated tests in CI (`selftest`, 55 locked assertions; `--quick` per push).
+- [x] Community guidelines (CONTRIBUTING with support section, CoC, issue/PR templates).
+- [x] OSI license (Apache-2.0); Zenodo archive (v1.0.0).
+- [~] **Paper (`paper/paper.md`)** — JOSS format, all required sections, ~1,000 words,
+      2 figures, full journal names in `paper.bib`. TODO: Research impact evidence;
+      confirm AI model versions in the disclosure; check the `draft-pdf` CI artifact.
+- [ ] **arXiv** the long-form report (`paper/longform/`, physics.comp-ph + physics.optics;
+      needs a faculty endorser). Optional, but a citable preprint before JOSS helps.
+- [ ] **Submit** at joss.theoj.org with the repo URL, version, and archive DOI.
 
 ---
 
@@ -114,7 +146,7 @@ they *will* clone, build, and run it.
 - [ ] **Zenodo DOI** for the exact commit each paper describes; pin dep versions (Eigen,
       MKL optional, CUDA optional, pybind11, grcwa/S4 for validation).
 
-## 2. P1 — SciPost Physics Codebases (the code paper — SOLO, near-term)
+## 2. P1 — code-paper checklist (written for SciPost; superseded by §J for JOSS)
 
 No calendar gate, no APC, physicist-respected. Once §1 is green this is mostly writing.
 SciPost's acceptance checklist is the spec: **benchmarking tests, ≥1 detailed example
@@ -276,7 +308,7 @@ guarantees** and automatic fallback to the exact solver. This is the first item 
 that the autodiff-native tools (fmmax/TORCWA/meent) do **not** ship — the §3d adjoint, by
 contrast, is catch-up on a column they already have.
 
-- Gated strictly **after** the P1 CPC submission is sent, and after/alongside §3d.
+- Gated strictly **after** the P1 JOSS submission is sent, and after/alongside §3d.
 - Tier 1 = the meta-atom library map (low-dim, tractable). Tier 2 (freeform/operator
   learning) is optional and probably never.
 - **Hard kill criterion:** if cubic-spline/RBF interpolation over the existing library grid

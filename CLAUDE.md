@@ -9,12 +9,17 @@ CELERIS = a from-scratch, GPU-ready **metalens/metasurface design tool via RCWA*
 Engine is C++23, validated. Scope stays in the lane: metalenses + RCWA. NOT general
 ray tracing, NOT FDTD.
 
-**Primary goal (current): publish the CELERIS code paper in _Computer Physics
-Communications_ (CPC)**, solo (undergrad author), + an arXiv preprint. Fallback:
-SoftwareX. (SciPost was dropped — it bars solo undergrad submission; JOSS dropped — 6-mo
-clock + light.) The paper (`paper/paper.md`) is content-complete; next is LaTeX
-(`elsarticle`) → tag v1.0 + Zenodo → submit. Later papers (method/adjoint, results) are
-follow-ons — **one paper per distinct content, never the same paper to multiple venues.**
+**Primary goal (current, changed 2026-10-19): publish the CELERIS code paper in the
+_Journal of Open Source Software_ (JOSS)**, solo (undergrad author), + an arXiv
+long-form report. CPC was dropped for the code paper (novelty bar too high for a solo
+first paper); SciPost bars solo undergrads. `paper/paper.md` is the JOSS paper;
+`paper/longform/` is the arXiv companion (ex-CPC manuscript), NOT a second journal paper.
+**Earliest JOSS submission: 2026-12-17** (repo public 2026-06-16 + >6 months). The real
+blockers are JOSS's desk-reject gates — sustained (not bursty) development, public
+issues/PRs, concrete research impact, API docs — tracked in `ROADMAP.md` §J. Commit real
+work steadily, through issues + PRs; **never fake or backdate history.** Later papers
+(method/adjoint, results) are follow-ons — **one paper per distinct content, never the
+same paper to multiple venues.**
 **Read `memory/celeris-resume.md` for the full handoff** (venue rationale, session-scratchpad
 warning, exact next steps). The Zemax/Lumerical *product* is the "PARKED" backlog in
 `ROADMAP.md`, not the driver. CELERIS is **Apache-2.0** (permissive; keeps commercial

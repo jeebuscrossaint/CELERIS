@@ -6,6 +6,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Retargeted the code paper to the **Journal of Open Source Software (JOSS)**.
+  `paper/paper.md` is rewritten in JOSS format (Summary, Statement of need, State of
+  the field, Software design, Research impact statement, AI usage disclosure; ~1,000
+  words, PNG figures). The former CPC manuscript moved to `paper/longform/` as an arXiv
+  companion report; the CPC cover letter and highlights were removed.
+- `paper.bib`: journal names written in full, as JOSS requires.
+
+### Added
+- `.github/workflows/draft-pdf.yml` — builds the JOSS paper PDF with the Open Journals
+  toolchain on every paper change.
+- Issue templates (bug, feature, question) and a pull-request template with the
+  selftest checklist; a "Getting help" section in `CONTRIBUTING.md`.
+- README sections on testing, getting help, and citing; refreshed status/roadmap.
+
 ## [1.0.0] - 2026-08-11
 
 First tagged release — the version described by the CELERIS code paper (targeting

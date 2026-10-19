@@ -1,8 +1,8 @@
 # P4 — Certified surrogate models for the RCWA forward map
 
-**Status:** proposal / not started. **Sequencing: strictly AFTER the P1 CPC submission is
+**Status:** proposal / not started. **Sequencing: strictly AFTER the P1 JOSS submission is
 out the door, and after (or alongside the tail of) the §3d adjoint.** Nothing here touches
-`paper/` or the in-flight submission. If you are reading this while the CPC submission is
+`paper/` or the in-flight submission. If you are reading this while the JOSS submission is
 still unsent, close this file and go do that instead.
 
 ---

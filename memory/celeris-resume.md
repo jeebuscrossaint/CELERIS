@@ -1,19 +1,55 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-08-11 (session 2). **HEAD at handoff:** `264dd7f`+ (run `git log --oneline -25`).
-**START HERE (fresh session):** v1.0.0 released + archived (Zenodo DOI wired). The
-**pre-submission hardening punch list (4-referee review) is now FULLY CLEARED — ALL items
-#1–#7 done, including the optional #6** — see "Pre-submission hardening" below for per-item
-status. The paper is **20 pp**, compiles clean (`pdflatex → bibtex → pdflatex×2`, 0 undefined
-refs, all 29 bib keys cited), has a pipeline schematic (Fig. 1) and a real-device Chen-2018
-achromat figure; the selftest gates **55 locked-tolerance assertions** (exit 0). Re-verify green:
-`cmake --build build-linux --target celeris && ./build-linux/celeris selftest`
-(must end "SELF-TEST: all locked-tolerance checks passed.", exit 0) and
-`cd paper && pdflatex paper && bibtex paper && pdflatex paper && pdflatex paper`.
-**The paper is submission-ready.** NEXT = the human-gated submission steps at the bottom
-(Editorial Manager + arXiv). A Python venv (`.venv`, gitignored) has the built `celeris`
-module + matplotlib if you need to regenerate figures; S4 is NOT built (not needed — the
-S4 comparison lives in the committed fig_validation).
+**Last updated:** 2026-10-19. **HEAD:** run `git log --oneline -25`.
+
+## !!! VENUE CHANGED 2026-10-19: the code paper targets JOSS, not CPC !!!
+Author's decision (do not re-litigate): CPC's novelty bar is too high for a solo
+undergrad first paper; **JOSS** judges the software itself. Everything below dated
+before 2026-10-19 that says "CPC" is HISTORY. CPC/Optics Express stays an option only
+for the later *method* paper (adjoint), which is different content.
+
+**What changed in the repo (2026-10-19):**
+- `paper/paper.md` rewritten as a JOSS paper (YAML front matter; Summary / Statement
+  of need / State of the field / Software design / Research impact statement / AI usage
+  disclosure / Acknowledgements; ~1,000 words, limit 750–1750; figures
+  `fig_validation.png` + `fig_achromatic.png`). Citations checked to resolve with
+  `pandoc --citeproc`. **Two `<!-- AUTHOR: -->` TODOs in it:** concrete research-impact
+  evidence, and exact AI model versions.
+- Old CPC LaTeX moved to `paper/longform/paper.tex` = **arXiv companion report**
+  (journal line → arXiv, CPC-only fields removed, paths → `../figures`, `../paper.bib`).
+  **Not compiled after the move: no TeX on this box.** cover_letter/highlights deleted.
+- `paper.bib`: full journal names (JOSS rule).
+- `.github/workflows/draft-pdf.yml` (official openjournals draft action) — check its
+  first run's artifact renders.
+- Issue templates (bug/feature/question), PR template, CONTRIBUTING "Getting help",
+  README Testing / Getting help / Citing sections, ROADMAP §J gate checklist.
+
+**JOSS timing (verified against joss.readthedocs.io on 2026-10-19):**
+- Hard rule: repo "public for more than six months". GitHub repo created
+  2026-06-16 → **earliest submission 2026-12-17** (confirm it was public from creation).
+- Desk-reject gates that are the REAL risk (ROADMAP §J):
+  1. Bursty history — 160 commits on 12 days (104 in Jun 16–22), gap Aug 12 → Oct 9.
+     Fix: steady weekly real work from now on. Never backdate/fake.
+  2. 0 issues / 0 PRs — work through issues + PRs from now on.
+  3. Research impact must be "compelling and specific, not aspirational" — need
+     outside use / talk / preprint with a CELERIS result.
+  4. API docs missing (Doxygen + pybind11 docstrings).
+- Realistic target: **early–mid January 2027** if the above get ~8–10 weeks of real
+  history; 2026-12-17 only if they are visibly in place by then.
+
+**NEXT STEPS (in order):**
+1. Open GitHub issues for the §J work (API docs, v1.1, research-impact items) and land
+   each via a PR.
+2. API docs (Doxygen config + header comments + bindings docstrings) → release v1.1.0.
+3. Line up research-impact evidence (a labmate/UCF group using it; a talk or poster; an
+   R1 result preprint); arXiv the long-form report (needs a physics.comp-ph endorser;
+   install TeX and recompile `paper/longform/` first).
+4. Fill the two paper TODOs; check the draft-pdf artifact; submit at joss.theoj.org on
+   or after 2026-12-17.
+
+---
+
+## (HISTORY below — pre-2026-10-19, CPC-era. Kept for the record.)
 
 ## Update 2026-08-07
 - **CPC eligibility audited — no JOSS/SciPost-style trap.** Confirmed against Elsevier's
@@ -144,7 +180,7 @@ against grcwa + Stanford S4). The venue is now **Computer Physics Communications
 The remaining work is: convert the draft to Elsevier `elsarticle` LaTeX, tag a release +
 Zenodo DOI, and submit. Software + validation are done and committed.
 
-## THE VENUE DECISION (this changed twice — do not re-litigate)
+## THE VENUE DECISION (CPC-era, SUPERSEDED 2026-10-19 → JOSS; see top)
 - Goal: a first publication for grad-school recruitment. Author is an **undergraduate**
   (sophomore), so venue must allow **solo undergrad submission**.
 - **JOSS** → dropped: 6-month public-repo clock (repo public ~2026-06-16 → not submittable

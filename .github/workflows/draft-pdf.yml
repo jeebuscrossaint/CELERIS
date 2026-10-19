@@ -1,0 +1,30 @@
+name: JOSS paper draft
+
+# Builds the JOSS paper (paper/paper.md + paper.bib) with the official Open Journals
+# toolchain and uploads the PDF, so the exact rendering reviewers see is checked on
+# every change to the paper.
+
+on:
+  push:
+    paths:
+      - "paper/**"
+      - ".github/workflows/draft-pdf.yml"
+  workflow_dispatch:
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    name: Paper draft
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: paper/paper.md
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: paper/paper.pdf

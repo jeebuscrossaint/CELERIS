@@ -2,7 +2,7 @@ name: CI
 
 # CPU-only Linux build + physics self-test + Python bindings/examples.
 # CUDA and Intel MKL are optional accelerators and are deliberately NOT required here:
-# reviewers (SciPost / arXiv readers) build on plain Linux without a GPU, so the default
+# reviewers (JOSS reviewers / arXiv readers) build on plain Linux without a GPU, so the default
 # path must be green everywhere.
 
 on:

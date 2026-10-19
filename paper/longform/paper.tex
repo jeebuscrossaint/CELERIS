@@ -1,6 +1,9 @@
-%% CELERIS -- Computer Physics Communications (CPiP) submission.
-%% Document class: Elsevier elsarticle. Bibliography: elsarticle-num (paper.bib).
-%% Build:  pdflatex paper  ->  bibtex paper  ->  pdflatex paper  ->  pdflatex paper
+%% CELERIS -- long-form methods & validation report (arXiv preprint; physics.comp-ph).
+%% The journal paper is the short JOSS paper in ../paper.md; this is its companion
+%% technical report (formerly drafted for CPC), NOT a second journal submission.
+%% Document class: Elsevier elsarticle. Bibliography: elsarticle-num (../paper.bib).
+%% Build (from paper/longform/):
+%%   pdflatex paper  ->  bibtex paper  ->  pdflatex paper  ->  pdflatex paper
 \documentclass[preprint,12pt]{elsarticle}
 
 \usepackage[T1]{fontenc}
@@ -23,7 +26,8 @@
 \newcommand{\pt}{$\sim$}              % partial / possible with user code
 \newcommand{\na}{---}                 % not applicable
 
-\journal{Computer Physics Communications}
+\journal{arXiv (physics.comp-ph)}
+\graphicspath{{../}}
 
 \begin{document}
 
@@ -73,12 +77,8 @@ Fourier modal method \sep inverse design \sep GDSII
 
 %% ---------------------------------------------------------------------------
 \section*{Program summary}
-\noindent\emph{(CPC-mandatory block; exact fields are entered on the submission form.)}
 \begin{description}
 \item[Program title:] CELERIS
-\item[CPC Library classification:] 10 (Electrostatics and Electromagnetics) --- the
-      class used by the S$^4$ RCWA/FMM solver [CPC \textbf{183} (2012) 2233];
-      confirmed on the submission form.
 \item[Developer's repository link:] \url{https://github.com/jeebuscrossaint/CELERIS}
 \item[Licensing provisions:] Apache License 2.0
 \item[Permanent archive:] Zenodo (v1.0.0): \url{https://doi.org/10.5281/zenodo.21891346};
@@ -690,6 +690,6 @@ content; all numerical results are enforced by the validation suite described ab
 
 %% ---------------------------------------------------------------------------
 \bibliographystyle{elsarticle-num}
-\bibliography{paper}
+\bibliography{../paper}
 
 \end{document}
