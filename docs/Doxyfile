@@ -14,7 +14,12 @@ FULL_PATH_NAMES        = YES
 INPUT                  = docs/api-overview.md \
                          src/celeris/core.hpp \
                          src/celeris/rcwa \
-                         src/celeris/optics
+                         src/celeris/optics \
+                         src/celeris/design/phase_profile.hpp \
+                         src/celeris/design/metalens.hpp \
+                         src/celeris/design/optimize.hpp \
+                         src/celeris/design/system_opt.hpp \
+                         src/celeris/design/polar_metalens.hpp
 FILE_PATTERNS          = *.hpp
 RECURSIVE              = YES
 EXCLUDE                = src/celeris/rcwa/smatrix.hpp

@@ -89,9 +89,10 @@ joss.readthedocs.io). Any one failure = desk rejection (resubmittable once fixed
       result (e.g. R1, the achromatic-limit map); the arXiv long-form report.
       Then fill the paper's Research impact statement with links.
 - [~] **API documentation** (issues #1, #2). `docs/Doxyfile` + `docs/api-overview.md`
-      + CI job (warnings = errors) landed; `core`, `rcwa/`, `optics/` documented.
-      Remaining: design/, analysis/, materials/, io/, cuda/ headers (one module per
-      session), then the pybind11 docstrings (#2).
+      + CI job (warnings = errors) landed; `core`, `rcwa/`, `optics/` documented (PR #5),
+      design/ core headers (phase_profile, metalens, optimize, system_opt,
+      polar_metalens). Remaining: design/ pb_metalens, pb_achromatic, achromatic; then
+      analysis/, materials/, io/, cuda/ (one slice per session); then #2.
 - [x] Install docs with automated dependency handling (CMake + `pip install .`).
 - [x] Example usage (7 Python examples, CLI recipes, published-device reproductions).
 - [x] Automated tests in CI (`selftest`, 55 locked assertions; `--quick` per push).

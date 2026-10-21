@@ -24,8 +24,14 @@ CLI, the Python module, and the GUI all call the same functions.
 | `celeris/rcwa/rcwa1d.hpp` | 1D RCWA, single layer and multilayer (S-matrix), TE and TM. |
 | `celeris/rcwa/rcwa2d.hpp` | 2D vectorial RCWA for biperiodic meta-atom cells. |
 | `celeris/rcwa/eig.hpp` | The complex eigensolver backend (Eigen or LAPACK/MKL). |
+| `celeris/design/phase_profile.hpp` | Target phase profiles: focusing, quadratic, vortex, deflector, axicon, freeform. |
+| `celeris/design/metalens.hpp` | Meta-atom phase libraries, full-2π height search, propagation-phase lens design. |
+| `celeris/design/optimize.hpp` | Single-pillar inverse design (Adam, finite-difference gradients). |
+| `celeris/design/system_opt.hpp` | Period × height search on a focal-Strehl merit. |
+| `celeris/design/polar_metalens.hpp` | Polarization-multiplexed lenses from rectangular pillars. |
 
-The design, analysis, materials, and I/O modules are being added to this
+The remaining design headers (geometric-phase and achromatic), analysis,
+materials, and I/O modules are being added to this
 reference (issue #1). Until then, their headers under `src/celeris/` carry
 plain-comment documentation.
 
