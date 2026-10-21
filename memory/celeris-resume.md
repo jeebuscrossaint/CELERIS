@@ -35,8 +35,14 @@ for the later *method* paper (adjoint), which is different content.
   (`gh pr merge 5 --merge --delete-branch`).
 - Venue question answered: stay JOSS (SoftwareX = only real alternative; SPIE
   proceedings as an add-on that also builds research impact).
-- **Next session:** after #5 merges, branch `docs/api-design` → document
-  `src/celeris/design/*.hpp`, add `src/celeris/design` to Doxyfile INPUT, PR (part of #1).
+- PR #5 merged by the author 2026-10-19.
+- **2026-10-21:** PR #6 (branch `docs/api-design-core`, part of #1): Doxygen for design/
+  phase_profile, metalens, optimize, system_opt, polar_metalens (listed file-by-file
+  in Doxyfile INPUT). CI green. **Left open for the author to merge.**
+- **Next session (2–3 days later; one slice only):** after #6 merges, branch
+  `docs/api-design-pb` → document design/ `pb_metalens.hpp`, `pb_achromatic.hpp`,
+  `achromatic.hpp`; then replace the per-file design entries in Doxyfile INPUT with
+  `src/celeris/design`. PR, part of #1.
 
 **JOSS timing (verified against joss.readthedocs.io on 2026-10-19):**
 - Hard rule: repo "public for more than six months". GitHub repo created
