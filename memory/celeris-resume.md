@@ -1,6 +1,6 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-10-19. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-10-22. **HEAD:** run `git log --oneline -25`.
 
 ## !!! VENUE CHANGED 2026-10-19: the code paper targets JOSS, not CPC !!!
 Author's decision (do not re-litigate): CPC's novelty bar is too high for a solo
@@ -39,10 +39,17 @@ for the later *method* paper (adjoint), which is different content.
 - **2026-10-21:** PR #6 (branch `docs/api-design-core`, part of #1): Doxygen for design/
   phase_profile, metalens, optimize, system_opt, polar_metalens (listed file-by-file
   in Doxyfile INPUT). CI green. **Left open for the author to merge.**
-- **Next session (2–3 days later; one slice only):** after #6 merges, branch
-  `docs/api-design-pb` → document design/ `pb_metalens.hpp`, `pb_achromatic.hpp`,
-  `achromatic.hpp`; then replace the per-file design entries in Doxyfile INPUT with
-  `src/celeris/design`. PR, part of #1.
+- **2026-10-22:** merged #6, then **PR #7** (part of #1): Doxygen for design/
+  `pb_metalens`, `achromatic`, `pb_achromatic` → **all of design/ documented**; Doxyfile
+  INPUT now takes `src/celeris/design` as a directory. Full selftest 55/55, doxygen
+  warning-free, CI green, **merged** (HEAD `329e33c`).
+  CI flake seen: the Linux job's FetchContent clone of Eigen from gitlab.com failed
+  ("GitLab ... unable to handle this request due to load"); a rerun passed. Real
+  hardening option for a future slice: `apt install libeigen3-dev` in ci.yml so CI
+  never hits GitLab (CMake already prefers a system Eigen ≥3.4).
+- **Next session (2–3 days later, ~2026-10-24/25; one slice only):** branch
+  `docs/api-analysis` → Doxygen for `src/celeris/analysis/*.hpp`, add it to Doxyfile
+  INPUT + api-overview table. PR, part of #1. Then materials/, io/, cuda/, then #2.
 
 **JOSS timing (verified against joss.readthedocs.io on 2026-10-19):**
 - Hard rule: repo "public for more than six months". GitHub repo created
