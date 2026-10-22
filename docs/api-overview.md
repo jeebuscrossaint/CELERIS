@@ -29,9 +29,11 @@ CLI, the Python module, and the GUI all call the same functions.
 | `celeris/design/optimize.hpp` | Single-pillar inverse design (Adam, finite-difference gradients). |
 | `celeris/design/system_opt.hpp` | Period × height search on a focal-Strehl merit. |
 | `celeris/design/polar_metalens.hpp` | Polarization-multiplexed lenses from rectangular pillars. |
+| `celeris/design/pb_metalens.hpp` | Pancharatnam-Berry (geometric-phase) lenses: Jones matrices, half-wave-plate atom search, rotation maps. |
+| `celeris/design/achromatic.hpp` | Achromatic lenses by dispersion engineering: band-characterized libraries (fill × height or single-etch), two-objective selection, focal-shift check. |
+| `celeris/design/pb_achromatic.hpp` | Achromatic geometric-phase lenses: single-etch birefringent libraries chosen for group delay alone. |
 
-The remaining design headers (geometric-phase and achromatic), analysis,
-materials, and I/O modules are being added to this
+The analysis, materials, and I/O modules are being added to this
 reference (issue #1). Until then, their headers under `src/celeris/` carry
 plain-comment documentation.
 
