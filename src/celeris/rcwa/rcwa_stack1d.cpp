@@ -50,15 +50,17 @@ LayerModes compute_layer_modes(const GratingLayer1D& layer,
             E(a, b) = layer.eps_fourier((a - M) - (b - M), wavelength_um);
 
     MatrixXcd A;
+    MatrixXcd Pinv;  // ⟦1/ε⟧, TM only
     if (pol == Pol::TE) {
         A = Kx * Kx - E;
     } else {
-        MatrixXcd Einv(n, n);
+        // Li's rules, as in rcwa1d.cpp: A = ⟦1/ε⟧⁻¹·(Kx·⟦ε⟧⁻¹·Kx − I).
+        Pinv.resize(n, n);
         for (int a = 0; a < n; ++a)
             for (int b = 0; b < n; ++b)
-                Einv(a, b) =
+                Pinv(a, b) =
                     layer.eps_inv_fourier((a - M) - (b - M), wavelength_um);
-        A = E * (Kx * Einv * Kx - Id);
+        A = Pinv.partialPivLu().solve(Kx * E.partialPivLu().solve(Kx) - Id);
     }
 
     VectorXcd evals; MatrixXcd Wm;
@@ -71,8 +73,7 @@ LayerModes compute_layer_modes(const GratingLayer1D& layer,
     m.W = Wm;
     const cdouble j_unit{0.0, 1.0};
     m.V = (pol == Pol::TE) ? MatrixXcd(m.W * q.asDiagonal())
-                           : MatrixXcd(j_unit * (E.inverse() * m.W) *
-                                       q.asDiagonal());
+                           : MatrixXcd(j_unit * (Pinv * m.W) * q.asDiagonal());
     m.X = (-k0 * layer.thickness_um * q.array()).exp().matrix().asDiagonal();
     return m;
 }

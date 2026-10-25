@@ -20,6 +20,18 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Issue templates (bug, feature, question) and a pull-request template with the
   selftest checklist; a "Getting help" section in `CONTRIBUTING.md`.
 - README sections on testing, getting help, and citing; refreshed status/roadmap.
+- Selftest [6](c): a y-invariant 2D cell must reproduce the 1D solver for both TE and
+  TM to 1e-10 (high-contrast n=3.5 grating). Restores the 2D = 1D invariant, now
+  asserted and covering TM.
+
+### Fixed
+- **TM Fourier factorization now follows Li's rules (#8).** The 1D solvers
+  (`rcwa1d.cpp`, `rcwa_stack1d.cpp`) had ⟦ε⟧ and ⟦1/ε⟧ swapped in the TM operator and
+  its companion field, and the 2D plain-rectangle path used ⟦1/ε⟧ instead of ⟦ε⟧⁻¹ for
+  the E_z term (the general-shape path was already correct). TM results converged
+  slowly or not at all for high-contrast gratings, and rectangular-pillar phases did
+  not converge in M (the selftest [8](b) TiO₂ pillar was off by 15–26° at M=6–12). Results change for every TM / x-polarized
+  rectangular-pillar solve; TE is unchanged.
 
 ## [1.0.0] - 2026-08-11
 

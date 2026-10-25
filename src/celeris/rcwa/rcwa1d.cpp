@@ -61,6 +61,7 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
     // eigen-operator A, the companion modes V, and the region admittance Y
     // (relating the continuous companion field to the order amplitudes) differ.
     MatrixXcd A;
+    MatrixXcd Pinv;  // ⟦1/ε⟧, TM only
     MatrixXcd Vmodes;
     VectorXcd Yreg_I(n), Yreg_II(n);
 
@@ -68,14 +69,16 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
         // E_y is primary; companion H_x. A = Kx² − E,  V = W·Q,  Y = j·kz/k0.
         A = Kx * Kx - E;
     } else {
-        // TM: H_y primary; companion E_x. Li's rule -> middle uses Toeplitz of
-        // 1/ε; companion uses the matrix inverse of [ε].  A = E·(Kx·Einv·Kx−I).
-        MatrixXcd Einv(n, n);  // Toeplitz of reciprocal permittivity 1/ε
+        // TM: H_y primary; companion E_x. Li's rules (Moharam et al. 1995,
+        // Eq. 35): E_x is discontinuous across the ridge walls but D_x = εE_x
+        // is not, so E_x = ⟦1/ε⟧·∂_zH_y (inverse rule); E_z is continuous, so
+        // E_z = ⟦ε⟧⁻¹·Kx·H_y (Laurent).  A = ⟦1/ε⟧⁻¹·(Kx·⟦ε⟧⁻¹·Kx − I).
+        Pinv.resize(n, n);  // Toeplitz of reciprocal permittivity ⟦1/ε⟧
         for (int a = 0; a < n; ++a)
             for (int b = 0; b < n; ++b)
-                Einv(a, b) =
+                Pinv(a, b) =
                     grating.eps_inv_fourier((a - M) - (b - M), wavelength_um);
-        A = E * (Kx * Einv * Kx - Id);
+        A = Pinv.partialPivLu().solve(Kx * E.partialPivLu().solve(Kx) - Id);
     }
 
     VectorXcd evals; MatrixXcd W;
@@ -98,7 +101,7 @@ Rcwa1DResult solve_rcwa_1d(const Material& incident,
         Yreg_I = -j_unit * kzI;
         Yreg_II = -j_unit * kzII;
     } else {
-        Vmodes = j_unit * (E.inverse() * W) * q.asDiagonal();
+        Vmodes = j_unit * (Pinv * W) * q.asDiagonal();  // E_x = ⟦1/ε⟧·∂_zH_y
         Yreg_I = kzI.array() / (n_inc * n_inc);
         Yreg_II = kzII.array() / (n_sub * n_sub);
     }
