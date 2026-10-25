@@ -284,15 +284,19 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
             const double fx = layer.fill_x, fy = layer.fill_y;
             const int nx = 2 * Mx + 1, ny = 2 * My + 1;
 
-            // ⟦1/ε⟧ : Toeplitz of the reciprocal permittivity (normal component).
+            // ⟦ε⟧⁻¹ for the E_z term: E_z is continuous across every side wall
+            // (Laurent rule), so it is the matrix inverse of the ε Toeplitz, NOT
+            // the Toeplitz of 1/ε — same as shape_operators() for general shapes.
+            MatrixXcd epsT(N, N);
             for (int pi_ = -Mx; pi_ <= Mx; ++pi_)
                 for (int qi = -My; qi <= My; ++qi) {
                     const int row = order_index(pi_, qi, Mx, My);
                     for (int pj = -Mx; pj <= Mx; ++pj)
                         for (int qj = -My; qj <= My; ++qj)
-                            Einv(row, order_index(pj, qj, Mx, My)) =
-                                layer.inv_eps_fourier(pi_ - pj, qi - qj, wavelength_um);
+                            epsT(row, order_index(pj, qj, Mx, My)) =
+                                layer.eps_fourier(pi_ - pj, qi - qj, wavelength_um);
                 }
+            Einv = epsT.inverse();
 
             // Exx: inverse rule in x (invert the in-band 1D reciprocal Toeplitz),
             // Laurent in y. Eyy: symmetric. These multiply Ex / Ey respectively.
@@ -343,7 +347,7 @@ Rcwa2DResult solve_rcwa_2d(const Material& incident,
             Eyy = std::move(ops.Eyy);
         }
 
-        // kp = ω²I − Jk·⟦1/ε⟧·Jkᵀ   (Jk = [−Ky; Kx])
+        // kp = ω²I − Jk·⟦ε⟧⁻¹·Jkᵀ   (Jk = [−Ky; Kx])
         MatrixXcd kp(N2, N2);
         kp.block(0, 0, N, N) = omega2 * Id - Ky * Einv * Ky;
         kp.block(0, N, N, N) = Ky * Einv * Kx;
