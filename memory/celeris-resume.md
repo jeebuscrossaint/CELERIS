@@ -1,6 +1,60 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-10-22. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-10-25. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-10-25 — audit item 3 FIXED (TM factorization), big knock-on
+- **Issue #8 / PR #10** (branch `fix/tm-li-rule-1d`): verified + fixed. 1D TM had ⟦ε⟧/⟦1/ε⟧
+  swapped (rcwa1d.cpp AND rcwa_stack1d.cpp); **also the 2D plain-rect path** used ⟦1/ε⟧ for the
+  E_z term instead of ⟦ε⟧⁻¹ (general-shape path was already right). After fix: y-invariant
+  2D == 1D to ~1e-14 for TE and TM; 1D TM converges at the Li rate (n=1.5 grating 0.963197).
+  The production rect-pillar solve was NOT converging before ([8](b) phase −43°→−32° over
+  M=6..12; now −17.6°→−17.0°) → **every rect-pillar/TM number in README/paper is stale.**
+- New selftest [6](c) (quick): 2D==1D TE+TM <1e-10 on n=3.5 grating. [12] re-gated (unwrapped
+  sweep, skip resonant |t|<0.6 atoms — old 0.6/0.4 point sits on a resonance). [15] re-gated on
+  GD error halved + phase <25°; focal drift now informational.
+- **Issue #9 (open, important for the paper):** with correct physics the GD objective still
+  cuts GD error 3–5× but focal drift barely improves (D=30/f=40: 8.44→7.04 µm; D=6: worse),
+  because base-phase RMS rises to ~23°. `fig_achromatic` 22.7→6.4 µm claim must be re-run.
+- Full selftest 56/56, exit 0, **88 s** wall on this box (so audit item 6's "~90 s looks wrong"
+  is FALSE — 90 s is right). Strehl now 0.609 (was 0.592).
+- **Next:** merge PR #10 if CI green (if not merged by me, author merges). Then remaining
+  audit items as separate issues/PRs, one per session: (1) GPU psfbench bug, (2) MKL
+  detection, (4) grcwa TM literal 0.96050 is unconverged — replace with converged ref,
+  (5) K2016 reproduce, plus regenerate fig_validation TM curve + fix "TM converges more slowly
+  in both solvers" wording (paper.md:128, longform:516), then #9. API docs (analysis/) resumes
+  after the numbers are trustworthy.
+
+## !!! NUMBERS AUDIT 2026-10-22 (INCOMPLETE) — fix before JOSS; supersedes claims below !!!
+Audit of every claimed number was started at HEAD db59f2e and cut short. Harness + CPU-build
+outputs (selftest/validate/reproduce) saved in `~/celeris-audit-2026-10-22/`. MKL venv:
+`~/.venvs/celeris-mkl` (mkl-devel 2026.2.0). Agent findings marked (A) are NOT yet re-verified.
+1. **GPU speedup claim is WRONG (verified).** In a CUDA build `compute_psf` itself dispatches to
+   the GPU (focal.cpp:172), so `psfbench`'s "CPU" timing is a 2nd GPU run and "max|d|=0" is
+   GPU-vs-GPU. Real CPU path (GPU hidden, 22 thr): ~3.7 s vs GPU ~29-37 ms ⇒ ~100-130×, not
+   4.8-5.8×. README:60-66/109/15, longform Table tab:perf + §Performance, ROADMAP:253/423 all
+   wrong; CPU-double vs GPU-float accuracy never measured. Fix: force-CPU option in compute_psf
+   for psfbench; re-measure the whole table with `psfaudit.cpp`.
+2. **MKL Linux auto-detect broken (verified):** pip mkl-devel ships only `libmkl_rt.so.3`, so
+   `find_library(mkl_rt)` misses it → silent Eigen fallback. Works with
+   `-DMKL_RT=$V/lib/libmkl_rt.so.3 -DMKL_INC=$V/include`.
+3. (A, two auditors agree) **1D TM Li inverse rule mis-factorized**, rcwa1d.cpp:78 — TM
+   converges Laurent-like (0.962949 at M=40 vs correct 0.963197 by M=10); 2D-vs-1D TM differs
+   1e-3..4e-3 (TE ~1e-14). "2D=1D 5e-12" check was removed in 8662c50 (and was TE-only,
+   unasserted) — CLAUDE.md's verify invariant is untested. Paper's "slow TM in both solvers" is
+   misleading; S4 script uses NumBasis=M (~half the harmonics).
+4. (A) selftest [8] grcwa TM literal 0.96050 = unconverged M=4 value; grcwa 0.1.2 gives
+   0.9612-0.9622. 5e-3 tolerance hides it. No S4 literal is locked in selftest (longform 483-506,
+   README:261 overclaim).
+5. (A) K2016 reproduction: constant n=2.45 not ALD n,k; "96-99%" vs 99.8%; "brackets 73%" test
+   vacuous; conversion vs focusing efficiency not apples-to-apples. "~5 fs ceiling" is a hardcoded
+   literal (cmd_reproduce.cpp gd_nanofin_ceiling_fs) contradicting caption "~3 fs"; 22.7→6.4 µm
+   only from the Python fig script (n=2.40/BK7), not the CLI reproduce.
+6. Minor: S-matrix vs single layer is 8.1e-15 not 1e-15. Selftest takes minutes (cases 13-17
+   26-66 s each), so "~90 s on 16 cores" looks wrong — not yet timed.
+**Not yet done:** JOSS paper.md audit (agent killed before writing), timing claims (AVX2 2.7× —
+SSE2 build was made; MKL 2.3×/11×/"~3x"; 2.5 s single-core design; ~90 s selftest), longform
+tool-comparison table, README examples/CI/versions. **Next:** re-verify (A) items, open issues
+(GPU bench = bug, TM Li rule = bug, docs numbers = documentation), fix via PRs.
 
 ## !!! VENUE CHANGED 2026-10-19: the code paper targets JOSS, not CPC !!!
 Author's decision (do not re-litigate): CPC's novelty bar is too high for a solo
