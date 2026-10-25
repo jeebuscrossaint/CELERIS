@@ -219,6 +219,29 @@ int run_selftest(bool quick) {
             "[6] TE and TM grating energy conserved");
         chk(std::abs(te.de_t[zt + 1] - tm.de_t[zt + 1]) > 1e-3,
             "[6] solver distinguishes TE from TM");
+
+        // (c) A y-invariant 2D cell must reproduce the 1D solver for BOTH
+        //     polarizations to round-off. The two are independent formulations,
+        //     so this pins Li's TM factorization in each: swapping ⟦ε⟧⁻¹ and
+        //     ⟦1/ε⟧ in either breaks the TM match at the 1e-2 level for this
+        //     high-contrast grating (issue #8). E∥y is 1D TE, E∥x is 1D TM.
+        const auto n35 = Material::constant(cdouble{3.5, 0.0}, "n3.5");
+        const int Mc = 10;
+        BinaryGrating1D hc{n35, materials::air(), 0.4, 0.4, 0.3};
+        Rcwa2DStack hc2{0.4, 0.4, {RectCell2D{n35, materials::air(), 0.4, 1.0, 0.3}}};
+        auto te1 = solve_rcwa_1d(materials::air(), hc, materials::air(), 1.0,
+                                 normal, Mc, Pol::TE);
+        auto tm1 = solve_rcwa_1d(materials::air(), hc, materials::air(), 1.0,
+                                 normal, Mc, Pol::TM);
+        auto te2 = solve_rcwa_2d(materials::air(), hc2, materials::air(), 1.0,
+                                 0.0, 0.0, 0.0, 1.0, Mc, 0);
+        auto tm2 = solve_rcwa_2d(materials::air(), hc2, materials::air(), 1.0,
+                                 0.0, 0.0, 1.0, 0.0, Mc, 0);
+        const double dte = std::abs(te1.de_t[Mc] - te2.de_t0);
+        const double dtm = std::abs(tm1.de_t[Mc] - tm2.de_t0);
+        sp("    (c) y-invariant 2D vs 1D (n=3.5, M={}):  TM T0={:.6f}  "
+           "|ΔTE|={:.1e}  |ΔTM|={:.1e}", Mc, tm1.de_t[Mc], dte, dtm);
+        chk(dte < 1e-10 && dtm < 1e-10, "[6] y-invariant 2D == 1D for TE and TM");
     }});
 
     // ---- Validation 7: multilayer S-matrix solver -------------------------
