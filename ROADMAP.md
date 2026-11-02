@@ -249,15 +249,17 @@ reprint of the SciPost paper.
 - [ ] **Reproduce a canonical published RCWA benchmark to the digit** (Moharam–Gaylord /
       Li gratings, already cited in `rcwa2d.cpp`). Table: CELERIS vs published vs S4.
 - [ ] **Convergence figure** (promote `validate §1`): efficiency & energy-defect vs M.
-- [x] **Honest timing benchmark — DONE, and it corrected a bad claim.** The old
-      "600–700×" was NOT reproducible: `psfbench` (GPU vs CELERIS's own optimized 16-core
-      CPU `compute_psf`, RTX 4070) measures **~1.1–5.8×** for far-field propagation, and
-      the speedup *shrinks* with grid size (kernel is memory-bound). The 600–700× was almost
-      certainly vs a single-core or an early un-parallelized CPU path. **Paper corrected at
-      the time; the README was NOT — it still carried "675×/669× vs a 16-core CPU, ~1e-5"
-      until 2026-07-29, when it was finally corrected to 4.8–5.8× at machine precision.**
-      Lesson: when a claim appears in more than one document, fix every copy in the same
-      commit and grep for the stale number before ticking the box.
+- [x] **Honest timing benchmark — DONE (re-done 2026-11-01, issue #11).** History: the
+      original "600–700×" was "corrected" in 2026-07 to ~1.1–5.8×, but that correction was
+      itself the bug — in a CUDA build `compute_psf` dispatches to the GPU, so `psfbench`'s
+      "CPU" row was a second GPU run and "machine precision" was GPU vs GPU. Fixed: new
+      `propagate_pillars_cpu` (CPU-only double sum, the one CPU path behind
+      `compute_psf`/`propagate_pillars`); `psfbench` times it vs the kernel. Measured
+      (Core Ultra 9 185H 22 thr vs RTX 4070 laptop): **~120–190×**, flat with grid size
+      (92k/161²: 3.7 s → 31 ms); float kernel vs double ≤4.2e-5 (normalized PSF). The old
+      "shrinks with grid / memory-bound" story was an artifact and is gone.
+      Lesson (still): when a claim appears in more than one document, fix every copy in the
+      same commit and grep for the stale number — AND check what the baseline actually runs.
       REMAINING: benchmark the RCWA *solve* vs S4/grcwa on
       identical hardware (the solve, not propagation, is the real cost — see MKL).
 
@@ -420,8 +422,8 @@ NOT FDTD.
 - [x] **Materials**: named registry (`by_name`/`catalog`) — analytic Sellmeier (SiO₂, BK7,
       Si₃N₄, Al₂O₃, GaN) + real tabulated n,k (TiO₂, c-Si, a-Si, Au, Ag, Al; CC0 from
       refractiveindex.info) in `data/`; `celeris materials`; selftest **[19]**.
-- [x] **GPU**: far-field propagation kernel (~1–6× over 16-core CPU, measured — *propagation
-      only*, §3b; the old 600–700× claim was unreproducible and has been corrected),
+- [x] **GPU**: far-field propagation kernel (~120–190× over the multithreaded CPU path,
+      measured with a true CPU baseline — *propagation only*, §3b; issue #11),
       CPU multicore library build.
 - [x] **AVX2/FMA build** (default, ~2.7×) + **Intel MKL turbo** (opt-in, up to ~11× at
       high M; eigensolve is only ~15% — the cost is dense matmuls/inverses/S-matrix).
