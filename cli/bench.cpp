@@ -90,12 +90,13 @@ int run_gpubench(int argc, char** argv) {
 
 #ifdef CELERIS_USE_CUDA_KERNELS
 // Honest head-to-head for the GPU far-field propagation kernel: build a real
-// metalens, then compute its focal PSF on the CPU (analyze_focus path, double,
-// parallel over cores) vs the GPU kernel (float), comparing the maps and timing.
-// Usage: celeris psfbench [--diameter D] [--focal F] [--grid N].
+// metalens, then compute its focal PSF with the CPU sum (propagate_pillars_cpu:
+// double, parallel over cores, never GPU-dispatched) vs the GPU kernel (float),
+// comparing the maps and timing. Each side reports its best of --reps runs.
+// Usage: celeris psfbench [--diameter D] [--focal F] [--grid N] [--reps R].
 int run_psfbench(int argc, char** argv) {
     double diameter = 120.0, focal = 50.0, wavelength = 0.532, period = 0.35;
-    int grid = 161, M = 5, fill_samples = 16;
+    int grid = 161, M = 5, fill_samples = 16, reps = 3;
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         auto nd = [&] { return (i + 1 < argc) ? std::atof(argv[++i]) : 0.0; };
@@ -103,6 +104,7 @@ int run_psfbench(int argc, char** argv) {
         if (a == "--diameter") diameter = nd();
         else if (a == "--focal") focal = nd();
         else if (a == "--grid") grid = ni();
+        else if (a == "--reps") reps = std::max(1, ni());
     }
     // cuda::available() lives in the (opt-in) cuSOLVER header; without it the
     // propagation kernel just falls back to CPU internally if there's no device.
@@ -136,24 +138,35 @@ int run_psfbench(int argc, char** argv) {
     std::println("  {} x {} cells, {} pillars in aperture, {}x{} focal grid",
                  lens.n_cells, lens.n_cells, px.size(), grid, grid);
 
-    // CPU (double, parallel across cores).
-    auto t0 = std::chrono::steady_clock::now();
-    auto cpu = compute_psf(lens, lib, focal, wavelength, diameter, grid, W);
-    auto t1 = std::chrono::steady_clock::now();
-    double cpu_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    auto best_ms = [reps](auto&& run) {
+        double best = 1e300;
+        for (int r = 0; r < reps; ++r) {
+            auto t0 = std::chrono::steady_clock::now();
+            run();
+            auto t1 = std::chrono::steady_clock::now();
+            best = std::min(best, std::chrono::duration<double, std::milli>(t1 - t0).count());
+        }
+        return best;
+    };
+
+    // CPU (double, parallel across cores). Calls the CPU sum directly: in a
+    // CUDA build compute_psf/propagate_pillars would dispatch to the GPU.
+    PsfMap cpu;
+    double cpu_ms = best_ms([&] {
+        cpu = propagate_pillars_cpu(px, py, pt, 0.0, 0.0, focal, wavelength, grid, W);
+    });
 
     // GPU (float kernel). Warm up first so device init isn't timed.
     std::vector<double> gpu((std::size_t)grid * grid);
     double k = 2.0 * pi / wavelength;
-    cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(), 0.0, 0.0,
-                        focal, k, grid, W, gpu.data());  // warm-up
-    auto t2 = std::chrono::steady_clock::now();
-    bool ok = cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(),
-                                  0.0, 0.0, focal, k, grid, W, gpu.data());
-    auto t3 = std::chrono::steady_clock::now();
-    double gpu_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+    bool ok = cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(), 0.0,
+                                  0.0, focal, k, grid, W, gpu.data());  // warm-up
+    double gpu_ms = best_ms([&] {
+        ok = cuda::propagate_psf(px.data(), py.data(), pt.data(), (int)px.size(), 0.0,
+                                 0.0, focal, k, grid, W, gpu.data()) && ok;
+    });
 
-    // Compare peak-normalized maps.
+    // Compare peak-normalized maps (double CPU sum is the reference).
     double cmax = 0, gmax = 0;
     for (double v : cpu.intensity) cmax = std::max(cmax, v);
     for (double v : gpu) gmax = std::max(gmax, v);
@@ -161,11 +174,15 @@ int run_psfbench(int argc, char** argv) {
     if (cmax > 0 && gmax > 0)
         for (std::size_t i = 0; i < gpu.size(); ++i)
             maxrel = std::max(maxrel, std::abs(cpu.intensity[i] / cmax - gpu[i] / gmax));
+    const double peak_rel = cmax > 0 ? std::abs(gmax - cmax) / cmax : 0.0;
 
     std::println("");
-    std::println("  CPU (double, parallel) : {:8.1f} ms", cpu_ms);
-    std::println("  GPU (float kernel)     : {:8.1f} ms   ({:.1f}x faster)", gpu_ms, cpu_ms / gpu_ms);
-    std::println("  agreement              : max|d normalized PSF| = {:.2e}  ok={}", maxrel, ok);
+    std::println("  CPU (double, {} threads) : {:8.1f} ms   (best of {})",
+                 std::max(1u, std::thread::hardware_concurrency()), cpu_ms, reps);
+    std::println("  GPU (float kernel)      : {:8.1f} ms   ({:.1f}x faster)", gpu_ms,
+                 cpu_ms / gpu_ms);
+    std::println("  float vs double         : max|d normalized PSF| = {:.2e}, "
+                 "peak rel. error = {:.2e}  ok={}", maxrel, peak_rel, ok);
     return ok ? 0 : 1;
 }
 #endif

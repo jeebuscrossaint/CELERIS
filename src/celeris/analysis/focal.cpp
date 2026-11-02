@@ -151,55 +151,20 @@ PsfMap compute_psf(const MetalensDesign& lens, const UnitCellLibrary& lib,
     const double p = lens.period_um;
     const double center = (lens.n_cells - 1) / 2.0;
     const double R_ap = diameter_um / 2.0;
-    const double k = 2.0 * pi / wavelength_um;
 
-    struct Cell { double x, y; cdouble t; };
-    std::vector<Cell> cells;
+    std::vector<double> px, py;
+    std::vector<cdouble> pt;
     for (int iy = 0; iy < lens.n_cells; ++iy)
         for (int ix = 0; ix < lens.n_cells; ++ix) {
             const double x = (ix - center) * p, y = (iy - center) * p;
             if (std::sqrt(x * x + y * y) > R_ap) continue;
             const double fill = lens.fill_map[static_cast<std::size_t>(iy) * lens.n_cells + ix];
-            cells.push_back({x, y, lib.transmission_for_fill(fill)});
+            px.push_back(x);
+            py.push_back(y);
+            pt.push_back(lib.transmission_for_fill(fill));
         }
-
-    PsfMap m;
-    m.n = n;
-    m.half_window_um = half_window_um;
-    m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
-    const double step = 2.0 * half_window_um / (n - 1);
-
-#ifdef CELERIS_USE_CUDA_KERNELS
-    // GPU far-field propagation (hundreds of x faster for large apertures).
-    {
-        std::vector<double> px(cells.size()), py(cells.size());
-        std::vector<cdouble> pt(cells.size());
-        for (std::size_t c = 0; c < cells.size(); ++c) {
-            px[c] = cells[c].x; py[c] = cells[c].y; pt[c] = cells[c].t;
-        }
-        if (cuda::propagate_psf(px.data(), py.data(), pt.data(),
-                                static_cast<int>(cells.size()), 0.0, 0.0,
-                                focal_length_um, k, n, half_window_um,
-                                m.intensity.data()))
-            return m;  // CPU fallback below if this returns false
-    }
-#endif
-
-    parallel_rows(n, [&](int j) {
-        double fy = -half_window_um + j * step;
-        for (int i = 0; i < n; ++i) {
-            double fx = -half_window_um + i * step;
-            cdouble E{0.0, 0.0};
-            for (const Cell& c : cells) {
-                double R = std::sqrt((fx - c.x) * (fx - c.x) +
-                                     (fy - c.y) * (fy - c.y) +
-                                     focal_length_um * focal_length_um);
-                E += c.t * std::polar(1.0 / R, k * R);
-            }
-            m.intensity[static_cast<std::size_t>(j) * n + i] = std::norm(E);
-        }
-    });
-    return m;
+    return propagate_pillars(px, py, pt, 0.0, 0.0, focal_length_um, wavelength_um,
+                             n, half_window_um);
 }
 
 PsfMap propagate_pillars(const std::vector<double>& px,
@@ -207,6 +172,30 @@ PsfMap propagate_pillars(const std::vector<double>& px,
                          const std::vector<cdouble>& t, double cx, double cy,
                          double z, double wavelength_um, int n,
                          double half_window_um) {
+#ifdef CELERIS_USE_CUDA_KERNELS
+    // GPU far-field propagation (float); falls through to the CPU sum if the
+    // kernel reports failure (e.g. no device).
+    if (!px.empty() && n > 0) {
+        PsfMap m;
+        m.n = n;
+        m.half_window_um = half_window_um;
+        m.intensity.assign(static_cast<std::size_t>(n) * n, 0.0);
+        const double k = 2.0 * pi / wavelength_um;
+        if (cuda::propagate_psf(px.data(), py.data(), t.data(),
+                                static_cast<int>(px.size()), cx, cy, z, k, n,
+                                half_window_um, m.intensity.data()))
+            return m;
+    }
+#endif
+    return propagate_pillars_cpu(px, py, t, cx, cy, z, wavelength_um, n,
+                                 half_window_um);
+}
+
+PsfMap propagate_pillars_cpu(const std::vector<double>& px,
+                             const std::vector<double>& py,
+                             const std::vector<cdouble>& t, double cx, double cy,
+                             double z, double wavelength_um, int n,
+                             double half_window_um) {
     PsfMap m;
     m.n = n;
     m.half_window_um = half_window_um;
@@ -215,11 +204,6 @@ PsfMap propagate_pillars(const std::vector<double>& px,
     const int npil = static_cast<int>(px.size());
     if (npil == 0 || n <= 0) return m;
 
-#ifdef CELERIS_USE_CUDA_KERNELS
-    if (cuda::propagate_psf(px.data(), py.data(), t.data(), npil, cx, cy, z, k, n,
-                            half_window_um, m.intensity.data()))
-        return m;
-#endif
     const double step = 2.0 * half_window_um / (n - 1);
     parallel_rows(n, [&](int j) {
         double fy = cy - half_window_um + j * step;
