@@ -55,6 +55,25 @@ PsfMap propagate_pillars(const std::vector<double>& px,
                          double z, double wavelength_um, int n,
                          double half_window_um);
 
+/// CPU-only focal-plane propagation: the double-precision Rayleigh-Sommerfeld
+/// sum behind propagate_pillars, parallel over focal-plane rows, never
+/// dispatched to the GPU even in a CUDA build. propagate_pillars and
+/// compute_psf fall back to it; `celeris psfbench` times it as the CPU
+/// baseline against the float GPU kernel.
+/// @param px,py  Pillar centre coordinates (µm), one entry per pillar.
+/// @param t      Complex transmission of each pillar.
+/// @param cx,cy  Centre of the sampled window in the observation plane (µm).
+/// @param z      Propagation distance to the observation plane (µm).
+/// @param wavelength_um  Free-space wavelength (µm).
+/// @param n      Samples per side of the square window (n >= 2).
+/// @param half_window_um Half-width of the window (µm).
+/// @return n x n map of |E|^2; all zeros if there are no pillars.
+PsfMap propagate_pillars_cpu(const std::vector<double>& px,
+                             const std::vector<double>& py,
+                             const std::vector<cdouble>& t, double cx, double cy,
+                             double z, double wavelength_um, int n,
+                             double half_window_um);
+
 // Off-axis PSF: illuminate the aperture with a plane wave tilted by angle_deg
 // (in the x-z plane) and sample the focal plane in a window centered on the
 // expected chief-ray landing point (x ~ f*tan(theta)). This is the per-field

@@ -24,7 +24,8 @@ generator, and this repo already has one:
 - 55 locked-tolerance assertions gating every release,
 - a meta-atom library sweep that *already* generates exactly the dataset a surrogate needs,
 - GPU throughput for bulk data generation,
-- and a documented culture of retracting overstated numbers (the 600–700x → 1–6x fix).
+- and a documented culture of auditing claimed numbers (e.g. the GPU-benchmark baseline
+  bug, issue #11, where a "correction" from 600–700x down to 1–6x was itself wrong).
 
 That last one is the actual asset. See §3.
 

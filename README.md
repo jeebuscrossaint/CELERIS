@@ -12,7 +12,7 @@ performance report, from a CLI or a native desktop GUI. It is built around a
 from-scratch, validated electromagnetic solver: every layer of the stack is
 cross-checked against closed-form physics, an independent method, or energy
 conservation. Far-field propagation can optionally run on a CUDA GPU (measured
-~1–6× over a 16-core CPU on an RTX 4070, depending on problem size; the RCWA
+~120–190× over the multithreaded CPU path on an RTX 4070 laptop GPU; the RCWA
 solve itself is CPU).
 
 ```
@@ -57,14 +57,12 @@ spec ─▶ materials ─▶ Fresnel / TMM ─▶ 1D RCWA (TE+TM, multilayer)
   chromatic focal shift (with per-wavelength meta-atom dispersion), off-axis
   spot-vs-field diagram, fabrication-tolerance Monte-Carlo, field of view.
 - **GPU acceleration** — the far-field propagation (Rayleigh–Sommerfeld sum over
-  pixels × pillars) runs as a CUDA kernel: **4.8–5.8×** over CELERIS's own
-  optimized 16-core CPU path at 92k pillars / 161² focal grid (178–202 ms →
-  35–37 ms), measured with the built-in `psfbench` on an RTX 4070 laptop GPU and
-  agreeing to machine precision. The speedup *shrinks* with focal-grid size
-  (2.0× at 321², 1.1× at 1024²): the kernel is memory-bound, since each thread
-  re-reads the full pillar list from global memory — shared-memory tiling is the
-  obvious next optimization. We quote the multicore comparison because it is the
-  apples-to-apples one. Falls back to the CPU automatically.
+  pixels × pillars) runs as a CUDA kernel: **~120–190×** over CELERIS's own
+  multithreaded double-precision CPU path (Core Ultra 9 185H, 22 threads) on an
+  RTX 4070 laptop GPU, from 92k pillars / 161² focal grid (3.7 s → 31 ms) up to
+  577k pillars and 1024² grids, measured with the built-in `psfbench`. The
+  single-precision kernel matches the double-precision CPU sum to ≤4.2×10⁻⁵
+  (peak-normalized PSF). Falls back to the CPU automatically.
   (The general eigensolve stays on the CPU — cuSOLVER's `Xgeev` is host-serial
   and not competitive; `celeris gpubench` documents this.)
 - **Desktop GUI** — a dockable, utilitarian workspace (Dear ImGui): editable
@@ -106,7 +104,7 @@ What it detects, and the graceful fallback when a piece is missing:
 | Capability | Detected from | If absent |
 |---|---|---|
 | **AVX2/FMA** | on by default (`-DCELERIS_AVX2=OFF` for pre-2013 CPUs) | SSE2 baseline |
-| **CUDA** GPU (far-field kernel, ~1–6× vs 16-core CPU; static runtime, no DLLs) | `CUDA_PATH`/`CUDA_HOME`/`/opt/cuda` toolkit + `nvcc` | CPU propagation |
+| **CUDA** GPU (far-field kernel, ~120–190× vs multithreaded CPU; static runtime, no DLLs) | `CUDA_PATH`/`CUDA_HOME`/`/opt/cuda` toolkit + `nvcc` | CPU propagation |
 | **Intel MKL** (multithreaded BLAS + eigensolve) | `$MKLROOT`, conda, oneAPI, or a `pip install mkl-devel` prefix | header-only Eigen (AVX2) |
 
 Override any of these explicitly: `-DCELERIS_USE_CUDA=ON|OFF|AUTO`,

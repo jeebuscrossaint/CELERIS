@@ -578,37 +578,39 @@ ceiling allows.}
 \section{Performance}
 \label{sec:performance}
 The GPU accelerates far-field propagation only; the RCWA modal solve runs on the CPU.
-We benchmark the propagation kernel (single precision) against CELERIS's own optimized
-16-core CPU propagation (\texttt{compute\_psf}, double precision) using the built-in
-\texttt{psfbench} command on an RTX~4070 laptop GPU. The normalized PSFs agree to
-single-precision rounding (the GPU kernel is single precision, the CPU path double).
-Measured speedups (GPU vs 16-core CPU) are given in Table~\ref{tab:perf}.
+We benchmark the propagation kernel (single precision) against CELERIS's own
+multithreaded CPU propagation (\texttt{propagate\_pillars\_cpu}, double precision,
+parallel over focal-plane rows on all 22 hardware threads of an Intel Core Ultra~9 185H)
+using the built-in \texttt{psfbench} command on an RTX~4070 laptop GPU. Each timing is the
+best of up to three runs, and the GPU is warmed up first so device initialization is not
+timed. The double-precision CPU sum serves as the accuracy reference: the peak-normalized
+single-precision PSF agrees with it to at most $4.2\times10^{-5}$, and the peak intensity
+to $<2\times10^{-5}$ relative. Results are in Table~\ref{tab:perf}.
 
 \begin{table}[t]
 \centering
-\caption{Far-field propagation: GPU (RTX~4070 laptop) vs optimized 16-core CPU.}
+\caption{Far-field propagation: GPU (RTX~4070 laptop, single precision) vs the
+multithreaded CPU path (Core Ultra~9 185H, 22 threads, double precision).}
 \label{tab:perf}
 \begin{tabular}{lcccc}
 \toprule
 Aperture (pillars) & Focal grid & CPU & GPU & Speedup \\
 \midrule
-92\,k  & $161^2$  & 178--202~ms & 35--37~ms & \textbf{4.8--5.8$\times$} \\
-92\,k  & $321^2$  & 274~ms      & 140~ms    & 2.0$\times$ \\
-92\,k  & $641^2$  & 666~ms      & 519~ms    & 1.3$\times$ \\
-92\,k  & $1024^2$ & 1457~ms     & 1312~ms   & 1.1$\times$ \\
-256\,k & $161^2$  & 241~ms      & 111~ms    & 2.2$\times$ \\
-577\,k & $161^2$  & 434~ms      & 252~ms    & 1.7$\times$ \\
+92\,k  & $161^2$  & 3.7~s   & 31~ms  & 118$\times$ \\
+92\,k  & $321^2$  & 15.1~s  & 107~ms & 141$\times$ \\
+92\,k  & $641^2$  & 74.8~s  & 391~ms & 192$\times$ \\
+92\,k  & $1024^2$ & 156~s   & 981~ms & 159$\times$ \\
+256\,k & $161^2$  & 10.3~s  & 88~ms  & 117$\times$ \\
+577\,k & $161^2$  & 25.2~s  & 189~ms & 133$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-So on this hardware the GPU gives a modest ${\sim}1$--$6\times$ over a well-parallelized
-16-core CPU, not the order-of-magnitude win a naive single-threaded baseline would
-suggest. The speedup \emph{decreasing} with grid size indicates the current kernel is
-memory-bound (each thread re-reads the full pillar list from global memory);
-shared-memory tiling is a clear future optimization. We report these numbers rather than
-a headline figure precisely because an apples-to-apples multicore comparison is the
-honest one.
+On this hardware the GPU is therefore two orders of magnitude faster than a
+well-parallelized CPU implementation of the same sum, roughly independent of problem
+size. The CPU timings come from a laptop and vary by up to ${\sim}25\%$ between runs with
+thermal and power state, so the speedups should be read as ${\sim}120$--$190\times$
+rather than as precise ratios.
 
 The dominant cost, however, is the RCWA modal solve, not propagation. The solve is
 bounded by dense complex linear algebra (operator assembly, matrix inverses, and the
