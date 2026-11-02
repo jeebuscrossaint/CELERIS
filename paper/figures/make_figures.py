@@ -153,7 +153,7 @@ def fig_achromatic():
     # The ACTUAL Chen-2018 device parameters: NA=0.20, D=26.4 um (so f = R/tan(asin NA)
     # = 64.67 um), single H=600 nm etch, 400 nm lattice, 470-670 nm visible band. At
     # this real aperture the required group-delay span (~4.45 fs) EXCEEDS what a single
-    # 600 nm nanofin library spans (~3 fs), so the achromat flattens the focal shift as
+    # 600 nm nanofin library spans (~2.6 fs), so the achromat flattens the focal shift as
     # far as the physical single-etch limit allows -- a live demonstration of the
     # group-delay design limit, not a toy.
     nband, period, height, M, nfill = 7, 0.400, 0.60, 6, 8
