@@ -2,6 +2,16 @@
 
 **Last updated:** 2026-11-01. **HEAD:** run `git log --oneline -25`.
 
+## JOSS process benchmark (measured 2026-11-01, 98 most recent JOSS papers)
+- Longest commit gap in the 12 mo before submission: median **59.5 d**; 49/98 had ≥60 d, 29 had
+  ≥90 d. CELERIS's worst (Aug–Oct) = **58 d** → normal, not a risk. Don't re-litigate.
+- Commit-days in the 6 mo before submission: median **24.5**. CELERIS at Dec 17 = 16 →
+  need ~10 more REAL sessions (2–3/week, one PR each). Never padding/daily activity commits.
+- Most trivial recent paper: rcldf (joss.10811, ~1.5k lines R, aspirational impact statement,
+  but 7 yrs history + ~95% coverage). Code-size bar is low; history/tests/docs are the bar.
+- Review time ≈ 5 months (DataSplits.jl, GeoRacoon) → early-Jan submit ≈ June 2027 publish.
+- Author decision: keep the full plan (study included), cut nothing.
+
 ## SESSION 2026-11-01 (cont.) — #9 CLOSED (PR #14): Chen-2018 achromat re-run
 - fig_achromatic (PB, n=2.40/BK7): drift 22.75 → **7.28 µm** (was 6.4), span **2.6 fs** (was
   "~3"), conversion 0.52 → 0.31; M=6 = M=8. paper.md / longform / ROADMAP / figure updated.
