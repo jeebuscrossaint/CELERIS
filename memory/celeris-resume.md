@@ -7,7 +7,7 @@
   "~3"), conversion 0.52 → 0.31; M=6 = M=8. paper.md / longform / ROADMAP / figure updated.
   Drift claim STAYS in the JOSS paper (PB base phase exact → no trade-off).
 - CLI `reproduce --device chen2018` (ALD n,k): 22.75 → 6.37 µm (3.6×), span 3.11 fs at M=6.
-  (M=8 CLI check was launched in background; result not recorded.) CLI still hardcodes
+  M=8 identical (span 3.11 fs, drift 6.37 µm) → converged. CLI still hardcodes
   "~5 fs (paper)" — audit item 5.
 - Fill×height trade-off split out → **issue #13** (selftest [15] gates GD error only).
 - Python venv with celeris + numpy + matplotlib: `~/.venvs/celeris` (pip install . from repo).
