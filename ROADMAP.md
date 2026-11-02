@@ -417,8 +417,13 @@ NOT FDTD.
         selftest **[16]** locks the 532 nm device.
       - **Chen 2018** (Nat. Nanotechnol. 13, 220): NA=0.20 D=26.4 µm broadband achromat,
         470–670 nm; reproduces the central physical limit — required group-delay span
-        4.45 fs sits at the ~5 fs 600-nm-nanofin ceiling (diameter is GD-limited), GD
-        objective flattens drift 5.0× in one etch; selftest **[18]**.
+        4.45 fs exceeds the ~2.6 fs CELERIS's single-etch 600-nm nanofin library spans
+        (diameter is GD-limited); GD objective flattens drift 22.7 → 7.3 µm (3.1×) in
+        one etch, conversion 0.52 → 0.31 (paper figure: n=2.40, BK7; re-run after the TM
+        fix, #9; M=6 = M=8). CLI `reproduce --device chen2018` (ALD n,k, fused silica,
+        12×12 fills): span 3.11 fs, drift 22.75 → 6.37 µm (3.6×);
+        selftest **[18]**. The CLI `reproduce` still prints a hardcoded "~5 fs ceiling
+        (paper)" literal — audit item 5.
 - [x] **Materials**: named registry (`by_name`/`catalog`) — analytic Sellmeier (SiO₂, BK7,
       Si₃N₄, Al₂O₃, GaN) + real tabulated n,k (TiO₂, c-Si, a-Si, Au, Ag, Al; CC0 from
       refractiveindex.info) in `data/`; `celeris materials`; selftest **[19]**.

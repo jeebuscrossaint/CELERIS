@@ -142,10 +142,11 @@ TiO$_2$ optical constants and recovers near-ideal half-wave-plate behavior
 (96–99 % transmission-normalized conversion) and a diffraction-limited focus.
 For the broadband achromat of @chen2018 (NA = 0.20, $D=26.4\,\mu$m, one
 600 nm etch, 470–670 nm), single-etch group-delay engineering cuts the chromatic
-focal drift from 22.7 µm to 6.4 µm compared with a dispersion-blind lens built
-from the same library (\autoref{fig:achromatic}). The remaining drift is the
-group-delay limit: the aperture needs a span of about 4.4 fs, while a single
-600 nm nanofin library spans about 3 fs. Version 1.0.0 is
+focal drift from 22.7 µm to 7.3 µm compared with a dispersion-blind lens built
+from the same library (\autoref{fig:achromatic}), at the cost of mean conversion
+efficiency (0.52 to 0.31). The remaining drift is the group-delay limit: the
+aperture needs a span of about 4.4 fs, while a single 600 nm nanofin library
+spans about 2.6 fs. Version 1.0.0 is
 archived on Zenodo (doi:10.5281/zenodo.21891346).
 
 ![Chen-2018 achromat at full device scale: rigorous focal length against
