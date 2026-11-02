@@ -1,6 +1,21 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-10-25. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-01. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-01 — audit item 1 FIXED (GPU psfbench baseline)
+- **Issue #11 / PR #12** (branch `fix/psfbench-cpu-baseline`). New public
+  `propagate_pillars_cpu` (focal.hpp, `///` documented) = the one CPU far-field path behind
+  `propagate_pillars`/`compute_psf`; `psfbench` now times it vs the kernel (`--reps`, best-of).
+- Measured on this box (Core Ultra 9 185H 22 thr, RTX 4070 laptop, platform profile `quiet`):
+  **~120–190×**, flat with grid (92k/161² 3.7 s→31 ms; 1024² 156 s→981 ms; 577k/161²
+  25 s→189 ms). Float vs double ≤4.2e-5 normalized PSF. CPU timings swing ±25–80% with
+  thermal state — never run selftest concurrently with a timing run (did once, re-ran).
+  README / longform tab:perf / ROADMAP / SURROGATE corrected. The 2026-07 "600–700× → 1–6×"
+  correction was itself the bug.
+- Selftest 56/56 exit 0 in BOTH build-linux and build-linux-cuda; Doxygen clean.
+- **PR #12 merged** (CI green, 4/4). **Next:** audit item (2) MKL Linux detection
+  (`find_library(mkl_rt)` misses `libmkl_rt.so.3`; venv `~/.venvs/celeris-mkl`) — small,
+  one PR. Then #9 (stale fig_achromatic claim is in paper.md — paper-blocking), then the study; (4) grcwa literal, (5) K2016, fig_validation TM curve interleaved. Early-Jan JOSS submit is tight; late Jan/Feb realistic.
 
 ## SESSION 2026-10-25 — audit item 3 FIXED (TM factorization), big knock-on
 - **Issue #8 / PR #10** (branch `fix/tm-li-rule-1d`): verified + fixed. 1D TM had ⟦ε⟧/⟦1/ε⟧
