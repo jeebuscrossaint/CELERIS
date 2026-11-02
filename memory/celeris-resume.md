@@ -2,6 +2,18 @@
 
 **Last updated:** 2026-11-01. **HEAD:** run `git log --oneline -25`.
 
+## SESSION 2026-11-01 (cont.) — #9 CLOSED (PR #14): Chen-2018 achromat re-run
+- fig_achromatic (PB, n=2.40/BK7): drift 22.75 → **7.28 µm** (was 6.4), span **2.6 fs** (was
+  "~3"), conversion 0.52 → 0.31; M=6 = M=8. paper.md / longform / ROADMAP / figure updated.
+  Drift claim STAYS in the JOSS paper (PB base phase exact → no trade-off).
+- CLI `reproduce --device chen2018` (ALD n,k): 22.75 → 6.37 µm (3.6×), span 3.11 fs at M=6.
+  (M=8 CLI check was launched in background; result not recorded.) CLI still hardcodes
+  "~5 fs (paper)" — audit item 5.
+- Fill×height trade-off split out → **issue #13** (selftest [15] gates GD error only).
+- Python venv with celeris + numpy + matplotlib: `~/.venvs/celeris` (pip install . from repo).
+- **Next:** audit item (2) MKL Linux detection, then the study (R1); (4), (5), fig_validation
+  TM curve, #13 interleaved.
+
 ## SESSION 2026-11-01 — audit item 1 FIXED (GPU psfbench baseline)
 - **Issue #11 / PR #12** (branch `fix/psfbench-cpu-baseline`). New public
   `propagate_pillars_cpu` (focal.hpp, `///` documented) = the one CPU far-field path behind
