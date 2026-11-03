@@ -1,6 +1,14 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-01. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-03. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-03 — analysis/ API docs (PR #15, merged)
+- Author was on battery → picked a no-compile slice. Doxygen `///` for all 9
+  `src/celeris/analysis/*.hpp`; Doxyfile INPUT + api-overview table updated. Local check:
+  doxygen exit 0 + per-header `g++ -fsyntax-only`; full build/selftest via CI only (green).
+- **Next:** audit item (2) MKL Linux detection (needs a build → do it on wall power). No-build
+  fallbacks: API docs for materials/, io/, cuda/ (closes #1); TM-convergence wording
+  (paper.md:128, longform:516).
 
 ## JOSS process benchmark (measured 2026-11-01, 98 most recent JOSS papers)
 - Longest commit gap in the 12 mo before submission: median **59.5 d**; 49/98 had ≥60 d, 29 had
