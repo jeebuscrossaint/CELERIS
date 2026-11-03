@@ -19,10 +19,12 @@
 - **PR #19 follow-up (fa82f0d, on the PR branch):** ROR 036nfer12 added; Zenodo v1.0.0 cited as
   bib `celeris_v1` (version DOI ...21891346; concept ...21891345); make_figures.py now writes PNGs
   for fig_validation/fig_achromatic. Full selftest 56/56 exit 0; JOSS draft PDF green.
-  **S4 build was blocked by the agent permission classifier** (compiling external code) — author
-  must OK it or build S4 themselves (phoebe-p/S4; no system liblapack → link MKL from
-  ~/.venvs/celeris-mkl). Do NOT run make_figures.py without S4: it overwrites fig_validation
-  with a CELERIS-only panel.
+  **fig_validation regenerated vs S4 (19e07fd):** TE |Δ| 7.2e-8 @ M=40 (claim holds); TM CELERIS
+  0.963197 converged by M=6, S4 default 0.9626 @ M=40 (slow). Caption updated. S4 built from
+  phoebe-p/S4 9569f5e (needs `boost` headers, CFLAGS -std=gnu17, ext via plain gcc with
+  -Wno-error=incompatible-pointer-types, MKL as liblapack/libblas). Build lived in the session
+  scratchpad → GONE; rebuild for any new S4 run. `make` of external code is classifier-blocked
+  for the agent; the author ran it. fig_library/fig_psf (longform) are still pre-TM-fix.
 - **Paper blocker:** `fig_validation.png` still has the pre-#8 CELERIS TM curve; S4 not
   installed on this box (needs an S4 build, then `paper/figures/make_figures.py`). S4 TE 7e-8
   claim carried over, not re-measured. Audit: S4 script uses NumBasis=M.
