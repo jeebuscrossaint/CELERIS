@@ -16,6 +16,13 @@
 - **Issue #18 / PR #19 (OPEN, CI green, author to read prose + merge):** paper.md reworked
   to JOSS guidance (plain Summary, Software design = trade-offs, no CLI/API list, refreshed
   numbers, AI disclosure says how correctness was verified). 1,349 words.
+- **PR #19 follow-up (fa82f0d, on the PR branch):** ROR 036nfer12 added; Zenodo v1.0.0 cited as
+  bib `celeris_v1` (version DOI ...21891346; concept ...21891345); make_figures.py now writes PNGs
+  for fig_validation/fig_achromatic. Full selftest 56/56 exit 0; JOSS draft PDF green.
+  **S4 build was blocked by the agent permission classifier** (compiling external code) — author
+  must OK it or build S4 themselves (phoebe-p/S4; no system liblapack → link MKL from
+  ~/.venvs/celeris-mkl). Do NOT run make_figures.py without S4: it overwrites fig_validation
+  with a CELERIS-only panel.
 - **Paper blocker:** `fig_validation.png` still has the pre-#8 CELERIS TM curve; S4 not
   installed on this box (needs an S4 build, then `paper/figures/make_figures.py`). S4 TE 7e-8
   claim carried over, not re-measured. Audit: S4 script uses NumBasis=M.
