@@ -147,14 +147,12 @@ with CPU only, runs a fast subset of the suite on every push and pull request,
 and runs the full suite nightly. `paper/reproduce_all.sh` regenerates every
 number and figure in this paper.
 
-<!-- AUTHOR: fig_validation.png predates the TM factorization fix (issue #8, PR #10):
-     its CELERIS TM curve is stale. Regenerate with S4 installed
-     (paper/figures/make_figures.py) before submission. -->
-
 ![CELERIS versus Stanford S$^4$ on an identical freestanding $n=1.5$ grating
 ($\Lambda=0.3\,\mu$m, fill 0.5, thickness $0.5\,\mu$m, $\lambda=0.5\,\mu$m).
 Left: zeroth-order transmittance against Fourier order. Right: the CELERIS–S$^4$
-TE difference falls to $7\times10^{-8}$.\label{fig:validation}](figures/fig_validation.png)
+TE difference falls to $7\times10^{-8}$. In TM, CELERIS (Li's factorization) is within
+$3\times10^{-5}$ of its $M=40$ value by $M=6$, while S$^4$ with default settings
+approaches the same value slowly ($6\times10^{-4}$ apart at $M=40$).\label{fig:validation}](figures/fig_validation.png)
 
 # Research impact statement
 
