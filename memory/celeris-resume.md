@@ -2,13 +2,26 @@
 
 **Last updated:** 2026-11-03. **HEAD:** run `git log --oneline -25`.
 
-## SESSION 2026-11-03 — analysis/ API docs (PR #15, merged)
-- Author was on battery → picked a no-compile slice. Doxygen `///` for all 9
-  `src/celeris/analysis/*.hpp`; Doxyfile INPUT + api-overview table updated. Local check:
-  doxygen exit 0 + per-header `g++ -fsyntax-only`; full build/selftest via CI only (green).
-- **Next:** audit item (2) MKL Linux detection (needs a build → do it on wall power). No-build
-  fallbacks: API docs for materials/, io/, cuda/ (closes #1); TM-convergence wording
-  (paper.md:128, longform:516).
+## SESSION 2026-11-03 — #15 analysis/ docs, #17 MKL fix (merged); #19 paper rework (OPEN)
+- **PR #15 (merged):** Doxygen for all 9 `analysis/*.hpp`. NOTE: PR CI runs only
+  `selftest --quick`; the full suite runs nightly (cron). Don't call PR CI "full selftest".
+- **Issue #16 / PR #17 (merged) = audit item 2 DONE.** CMakeLists globs `libmkl_rt.so.*`
+  when `find_library(mkl_rt)` misses (Linux pip mkl-devel). Configure needs the venv's
+  python: `-DPython3_EXECUTABLE=~/.venvs/celeris-mkl/bin/python`. Build dir
+  `build-linux-mkl`: RUNPATH → venv lib, full selftest 56/56 exit 0, 62 s wall.
+- **Audit item 5 partly resolved (verified today):** `reproduce --device all` uses REAL ALD
+  n,k (n=2.663/2.450/2.379), transmitted-norm conversion 99.8/99.6/95.9 %, FWHM < 0.514λ/NA
+  on D=20 µm demo lenses (4.5 min run). Agent claim "constant n=2.45" was WRONG. Still open:
+  "~5 fs" hardcoded literal in cmd_reproduce.cpp; conversion-vs-focusing-efficiency framing.
+- **Issue #18 / PR #19 (OPEN, CI green, author to read prose + merge):** paper.md reworked
+  to JOSS guidance (plain Summary, Software design = trade-offs, no CLI/API list, refreshed
+  numbers, AI disclosure says how correctness was verified). 1,349 words.
+- **Paper blocker:** `fig_validation.png` still has the pre-#8 CELERIS TM curve; S4 not
+  installed on this box (needs an S4 build, then `paper/figures/make_figures.py`). S4 TE 7e-8
+  claim carried over, not re-measured. Audit: S4 script uses NumBasis=M.
+- **Next:** build S4 + regenerate fig_validation (+ fix longform:516 TM wording); then the
+  study (R1); audit (4) grcwa TM literal 0.96050 (selftest [8] |Δ|=2.7e-3), (5) "~5 fs"
+  literal, #13; API docs materials/ io/ cuda/ (closes #1).
 
 ## JOSS process benchmark (measured 2026-11-01, 98 most recent JOSS papers)
 - Longest commit gap in the 12 mo before submission: median **59.5 d**; 49/98 had ≥60 d, 29 had
