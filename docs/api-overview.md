@@ -32,8 +32,17 @@ CLI, the Python module, and the GUI all call the same functions.
 | `celeris/design/pb_metalens.hpp` | Pancharatnam-Berry (geometric-phase) lenses: Jones matrices, half-wave-plate atom search, rotation maps. |
 | `celeris/design/achromatic.hpp` | Achromatic lenses by dispersion engineering: band-characterized libraries (fill × height or single-etch), two-objective selection, focal-shift check. |
 | `celeris/design/pb_achromatic.hpp` | Achromatic geometric-phase lenses: single-etch birefringent libraries chosen for group delay alone. |
+| `celeris/analysis/focal.hpp` | Focal-plane metrics (Strehl, phase Strehl, FWHM, encircled energy), PSF maps, Rayleigh-Sommerfeld propagation (CPU and GPU), off-axis PSF. |
+| `celeris/analysis/throughfocus.hpp` | On-axis through-focus scan, depth of focus, x-z caustic. |
+| `celeris/analysis/wavefront.hpp` | OPD map, RMS/PV wavefront error, Maréchal Strehl, Zernike fit. |
+| `celeris/analysis/mtf.hpp` | MTF from the pupil autocorrelation, with the diffraction-limited reference. |
+| `celeris/analysis/field.hpp` | Field-of-view sweeps (stop at the lens or offset stop) and the full 2D field grid. |
+| `celeris/analysis/chromatic.hpp` | Focal shift vs wavelength, fast (fixed transmission) or rigorous (library rebuilt per wavelength). |
+| `celeris/analysis/tolerance.hpp` | Monte-Carlo Strehl under Gaussian pillar-size (CD) error. |
+| `celeris/analysis/efficiency.hpp` | Per-order power budget of one meta-atom: zeroth order, stray light, absorption. |
+| `celeris/analysis/polarization.hpp` | Form birefringence of rectangular pillars: co-polarized phases and retardance. |
 
-The analysis, materials, and I/O modules are being added to this
+The materials and I/O modules are being added to this
 reference (issue #1). Until then, their headers under `src/celeris/` carry
 plain-comment documentation.
 
