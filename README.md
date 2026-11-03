@@ -109,7 +109,11 @@ What it detects, and the graceful fallback when a piece is missing:
 
 Override any of these explicitly: `-DCELERIS_USE_CUDA=ON|OFF|AUTO`,
 `-DCELERIS_USE_MKL=ON|OFF|AUTO`. To have the build *fetch* MKL when it's missing,
-add `-DCELERIS_FETCH_MKL=ON` (runs `pip install mkl-devel mkl-include`). The
+add `-DCELERIS_FETCH_MKL=ON` (runs `pip install mkl-devel mkl-include`). A pip
+prefix is found through the Python interpreter CMake picks, so for MKL in a venv
+either activate it or pass `-DPython3_EXECUTABLE=$VENV/bin/python`; on Linux the
+versioned `libmkl_rt.so.N` that pip ships is detected, and the executables get an
+RPATH to that `lib/` directory (keep the venv in place). The
 desktop GUI (`celeris_gui`) builds by default (it fetches GLFW + Dear ImGui);
 turn it off for CLI-only / headless / CI builds with `-DCELERIS_BUILD_GUI=OFF`.
 
