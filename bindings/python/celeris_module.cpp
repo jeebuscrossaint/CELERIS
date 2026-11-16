@@ -688,6 +688,10 @@ PYBIND11_MODULE(_celeris, m) {
                       "mean |a_cross| over the band (apodization proxy)")
         .def_readonly("mean_conversion", &DispersivePbAtom::mean_conversion,
                       "mean |a_cross|^2 (spin-flip efficiency)")
+        .def_readonly("min_band_amplitude", &DispersivePbAtom::min_band_amplitude,
+                      "smallest |a_cross| over the band samples (a near-zero means a band zero)")
+        .def_readonly("phase_fit_rms_rad", &DispersivePbAtom::phase_fit_rms_rad,
+                      "RMS of the unwrapped phase about its linear fit vs omega [rad]")
         .def_readonly("retardance_center_deg", &DispersivePbAtom::retardance_center_deg,
                       "wrap(arg t_x - arg t_y) at center (ideal 180 = half-wave plate)");
 
@@ -710,14 +714,19 @@ PYBIND11_MODULE(_celeris, m) {
           py::arg("substrate"), py::arg("period_um"), py::arg("band_wavelengths_um"),
           py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
           py::arg("n_fills"), py::arg("thickness_um"), py::arg("M"),
-          py::arg("min_amplitude") = 0.30,
+          py::arg("min_amplitude") = 0.30, py::arg("min_band_amplitude") = 0.05,
+          py::arg("max_phase_fit_rms_rad") = 1.0,
           "Build a dispersive birefringent library over a (fill_x, fill_y) grid at a "
           "SINGLE height: two RCWA solves/atom/wavelength give t_x, t_y -> the "
           "spin-flip amplitude a_cross and its group delay (least-squares slope of "
           "the unwrapped phase vs angular frequency). A non-birefringent atom "
           "(fill_x == fill_y) has a_cross ~ 0 and a garbage group delay; min_amplitude "
           "drops atoms whose mean |a_cross| is below it so only usable PB atoms remain. "
-          "band_wavelengths_um must be ascending.");
+          "An atom can pass that mean floor yet have a_cross ~ 0 at one band sample, "
+          "where the unwrap can slip by 2*pi and the group delay is wrong: "
+          "min_band_amplitude drops atoms whose smallest |a_cross| is below it, and "
+          "max_phase_fit_rms_rad drops atoms whose unwrapped phase is far from linear "
+          "in omega. band_wavelengths_um must be ascending.");
 
     py::class_<PbAchromaticDesign>(m, "PbAchromaticDesign",
         "An achromatic PB focusing metalens: per site, the atom whose GROUP DELAY "
