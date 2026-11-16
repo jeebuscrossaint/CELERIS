@@ -746,6 +746,21 @@ int run_selftest(bool quick) {
                      (gd_at_ceiling && base_exact && gd_better) ? "✓" : "FAIL");
         chk(base_exact && gd_better,
             "[18] one-etch PB library: base phase exact + GD RMS reduced");
+        // (c) library hygiene (issue #20): no kept atom has a band zero of a_cross or a
+        // non-linear (slipped) unwrapped phase, and the span stays near the non-resonant
+        // delay-line estimate (n-1)H/c (~2.8 fs here). Before the filter, two atoms
+        // with a 2*pi unwrap slip (fit RMS ~1.4 rad) inflated this span to 6.27 fs.
+        bool clean = !lib.atoms.empty();
+        for (const auto& a : lib.atoms)
+            clean = clean && a.min_band_amplitude >= 0.05 && a.phase_fit_rms_rad <= 1.0;
+        const double span = lib.gd_max_fs - lib.gd_min_fs;
+        const double delay_line_fs = (2.40 - 1.0) * 0.600 * GD_FS_PER_UM;
+        const bool span_ok = span < 1.25 * delay_line_fs;
+        sp("    library hygiene: {} atoms, span {:.2f} fs vs (n-1)H/c = {:.2f} fs  {}",
+           static_cast<int>(lib.atoms.size()), span, delay_line_fs,
+           (clean && span_ok) ? "✓ (no band zeros / unwrap slips)" : "FAIL");
+        chk(clean && span_ok,
+            "[18] PB library drops band-zero / unwrap-slip atoms (span near (n-1)H/c)");
     }});
 
     // ---- Demo 11: inverse design (gradient-based optimizer) ---------------

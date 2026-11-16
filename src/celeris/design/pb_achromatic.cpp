@@ -28,8 +28,12 @@ void unwrap(std::vector<double>& p) {
     }
 }
 
-double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y) {
+// Least-squares line y ~ slope*x + b; returns the slope and writes the RMS of the
+// residuals to `rms` (0 for fewer than 3 points, where a line fits exactly).
+double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y,
+                   double& rms) {
     const std::size_t n = x.size();
+    rms = 0.0;
     if (n < 2) return 0.0;
     double mx = 0, my = 0;
     for (std::size_t i = 0; i < n; ++i) { mx += x[i]; my += y[i]; }
@@ -39,7 +43,14 @@ double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y) {
         num += (x[i] - mx) * (y[i] - my);
         den += (x[i] - mx) * (x[i] - mx);
     }
-    return den != 0.0 ? num / den : 0.0;
+    const double slope = den != 0.0 ? num / den : 0.0;
+    double ss = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double r = y[i] - (my + slope * (x[i] - mx));
+        ss += r * r;
+    }
+    rms = std::sqrt(ss / n);
+    return slope;
 }
 
 } // namespace
@@ -49,7 +60,7 @@ DispersivePbLibrary build_dispersive_pb_library(
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
     double fill_min, double fill_max, int n_fills, double thickness_um, int M,
-    double min_amplitude) {
+    double min_amplitude, double min_band_amplitude, double max_phase_fit_rms_rad) {
     DispersivePbLibrary lib;
     lib.wavelengths_um = band_wavelengths_um;
     lib.center_wavelength_um = center_wavelength_um;
@@ -98,7 +109,7 @@ DispersivePbLibrary build_dispersive_pb_library(
         a.thickness_um = thickness_um;
         a.cross.resize(nb);
         std::vector<double> ph(nb);
-        double amp_sum = 0.0, conv_sum = 0.0;
+        double amp_sum = 0.0, conv_sum = 0.0, amp_min = 1e300;
         for (int j = 0; j < nb; ++j) {
             RectCell2D cell{pillar, background, s.fx, s.fy, thickness_um,
                             MetaShape::Rectangle, 0.5};
@@ -112,6 +123,7 @@ DispersivePbLibrary build_dispersive_pb_library(
             a.cross[j] = acr;
             ph[j] = std::arg(acr);
             amp_sum += std::abs(acr);
+            amp_min = std::min(amp_min, std::abs(acr));
             conv_sum += std::norm(acr);
             if (j == lib.center_index)
                 a.retardance_center_deg =
@@ -120,9 +132,10 @@ DispersivePbLibrary build_dispersive_pb_library(
         a.phase0_rad = ph[lib.center_index];
         a.mean_amplitude = amp_sum / nb;
         a.mean_conversion = conv_sum / nb;
+        a.min_band_amplitude = nb > 0 ? amp_min : 0.0;
         std::vector<double> u = ph;
         unwrap(u);
-        a.group_delay_fs = lstsq_slope(omega, u);
+        a.group_delay_fs = lstsq_slope(omega, u, a.phase_fit_rms_rad);
         lib.atoms[idx] = std::move(a);
     };
 
@@ -138,11 +151,17 @@ DispersivePbLibrary build_dispersive_pb_library(
     // Keep only genuinely birefringent atoms: a near-square pillar has a_cross ~ 0,
     // so its phase (and group delay) is meaningless noise that could otherwise win
     // the group-delay selection with zero spin-flip amplitude. Drop atoms below the
-    // mean-|a_cross| floor (but never empty the library).
+    // mean-|a_cross| floor. An atom can also pass the mean floor yet have a zero of
+    // a_cross INSIDE the band: there the phase is undefined, the unwrap can slip by
+    // 2*pi, and the fitted group delay is wrong by many fs. Drop those too, by the
+    // band-minimum |a_cross| and by the residual of the linear phase fit (never
+    // empty the library).
     std::vector<DispersivePbAtom> kept;
     kept.reserve(lib.atoms.size());
     for (auto& a : lib.atoms)
-        if (a.mean_amplitude >= min_amplitude) kept.push_back(std::move(a));
+        if (a.mean_amplitude >= min_amplitude && a.min_band_amplitude >= min_band_amplitude &&
+            a.phase_fit_rms_rad <= max_phase_fit_rms_rad)
+            kept.push_back(std::move(a));
     if (!kept.empty()) lib.atoms = std::move(kept);
 
     lib.gd_min_fs = lib.gd_max_fs = lib.atoms.empty() ? 0.0 : lib.atoms[0].group_delay_fs;

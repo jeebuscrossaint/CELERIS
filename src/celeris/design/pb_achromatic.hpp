@@ -58,6 +58,8 @@ struct DispersivePbAtom {
     double group_delay_fs = 0;         ///< d(arg a_cross)/d(omega), least-squares over the band (fs).
     double mean_amplitude = 0;         ///< Mean |a_cross| over the band (apodization proxy).
     double mean_conversion = 0;        ///< Mean |a_cross|² over the band (spin-flip efficiency).
+    double min_band_amplitude = 0;     ///< Smallest |a_cross| over the band samples (band-zero check).
+    double phase_fit_rms_rad = 0;      ///< RMS of the unwrapped phase about its linear fit vs omega (rad).
     double retardance_center_deg = 0;  ///< wrap(arg t_x − arg t_y) at center (deg); ideal 180.
     std::vector<cdouble> cross;        ///< a_cross at each band wavelength (amplitude + phase).
 };
@@ -90,6 +92,14 @@ struct DispersivePbLibrary {
 /// and its phase -- and therefore its group delay -- is noise that could match a
 /// target while contributing no light. `min_amplitude` drops atoms whose mean
 /// |a_cross| over the band is below it, so only usable PB atoms are kept.
+///
+/// A mean floor alone is not enough: an atom can pass it while |a_cross| dips
+/// to ~0 at one band sample. The phase is undefined at that zero, the unwrap can
+/// slip by 2π, and the fitted group delay is then wrong by many fs. Two more
+/// filters catch this: `min_band_amplitude` drops atoms whose smallest |a_cross|
+/// over the band is below it, and `max_phase_fit_rms_rad` drops atoms whose
+/// unwrapped phase is not close to linear in omega (the RMS fit residual is
+/// large after a slip). The filters never empty the library.
 /// @param pillar,background    Pillar and surrounding materials.
 /// @param incident,substrate   Half-spaces above and below.
 /// @param period_um            Lattice period (µm).
@@ -100,12 +110,16 @@ struct DispersivePbLibrary {
 /// @param thickness_um         The single pillar height (µm).
 /// @param M                    Harmonic half-count in x and y.
 /// @param min_amplitude        Minimum mean |a_cross| for an atom to be kept.
+/// @param min_band_amplitude   Minimum |a_cross| at every band sample for an atom to be kept.
+/// @param max_phase_fit_rms_rad Maximum RMS residual (rad) of the linear phase fit
+///                             for an atom to be kept.
 DispersivePbLibrary build_dispersive_pb_library(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
     double fill_min, double fill_max, int n_fills, double thickness_um, int M,
-    double min_amplitude = 0.30);
+    double min_amplitude = 0.30, double min_band_amplitude = 0.05,
+    double max_phase_fit_rms_rad = 1.0);
 
 /// @brief An achromatic PB focusing metalens: a rotated, group-delay-matched atom per site.
 struct PbAchromaticDesign {
