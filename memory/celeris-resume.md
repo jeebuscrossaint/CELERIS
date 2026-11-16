@@ -20,7 +20,30 @@
   spans 15.4 fs vs (n−1)H/c≈5.1. Fix = flag max unwrapped step near π / ≥5 band samples.
   Matters for R1: use ≥7 pts (pilot) and check vs a 21-pt reference on a subset.
 - Same issue likely in the propagation-phase library (`achromatic.cpp`, DispersiveAtom) — not checked.
-- **Next (R1 study, ~8–10 sessions):** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
+- **R1 risk register (preliminary pass 2026-11-16, checked not guessed):**
+  1. *Bound mapping is undefined* (biggest). Buisine Eq. 7 uses Δn = max variation of n_eff over
+     band+achromatic subset and Δn0 = the reference atom's variation (no formula); Eq. 7 vs Eq. 15
+     are not reconciled in the paper. Our metric is a GD span (fs). Must derive GD span ↔ h·Δn
+     before any "fraction of bound" number. Read their supplement + Presutti–Monticone first.
+  2. *Result depends on the efficiency cut.* Buisine keep T ≥ 0.9 and EXCLUDE resonant atoms; ours is
+     mean |a_cross| ≥ 0.30. GD at H=1 µm is bimodal (~4 vs ~9 fs clusters) → span set by a few
+     (likely resonant) atoms. Report span-vs-efficiency curves, not one number.
+  3. *Substrate diffraction:* P=400 nm on BK7 at 470 nm → λ/n_sub = 309 nm < P, so substrate orders
+     propagate (pilot + Chen cell not subwavelength in glass). Sweep needs P < λ_min/n_sub (~300 nm)
+     or an explicit caveat; changing P changes atoms.
+  4. *a-Si:* Pierce data k ≈ 1 at 470–670 nm (unusable visible); lossless only ≳ 950 nm and the
+     table is sparse there (0.95 → 1.38 → 2.07 µm). Needs a NIR band (per-material bands → compare at
+     equal fractional bandwidth) and probably a better a-Si:H dataset.
+  5. *Python gaps:* bindings expose only air/bk7/fused_silica/silicon_nitride; GaN, sapphire,
+     TiO₂ Siefke, a-Si need binding or Material.tabulated/sellmeier by hand. Small PR.
+  6. *Propagation-phase library* (achromatic.cpp) has NO amplitude/fit filter at all — same bug, worse.
+  7. *Aliasing (#21)* and higher-order GDD over wide bands (Buisine flag it too).
+  8. *Compute is NOT a risk:* GD converged at M=6 (≤0.05 fs vs M=10). Eigen build, 16 atoms×7 λ:
+     M=6 23 s, M=8 119 s, M=10 445 s → ~1.5 s/atom at M=6; 16×16 grid ≈ 6 min/library. MKL ≈3× faster.
+  9. *Scoop check:* Buisine (2610.08047) verified: ONE library (GaN, h=1 µm, sapphire, FDTD, pixelated
+     C4), no PB, no height/material sweep, no %-of-bound. Gap still open as of 2026-11-16.
+  10. Full-lens check is locally-periodic (no full-wave) — state as limitation.
+- **Next (R1 study, realistic 12–15 sessions):** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
   × heights × PB vs propagation-phase, using the new filters; then convergence, full-lens
   check, figures, full-read Presutti–Monticone + Buisine, Zenodo report. Interleave #21,
   audit (4)/(5), API docs #1/#2. Realistic JOSS submit: late Dec / early Jan.
