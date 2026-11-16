@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate the figures for the CELERIS paper from live CELERIS runs.
 
-Outputs (vector PDF, for LaTeX) into this directory:
+Outputs into this directory (vector PDF for LaTeX; fig_validation and
+fig_achromatic also as PNG for the JOSS paper.md):
   fig_validation.pdf  -- CELERIS vs Stanford S4 convergence + agreement (external validation)
   fig_library.pdf     -- meta-atom phase library (transmission phase & |t| vs fill)
   fig_psf.pdf         -- diffraction-limited focal spot (PSF map + line cut)
@@ -24,6 +25,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BLUE, VERM, GREEN, GRAY = "#0072B2", "#D55E00", "#009E73", "#555555"
 plt.rcParams.update({"font.size": 11, "axes.grid": True, "grid.alpha": 0.3,
                      "figure.dpi": 130, "savefig.bbox": "tight"})
+
+
+def _save(fig, stem):
+    """Write fig as vector PDF (longform/LaTeX) and 200-dpi PNG (JOSS paper.md)."""
+    out = os.path.join(HERE, stem + ".pdf")
+    fig.savefig(out)
+    fig.savefig(os.path.join(HERE, stem + ".png"), dpi=200)
+    plt.close(fig)
+    return out
 
 
 def fig_validation():
@@ -83,7 +93,7 @@ def fig_validation():
     else:
         axR.axis("off")
     fig.tight_layout()
-    out = os.path.join(HERE, "fig_validation.pdf"); fig.savefig(out); plt.close(fig)
+    out = _save(fig, "fig_validation")
     print("  wrote", out)
 
 
@@ -184,7 +194,7 @@ def fig_achromatic():
                  "single-etch group-delay engineering flattens the chromatic focal shift")
     ax.legend(fontsize=9)
     fig.tight_layout()
-    out = os.path.join(HERE, "fig_achromatic.pdf"); fig.savefig(out); plt.close(fig)
+    out = _save(fig, "fig_achromatic")
     print("  wrote", out, f"[focal drift {drift_s:.2f} -> {drift_a:.2f} um]")
 
 
