@@ -1,6 +1,29 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-03. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-16. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-16 — #20 PB library filter (PR #22 merged); R1 slice 1
+- **PR #19 still OPEN** (author to read prose + merge). Pushed 83bef0f to it: longform
+  fig_validation caption now matches the S4 re-run (TM: CELERIS within 3e-5 of M=40 by M=6;
+  S4 defaults 6e-4 off at M=40). Same wording as the JOSS caption.
+- **Issue #20 / PR #22 (merged, CI 3/3 green):** `DispersivePbAtom` gains `min_band_amplitude`
+  and `phase_fit_rms_rad` (RMS of unwrapped phase about the linear fit). `build_dispersive_pb_library`
+  has new defaulted params `min_band_amplitude=0.05`, `max_phase_fit_rms_rad=1.0`. selftest
+  [18](c) locks it (57/57 full, exit 0, 2m40 Eigen build).
+  Evidence (pilot n=2.4, H=1.2, 7 pts vs 21-pt reference): all 10 bad atoms (GD err 3–9.6 fs)
+  have fit RMS ≥1.36 rad, all good ones ≤0.59. Band-min alone MISSES the worst (zero falls
+  between samples). Pilot span 10.08 → 5.97 fs (the memory's "≈6 fs robust" holds). Some
+  bad atoms had NO band zero (min 0.28): resonant phase swings, not zeros.
+  **Paper numbers unchanged:** fig_achromatic 36 atoms / 2.58 fs / 22.75→7.28 µm;
+  `reproduce --device chen2018` 3.11 fs / 22.75→6.37 µm. selftest [18] span 6.27→2.21 fs.
+- **Issue #21 (open):** 3-pt bands alias uniformly (fit residual can't see it); [15c] still
+  spans 15.4 fs vs (n−1)H/c≈5.1. Fix = flag max unwrapped step near π / ≥5 band samples.
+  Matters for R1: use ≥7 pts (pilot) and check vs a 21-pt reference on a subset.
+- Same issue likely in the propagation-phase library (`achromatic.cpp`, DispersiveAtom) — not checked.
+- **Next (R1 study, ~8–10 sessions):** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
+  × heights × PB vs propagation-phase, using the new filters; then convergence, full-lens
+  check, figures, full-read Presutti–Monticone + Buisine, Zenodo report. Interleave #21,
+  audit (4)/(5), API docs #1/#2. Realistic JOSS submit: late Dec / early Jan.
 
 ## SESSION 2026-11-03 — #15 analysis/ docs, #17 MKL fix (merged); #19 paper rework (OPEN)
 - **PR #15 (merged):** Doxygen for all 9 `analysis/*.hpp`. NOTE: PR CI runs only
