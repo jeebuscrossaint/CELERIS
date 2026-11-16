@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-16. **HEAD:** run `git log --oneline -25`.
 
 ## SESSION 2026-11-16 — #20 PB library filter (PR #22 merged); R1 slice 1
-- **PR #19 still OPEN** (author to read prose + merge). Pushed 83bef0f to it: longform
+- **PR #19 MERGED 2026-11-16 (author read it; closes #18).** Pushed 83bef0f to it first: longform
   fig_validation caption now matches the S4 re-run (TM: CELERIS within 3e-5 of M=40 by M=6;
   S4 defaults 6e-4 off at M=40). Same wording as the JOSS caption.
 - **Issue #20 / PR #22 (merged, CI 3/3 green):** `DispersivePbAtom` gains `min_band_amplitude`
