@@ -1,6 +1,7 @@
 #include "celeris/design/achromatic.hpp"
 
 #include "celeris/core.hpp"
+#include "celeris/design/band_unwrap.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -21,17 +22,6 @@ double angle_diff(double a, double b) {
     while (d > pi) d -= 2.0 * pi;
     while (d <= -pi) d += 2.0 * pi;
     return d;
-}
-
-// Unwrap a phase sequence in place (remove 2*pi jumps between consecutive samples)
-// so it can be differentiated. The input order must be monotone in the variable
-// the derivative is taken against.
-void unwrap(std::vector<double>& p) {
-    for (std::size_t i = 1; i < p.size(); ++i) {
-        double d = p[i] - p[i - 1];
-        while (d > pi) { p[i] -= 2.0 * pi; d -= 2.0 * pi; }
-        while (d < -pi) { p[i] += 2.0 * pi; d += 2.0 * pi; }
-    }
 }
 
 // Least-squares line y ~ slope*x + b; returns the slope and writes the RMS of the
@@ -105,25 +95,31 @@ DispersiveLibrary build_dispersive_library_from_specs(
         a.shape_param = s.shape_param;
         a.phase_rad.resize(nb);
         a.amplitude.resize(nb);
-        double amp_sum = 0.0, amp_min = 1e300;
-        for (int j = 0; j < nb; ++j) {
+        auto sample = [&](double lambda_um) {
             RectCell2D cell{pillar, background, s.fill_x, s.fill_y, s.thickness_um,
                             s.shape, s.shape_param};
             Rcwa2DStack stack{period_um, period_um, {cell}};
-            auto r = solve_rcwa_2d(incident, stack, substrate, band_wavelengths_um[j],
-                                   0.0, 0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
-            a.phase_rad[j] = std::arg(r.tx0);
-            a.amplitude[j] = std::abs(r.tx0);
+            return solve_rcwa_2d(incident, stack, substrate, lambda_um, 0.0, 0.0,
+                                 /*Ex0=*/1.0, /*Ey0=*/0.0, M, M)
+                .tx0;
+        };
+        std::vector<cdouble> t(nb);
+        double amp_sum = 0.0;
+        for (int j = 0; j < nb; ++j) {
+            t[j] = sample(band_wavelengths_um[j]);
+            a.phase_rad[j] = std::arg(t[j]);
+            a.amplitude[j] = std::abs(t[j]);
             amp_sum += a.amplitude[j];
-            amp_min = std::min(amp_min, a.amplitude[j]);
         }
         a.phase0_rad = a.phase_rad[lib.center_index];
         a.mean_amplitude = amp_sum / nb;
-        a.min_band_amplitude = nb > 0 ? amp_min : 0.0;
         // Group delay = slope of unwrapped phase vs omega (the dispersion lever).
-        std::vector<double> ph = a.phase_rad;
-        unwrap(ph);
-        a.group_delay_fs = lstsq_slope(omega, ph, a.phase_fit_rms_rad);
+        // Unwrap on an adaptively refined grid so a step larger than pi between
+        // band samples is not aliased by 2*pi (issue #21).
+        auto bp = detail::unwrap_band_refined(band_wavelengths_um, t, sample);
+        a.min_band_amplitude = nb > 0 ? bp.min_amplitude : 0.0;
+        a.n_refined_samples = bp.n_refined;
+        a.group_delay_fs = lstsq_slope(omega, bp.unwrapped, a.phase_fit_rms_rad);
         lib.atoms[idx] = std::move(a);
     };
 

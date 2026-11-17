@@ -604,8 +604,9 @@ int run_selftest(bool quick) {
     // Tall pillars have resonant phase swings that a 7-point band cannot follow:
     // the unwrap slips by 2*pi and the fitted group delay is off by 3-7 fs (n=2.4,
     // H=1.2 µm, 470-670 nm). Each atom's group delay from 7 band points is compared
-    // with a 21-point reference: every atom the filter KEEPS must agree within 1 fs,
-    // and the filter must drop the slipped atoms instead of passing them on.
+    // with a 21-point reference: every atom the library KEEPS must agree within 1 fs.
+    // Before #21 the two slipped atoms were dropped by the fit-residual filter; with
+    // the refined unwrap they are recovered (kept, refined, and correct).
     cases.push_back(Case{true, [&]() {
         const auto n24 = Material::constant(cdouble{2.40, 0.0}, "n2.4");
         auto band = [](int n) {
@@ -628,16 +629,64 @@ int run_selftest(bool quick) {
             0.5525, specs, /*M=*/6, /*min_band_amplitude=*/0.0,
             /*max_phase_fit_rms_rad=*/1e9);
         double worst = 0.0;
+        int refined = 0;
+        for (const auto& a : lib.atoms) refined += a.n_refined_samples;
         for (const auto& a : lib.atoms)
             for (const auto& r : ref.atoms)
                 if (r.fill_x == a.fill_x && r.thickness_um == a.thickness_um)
                     worst = std::max(worst, std::abs(a.group_delay_fs - r.group_delay_fs));
         const int kept = static_cast<int>(lib.atoms.size());
-        const bool ok = kept >= 2 && kept < static_cast<int>(specs.size()) && worst < 1.0;
-        sp("    kept {} of {} atoms; worst kept |GD(7) - GD(21)| = {:.2f} fs  {}", kept,
-           static_cast<int>(specs.size()), worst,
-           ok ? "✓ (unwrap-slip atoms dropped)" : "FAIL");
-        chk(ok, "[15d] propagation-phase library drops atoms with a mis-fitted group delay");
+        const bool ok = kept >= 4 && refined > 0 && worst < 1.0;
+        sp("    kept {} of {} atoms ({} refined samples); worst kept |GD(7) - GD(21)| = "
+           "{:.2f} fs  {}", kept, static_cast<int>(specs.size()), refined, worst,
+           ok ? "✓ (no mis-fitted group delay kept)" : "FAIL");
+        chk(ok, "[15d] propagation-phase library keeps no atom with a mis-fitted group delay");
+    }});
+
+    // ---- Validation 15e: group-delay aliasing on a 3-point band (issue #21) ------
+    // With 3 samples over 532 nm +-10 % the steps are dOmega ~0.39 rad/fs, so any
+    // group delay above pi/dOmega ~8 fs aliases by 2*pi/dOmega. Plain unwrapping
+    // gave -7.9 and -7.2 fs for two atoms whose true delay is ~+9 and ~+10 fs.
+    // The refined unwrap solves midpoints wherever a wrapped step exceeds pi/2; the
+    // 3-point group delay must then match a 17-point reference within 1 fs.
+    cases.push_back(Case{false, [&]() {
+        const auto n24 = Material::constant(cdouble{2.40, 0.0}, "n2.4");
+        const double lo = 0.532 * 0.9, hi = 0.532 * 1.1;
+        auto band = [&](int n) {
+            std::vector<double> b(n);
+            for (int i = 0; i < n; ++i) b[i] = lo + (hi - lo) * i / (n - 1);
+            return b;
+        };
+        const double f5 = 0.08 + 0.84 * 5 / 9, f4 = 0.08 + 0.84 * 4 / 9,
+                     f2 = 0.08 + 0.84 * 2 / 9;
+        const std::vector<MetaAtomSpec> specs = {
+            {MetaShape::Rectangle, f5, f5, 1.00, 0.5},   // aliased on 3 points
+            {MetaShape::Rectangle, f4, f4, 1.20, 0.5},   // aliased on 3 points
+            {MetaShape::Rectangle, f2, f2, 0.60, 0.5}};  // control: small delay
+        sp("[15e] Group-delay aliasing on a 3-point band (refined unwrap):");
+        auto build = [&](int n) {
+            return build_dispersive_library_from_specs(
+                n24, materials::air(), materials::air(), materials::fused_silica(), 0.35,
+                band(n), 0.532, specs, /*M=*/5, /*min_band_amplitude=*/0.0,
+                /*max_phase_fit_rms_rad=*/1e9);
+        };
+        auto l3 = build(3), l17 = build(17);
+        bool ok = l3.atoms.size() == 3 && l17.atoms.size() == 3;
+        double worst = 0.0;
+        for (std::size_t i = 0; ok && i < 3; ++i)
+            worst = std::max(worst, std::abs(l3.atoms[i].group_delay_fs -
+                                             l17.atoms[i].group_delay_fs));
+        ok = ok && worst < 1.0 && l3.atoms[0].n_refined_samples > 0 &&
+             l3.atoms[1].n_refined_samples > 0 && l3.atoms[0].group_delay_fs > 5.0 &&
+             l3.atoms[1].group_delay_fs > 5.0;
+        if (l3.atoms.size() == 3)
+            sp("    GD(3 pts): {:.2f}, {:.2f}, {:.2f} fs ({}, {}, {} refined); "
+               "worst |GD(3) - GD(17)| = {:.2f} fs  {}",
+               l3.atoms[0].group_delay_fs, l3.atoms[1].group_delay_fs,
+               l3.atoms[2].group_delay_fs, l3.atoms[0].n_refined_samples,
+               l3.atoms[1].n_refined_samples, l3.atoms[2].n_refined_samples, worst,
+               ok ? "✓ (2*pi alias resolved)" : "FAIL");
+        chk(ok, "[15e] refined unwrap resolves a 2*pi group-delay alias on a 3-point band");
     }});
 
     // ---- Validation 15c: achromatic Pancharatnam-Berry (PB + dispersion) -----

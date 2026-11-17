@@ -579,6 +579,8 @@ PYBIND11_MODULE(_celeris, m) {
                       "smallest |t| over the band samples (a near-zero means a band zero)")
         .def_readonly("phase_fit_rms_rad", &DispersiveAtom::phase_fit_rms_rad,
                       "RMS of the unwrapped phase about its linear fit vs omega [rad]")
+        .def_readonly("n_refined_samples", &DispersiveAtom::n_refined_samples,
+                      "extra wavelengths solved to unwrap the phase across coarse band steps")
         .def_readonly("phase_rad", &DispersiveAtom::phase_rad, "phi(lambda) at each band sample")
         .def_readonly("amplitude", &DispersiveAtom::amplitude, "|t|(lambda) at each band sample");
 
@@ -741,6 +743,8 @@ PYBIND11_MODULE(_celeris, m) {
                       "smallest |a_cross| over the band samples (a near-zero means a band zero)")
         .def_readonly("phase_fit_rms_rad", &DispersivePbAtom::phase_fit_rms_rad,
                       "RMS of the unwrapped phase about its linear fit vs omega [rad]")
+        .def_readonly("n_refined_samples", &DispersivePbAtom::n_refined_samples,
+                      "extra wavelengths solved to unwrap the phase across coarse band steps")
         .def_readonly("retardance_center_deg", &DispersivePbAtom::retardance_center_deg,
                       "wrap(arg t_x - arg t_y) at center (ideal 180 = half-wave plate)");
 
