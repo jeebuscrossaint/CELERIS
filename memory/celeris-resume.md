@@ -23,7 +23,37 @@
   |step|>π/2, refined pts used only to unwrap + min|t| → N=3 false keeps 12→3 (+2.3 solves/atom).
   Leftovers = band zeros / sharp resonances BETWEEN samples (only denser sampling finds them).
   Sim scripts were in the session scratchpad (gone); numbers are in the #21 comment.
-- **Next (one PR per session, another day):** (b) IMPLEMENT #21 per the comment: midpoint
+- **Later on 11-17 (author asked to keep working; PRs held for later days per the burst rule):**
+  - **PR #29 OPEN, CI 3/3 green — MERGE NEXT SESSION (closes #21).** Branch
+    `fix/band-unwrap-refinement`: `detail::unwrap_band_refined` (design/band_unwrap.hpp)
+    bisects in ω wherever wrapped step > π/2 (depth 4); refined pts only unwrap + min|t|; used by
+    prop AND PB builders; atoms get `n_refined_samples`. New quick selftest [15e] (aliased
+    −7.9/−7.2 → 9.65/10.27 fs vs 17-pt ref within 0.45). [15d] re-gated (6/6 recovered). [15c]
+    span 15.38→6.26 fs, [15] 16.48→10.50, [15b] 8.24→6.05. Paper numbers UNCHANGED (fig_achromatic
+    36/2.58/22.75→7.28; chen2018 3.11/22.75→6.37). Full selftest exit 0.
+  - **Issue #30 (docs, open):** Chen-2018 cell P=400 nm on BK7 is NOT subwavelength below
+    ~608 nm. 13–25 % of incident power at 470–570 nm goes to substrate orders (fig_achromatic
+    library). Design model still valid (zero order); paper.md + longform need a one-sentence
+    caveat. R1 period rule: P < λ_min/n_sub (BK7 ≤300, sapphire ≤250 nm); span barely depends
+    on P below cutoff.
+  - **Issue #31 + branch `research/r1-sweep-driver` (pushed, NO PR yet; open after #29 merges,
+    rebase on main; CI smoke step needs n_refined_samples).** `research/r1/sweep.py` + README:
+    period rule, 60 nm feature/gap fill limits, span-vs-efficiency curve, 2N−1 convergence,
+    JSON per lib in research/r1/out/ (gitignored). Pilot TiO₂/SiO₂ P=300: prop H0.6 4.45 fs
+    η_PM .544, H1.0 6.73/.493; PB H0.6 3.46/.423, H1.0 5.88/.431; Δspan(13 pts) ≤0.45 fs.
+    PB ~700 s/lib (Eigen), prop ~50 s.
+  - **KEY R1 FRAMING FINDING (#31 comment):** prop libs (squares+circles × fill) can't use
+    their span: achromatic design GD RMS stays 1.2–1.9 fs and phase RMS 22–46° even at D=10 µm
+    (needs 0.64 fs). 1-param family = curve in (phase, GD) plane. → span-η valid for PB only;
+    headline study = PB; prop needs a coverage metric (largest D meeting phase/GD RMS tol).
+  - **Full sweep launched** 11-17 evening (nice 10, ~5 h, Eigen) from the branch checkout:
+    results in research/r1/out/full/, log research/r1/full.log (NOT gitignored — don't commit;
+    add `research/r1/*.log` to .gitignore in the sweep PR). Resumable: re-run skips done libs.
+- **Next session:** merge #29 → rebase research/r1-sweep-driver on main, add *.log ignore,
+  open PR (closes #31) → another day: #30 paper caveat; coverage metric for prop in sweep.py;
+  read full-sweep report. Audit (5): "~5 fs (paper)" literal cmd_reproduce.cpp:109 — verify
+  against Chen 2018 text before changing.
+- **Old next (superseded):** (b) IMPLEMENT #21 per the comment: midpoint
   refinement (thr π/2, depth-limited) in achromatic.cpp + pb_achromatic.cpp, record refined
   count per atom; R1 must run an N-convergence check (N vs 2N−1) per library; (c) period per risk #3 (P < λ_min/n_sub); (d) sweep driver in
   research/r1/ using metric.py.
