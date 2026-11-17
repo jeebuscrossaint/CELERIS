@@ -600,6 +600,46 @@ int run_selftest(bool quick) {
             "[15b] single-etch achromatic: GD RMS reduced at one height");
     }});
 
+    // ---- Validation 15d: propagation-phase library hygiene (issue #27) --------
+    // Tall pillars have resonant phase swings that a 7-point band cannot follow:
+    // the unwrap slips by 2*pi and the fitted group delay is off by 3-7 fs (n=2.4,
+    // H=1.2 µm, 470-670 nm). Each atom's group delay from 7 band points is compared
+    // with a 21-point reference: every atom the filter KEEPS must agree within 1 fs,
+    // and the filter must drop the slipped atoms instead of passing them on.
+    cases.push_back(Case{true, [&]() {
+        const auto n24 = Material::constant(cdouble{2.40, 0.0}, "n2.4");
+        auto band = [](int n) {
+            std::vector<double> b(n);
+            for (int i = 0; i < n; ++i) b[i] = 0.470 + 0.200 * i / (n - 1);
+            return b;
+        };
+        std::vector<MetaAtomSpec> specs;
+        for (double f : {0.54, 0.68, 0.83, 0.90})
+            specs.push_back({MetaShape::Rectangle, f, f, 1.20, 0.5});
+        for (double f : {0.46, 0.61})
+            specs.push_back({MetaShape::Rectangle, f, f, 0.60, 0.5});
+        sp("[15d] Propagation-phase library hygiene ({} atoms, 7 vs 21 band points):",
+           static_cast<int>(specs.size()));
+        auto lib = build_dispersive_library_from_specs(
+            n24, materials::air(), materials::air(), materials::bk7(), 0.30, band(7),
+            0.5525, specs, /*M=*/6);
+        auto ref = build_dispersive_library_from_specs(
+            n24, materials::air(), materials::air(), materials::bk7(), 0.30, band(21),
+            0.5525, specs, /*M=*/6, /*min_band_amplitude=*/0.0,
+            /*max_phase_fit_rms_rad=*/1e9);
+        double worst = 0.0;
+        for (const auto& a : lib.atoms)
+            for (const auto& r : ref.atoms)
+                if (r.fill_x == a.fill_x && r.thickness_um == a.thickness_um)
+                    worst = std::max(worst, std::abs(a.group_delay_fs - r.group_delay_fs));
+        const int kept = static_cast<int>(lib.atoms.size());
+        const bool ok = kept >= 2 && kept < static_cast<int>(specs.size()) && worst < 1.0;
+        sp("    kept {} of {} atoms; worst kept |GD(7) - GD(21)| = {:.2f} fs  {}", kept,
+           static_cast<int>(specs.size()), worst,
+           ok ? "✓ (unwrap-slip atoms dropped)" : "FAIL");
+        chk(ok, "[15d] propagation-phase library drops atoms with a mis-fitted group delay");
+    }});
+
     // ---- Validation 15c: achromatic Pancharatnam-Berry (PB + dispersion) -----
     // The modern recipe: the geometric (PB) phase sets the base profile EXACTLY by
     // rotation while a dispersive birefringent atom (picked per radius from a

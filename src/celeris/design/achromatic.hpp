@@ -49,6 +49,8 @@ struct DispersiveAtom {
     double phase0_rad = 0;           ///< Transmission phase at the center wavelength (rad, wrapped).
     double group_delay_fs = 0;       ///< d(phi)/d(omega) at center, least-squares over the band (fs).
     double mean_amplitude = 0;       ///< Mean |t| over the band (efficiency proxy).
+    double min_band_amplitude = 0;   ///< Smallest |t| over the band samples (band-zero check).
+    double phase_fit_rms_rad = 0;    ///< RMS of the unwrapped phase about its linear fit vs omega (rad).
     std::vector<double> phase_rad;   ///< phi at each band sample (rad).
     std::vector<double> amplitude;   ///< |t| at each band sample.
 };
@@ -77,7 +79,7 @@ struct DispersiveLibrary {
     int center_index = 0;                ///< Index of the center wavelength in `wavelengths_um`.
     double period_um = 0;                ///< Lattice period (µm).
     int n_fill = 0;                      ///< Fill samples in the grid.
-    int n_height = 0;                    ///< Height samples in the grid (atoms = n_fill·n_height).
+    int n_height = 0;                    ///< Height samples in the grid (up to n_fill·n_height atoms before filtering).
     std::vector<DispersiveAtom> atoms;   ///< One per characterized geometry.
     double gd_min_fs = 0;                ///< Smallest group delay supplied (fs).
     double gd_max_fs = 0;                ///< Largest group delay supplied (fs).
@@ -90,6 +92,14 @@ struct DispersiveLibrary {
 /// waveguide dispersion. The group delay is the least-squares slope of the
 /// band-unwrapped phase vs angular frequency. `n_heights == 1` gives a
 /// single-etch (one-degree-of-freedom) library.
+///
+/// Atoms whose group delay cannot be trusted are dropped. Where the phase is not
+/// close to linear in omega (a resonance the band sampling cannot follow, or a
+/// zero of |t| inside the band), the unwrap can slip by 2π and the fitted group
+/// delay is wrong by several fs. `min_band_amplitude` drops atoms whose smallest
+/// |t| over the band is below it, and `max_phase_fit_rms_rad` drops atoms whose
+/// unwrapped phase has a large RMS residual about its linear fit. The filters
+/// never empty the library.
 /// @param pillar,background    Pillar and surrounding materials.
 /// @param incident,substrate   Half-spaces above and below.
 /// @param period_um            Lattice period (µm).
@@ -100,18 +110,23 @@ struct DispersiveLibrary {
 /// @param thick_lo,thick_hi    Height range (µm).
 /// @param n_heights            Height samples.
 /// @param M                    Harmonic half-count in x and y.
+/// @param min_band_amplitude   Minimum |t| at every band sample for an atom to be kept.
+/// @param max_phase_fit_rms_rad Maximum RMS residual (rad) of the linear phase fit
+///                             for an atom to be kept.
 DispersiveLibrary build_dispersive_library(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
     double fill_min, double fill_max, int n_fills, double thick_lo, double thick_hi,
-    int n_heights, int M);
+    int n_heights, int M,
+    double min_band_amplitude = 0.05, double max_phase_fit_rms_rad = 0.8);
 
 /// @brief Characterize an arbitrary list of meta-atom geometries across the band.
 ///
 /// The general builder: `build_dispersive_library` and `build_single_etch_library`
 /// are thin wrappers over it. `n_fill`/`n_height` on the returned library are
-/// informational only here (the grid wrapper sets them).
+/// informational only here (the grid wrapper sets them). It applies the
+/// group-delay hygiene filters documented on `build_dispersive_library`.
 /// @param pillar,background    Pillar and surrounding materials.
 /// @param incident,substrate   Half-spaces above and below.
 /// @param period_um            Lattice period (µm).
@@ -119,11 +134,15 @@ DispersiveLibrary build_dispersive_library(
 /// @param center_wavelength_um Base-phase reference wavelength (µm).
 /// @param specs                The geometries to solve.
 /// @param M                    Harmonic half-count in x and y.
+/// @param min_band_amplitude   Minimum |t| at every band sample for an atom to be kept.
+/// @param max_phase_fit_rms_rad Maximum RMS residual (rad) of the linear phase fit
+///                             for an atom to be kept.
 DispersiveLibrary build_dispersive_library_from_specs(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
-    const std::vector<MetaAtomSpec>& specs, int M);
+    const std::vector<MetaAtomSpec>& specs, int M,
+    double min_band_amplitude = 0.05, double max_phase_fit_rms_rad = 0.8);
 
 /// @brief Build a SINGLE-ETCH dispersive library: every atom shares one pillar height.
 ///
@@ -133,7 +152,8 @@ DispersiveLibrary build_dispersive_library_from_specs(
 /// step, one etch depth, no grayscale. The tradeoff vs the fill × height library
 /// is a SMALLER group-delay span (taller pillars accumulate more delay), so it is
 /// achromatic over a smaller aperture × bandwidth -- reported via
-/// `AchromaticDesign::gd_coverage`.
+/// `AchromaticDesign::gd_coverage`. Same group-delay hygiene filters as
+/// `build_dispersive_library`.
 /// @param pillar,background    Pillar and surrounding materials.
 /// @param incident,substrate   Half-spaces above and below.
 /// @param period_um            Lattice period (µm).
@@ -143,11 +163,15 @@ DispersiveLibrary build_dispersive_library_from_specs(
 /// @param n_fills              Fill samples per family.
 /// @param thickness_um         The single pillar height (µm).
 /// @param M                    Harmonic half-count in x and y.
+/// @param min_band_amplitude   Minimum |t| at every band sample for an atom to be kept.
+/// @param max_phase_fit_rms_rad Maximum RMS residual (rad) of the linear phase fit
+///                             for an atom to be kept.
 DispersiveLibrary build_single_etch_library(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
-    double fill_min, double fill_max, int n_fills, double thickness_um, int M);
+    double fill_min, double fill_max, int n_fills, double thickness_um, int M,
+    double min_band_amplitude = 0.05, double max_phase_fit_rms_rad = 0.8);
 
 /// @brief An achromatic focusing metalens: one band-characterized atom per site.
 struct AchromaticDesign {
