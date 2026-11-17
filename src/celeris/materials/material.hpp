@@ -16,45 +16,65 @@
 
 namespace celeris {
 
+/// @brief A material's complex refractive index n(λ) + i·k(λ) vs vacuum wavelength (µm).
+///
+/// Value-semantic: the dispersion model is held as a `std::function`, so a
+/// Material can be copied and stored by value. Build one with the static
+/// factories or get a built-in from `celeris::materials`.
 class Material {
 public:
+    /// @brief Wrap an arbitrary dispersion model.
+    /// @param dispersion Callable returning n + i·k at a vacuum wavelength (µm).
+    /// @param name       Label used in reports and `__repr__`.
     Material(std::function<cdouble(double)> dispersion, std::string name);
 
-    // Complex refractive index n + i*k at the given vacuum wavelength (µm).
+    /// @brief Complex refractive index n + i·k at the given vacuum wavelength (µm).
     cdouble index(double wavelength_um) const { return dispersion_(wavelength_um); }
 
-    // Relative permittivity ε = n². (RCWA works in ε; TMM works in n.)
+    /// @brief Relative permittivity ε = n² at the given vacuum wavelength (µm).
+    ///
+    /// RCWA works in ε; TMM works in n.
     cdouble permittivity(double wavelength_um) const {
         cdouble n = index(wavelength_um);
         return n * n;
     }
 
+    /// @brief The material's label.
     const std::string& name() const { return name_; }
 
     // ---- Factories --------------------------------------------------------
 
-    // Non-dispersive material with a fixed index (use cdouble{n, k} for loss).
+    /// @brief Non-dispersive material with a fixed index.
+    /// @param n    Complex index; use cdouble{n, k} with k > 0 for loss.
+    /// @param name Label.
     static Material constant(cdouble n, std::string name = "constant");
 
-    // Sellmeier dispersion (lossless, k = 0):
-    //   n² = 1 + Σ_i  B_i · λ² / (λ² − C_i),   λ in µm.
-    // Each term is {B_i, C_i}. This is how glass catalogs specify dispersion.
+    /// @brief Lossless Sellmeier dispersion, n² = 1 + Σ_i B_i·λ² / (λ² − C_i), λ in µm.
+    ///
+    /// This is how glass catalogs specify dispersion.
+    /// @param bc_terms One {B_i, C_i} pair per term (C_i in µm², already squared).
+    /// @param name     Label.
     static Material sellmeier(std::vector<std::array<double, 2>> bc_terms,
                               std::string name = "sellmeier");
 
-    // refractiveindex.info "formula 1" (Sellmeier, lossless):
-    //   n² = 1 + c₀ + Σ_i  c_{2i-1} · λ² / (λ² − c_{2i}²),   λ in µm.
-    // `coeffs` = the raw coefficient list straight off a refractiveindex.info
-    // YAML (c₀ followed by (strength, resonance-wavelength) pairs — note the
-    // resonance is a WAVELENGTH that gets SQUARED here, unlike sellmeier()'s
-    // pre-squared C). Lets canonical published dispersions be pasted verbatim.
+    /// @brief refractiveindex.info "formula 1" (lossless Sellmeier).
+    ///
+    /// n² = 1 + c₀ + Σ_i c_{2i−1}·λ² / (λ² − c_{2i}²), λ in µm. Unlike
+    /// `sellmeier`, the resonance is a WAVELENGTH that is squared here, so the
+    /// coefficient list can be pasted verbatim from a refractiveindex.info YAML.
+    /// @param coeffs c₀ followed by (strength, resonance wavelength) pairs.
+    /// @param name   Label.
     static Material sellmeier_ri_formula1(std::vector<double> coeffs,
                                           std::string name = "formula1");
 
-    // Tabulated n and k vs wavelength (µm), linearly interpolated.
-    // `wavelength_um` must be strictly ascending; out-of-range queries clamp
-    // to the nearest endpoint. This is what you'll load from
-    // refractiveindex.info CSVs for real materials (TiO2, Si, …).
+    /// @brief Tabulated n and k vs wavelength, linearly interpolated.
+    ///
+    /// Queries outside the table CLAMP to the nearest endpoint (no
+    /// extrapolation, no error), so check the table covers your band.
+    /// @param wavelength_um Sample wavelengths (µm), strictly ascending.
+    /// @param n             Real index at each sample.
+    /// @param k             Extinction coefficient at each sample.
+    /// @param name          Label.
     static Material tabulated(std::vector<double> wavelength_um,
                               std::vector<double> n,
                               std::vector<double> k,

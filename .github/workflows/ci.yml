@@ -72,6 +72,9 @@ jobs:
       - name: Run a Python example
         run: python examples/python/01_focusing_lens.py
 
+      - name: Check the material registry bindings
+        run: python tests/python/check_materials.py
+
   api-docs:
     name: C++ API docs (Doxygen, warnings are errors)
     runs-on: ubuntu-latest

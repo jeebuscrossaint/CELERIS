@@ -112,6 +112,42 @@ PYBIND11_MODULE(_celeris, m) {
              "Fused silica SiO2 (Malitson 1965).");
     mats.def("silicon_nitride", [] { return materials::silicon_nitride(); },
              "Si3N4 LPCVD (Luke 2015).");
+    mats.def("sapphire", [] { return materials::sapphire(); },
+             "Sapphire Al2O3, ordinary ray (Malitson-Dodge 1972 Sellmeier).");
+    mats.def("gallium_nitride", [] { return materials::gallium_nitride(); },
+             "alpha-GaN, ordinary ray (Barker-Ilegems 1973).");
+
+    py::class_<materials::MaterialInfo>(mats, "MaterialInfo",
+        "Metadata for one material registry entry.")
+        .def_readonly("name", &materials::MaterialInfo::name,
+                      "canonical lookup key, e.g. 'au', 'c-si', 'sio2'")
+        .def_readonly("description", &materials::MaterialInfo::description,
+                      "human label + literature source")
+        .def_readonly("tabulated", &materials::MaterialInfo::tabulated,
+                      "True = real n,k from a data file (may be lossy)")
+        .def_readonly("lambda_min_um", &materials::MaterialInfo::lambda_min_um,
+                      "validity range start [um] (0 with lambda_max_um 0 = broadband analytic)")
+        .def_readonly("lambda_max_um", &materials::MaterialInfo::lambda_max_um,
+                      "validity range end [um]")
+        .def_readonly("data_file", &materials::MaterialInfo::data_file,
+                      "basename of the CSV (tabulated only), else ''")
+        .def_readonly("available", &materials::MaterialInfo::available,
+                      "tabulated: the data file was found on disk")
+        .def("__repr__", [](const materials::MaterialInfo& i) {
+            return "<celeris.materials.MaterialInfo '" + i.name + "'>";
+        });
+    mats.def("catalog", &materials::catalog,
+             "Every material the registry knows (canonical names, no aliases), with "
+             "metadata.");
+    mats.def("by_name", &materials::by_name, py::arg("name"),
+             "Resolve a material by canonical name or alias (case-insensitive, '-' == "
+             "'_'), e.g. 'tio2', 'a-si', 'gan'. Tabulated materials (real n,k) load from "
+             "data/ via find_data_file; set CELERIS_DATA_DIR if the package is used "
+             "outside the repo. Tabulated n,k CLAMP outside the table. Raises "
+             "RuntimeError on an unknown name or a missing data file.");
+    mats.def("find_data_file", &materials::find_data_file, py::arg("basename"),
+             "Locate a data/ file by basename (searches CELERIS_DATA_DIR, ./data, "
+             "../data, ...). Returns the path, or '' if not found.");
 
     // ---- 1D RCWA -----------------------------------------------------------
     py::class_<BinaryGrating1D>(m, "BinaryGrating1D",
