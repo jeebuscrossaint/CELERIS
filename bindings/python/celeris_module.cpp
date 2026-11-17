@@ -575,6 +575,10 @@ PYBIND11_MODULE(_celeris, m) {
         .def_readonly("group_delay_fs", &DispersiveAtom::group_delay_fs,
                       "dphi/domega at center, least-squares over the band [fs]")
         .def_readonly("mean_amplitude", &DispersiveAtom::mean_amplitude, "mean |t| over the band")
+        .def_readonly("min_band_amplitude", &DispersiveAtom::min_band_amplitude,
+                      "smallest |t| over the band samples (a near-zero means a band zero)")
+        .def_readonly("phase_fit_rms_rad", &DispersiveAtom::phase_fit_rms_rad,
+                      "RMS of the unwrapped phase about its linear fit vs omega [rad]")
         .def_readonly("phase_rad", &DispersiveAtom::phase_rad, "phi(lambda) at each band sample")
         .def_readonly("amplitude", &DispersiveAtom::amplitude, "|t|(lambda) at each band sample");
 
@@ -614,29 +618,38 @@ PYBIND11_MODULE(_celeris, m) {
           py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
           py::arg("n_fills"), py::arg("thick_lo"), py::arg("thick_hi"),
           py::arg("n_heights"), py::arg("M"),
+          py::arg("min_band_amplitude") = 0.05, py::arg("max_phase_fit_rms_rad") = 0.8,
           "Build a dispersive library over a fill x height grid (so the (phase, "
           "group-delay) plane is covered): each atom is solved at EVERY band "
           "wavelength; group delay = least-squares slope of unwrapped phase vs "
           "angular frequency. n_heights==1 gives a single-DOF (1-etch) library. "
+          "Atoms whose phase is far from linear in omega (an unwrap slip makes the group "
+          "delay wrong by several fs) are dropped: min_band_amplitude is the smallest "
+          "allowed |t| at any band sample and max_phase_fit_rms_rad the largest allowed "
+          "RMS residual of the linear phase fit; the library is never emptied. "
           "band_wavelengths_um must be ascending.");
 
     m.def("build_dispersive_library_from_specs", &build_dispersive_library_from_specs,
           py::arg("pillar"), py::arg("background"), py::arg("incident"),
           py::arg("substrate"), py::arg("period_um"), py::arg("band_wavelengths_um"),
           py::arg("center_wavelength_um"), py::arg("specs"), py::arg("M"),
+          py::arg("min_band_amplitude") = 0.05, py::arg("max_phase_fit_rms_rad") = 0.8,
           "Characterize an ARBITRARY list of meta-atom geometries (MetaAtomSpec) "
-          "across the band -- the general builder both grid wrappers sit on.");
+          "across the band -- the general builder both grid wrappers sit on. "
+          "Applies the same group-delay hygiene filters as build_dispersive_library.");
 
     m.def("build_single_etch_library", &build_single_etch_library, py::arg("pillar"),
           py::arg("background"), py::arg("incident"), py::arg("substrate"),
           py::arg("period_um"), py::arg("band_wavelengths_um"),
           py::arg("center_wavelength_um"), py::arg("fill_min"), py::arg("fill_max"),
           py::arg("n_fills"), py::arg("thickness_um"), py::arg("M"),
+          py::arg("min_band_amplitude") = 0.05, py::arg("max_phase_fit_rms_rad") = 0.8,
           "Build a SINGLE-ETCH dispersive library: every atom shares one height; "
           "the (phase, group-delay) plane is spanned by varying SHAPE (square + "
           "circle fill sweep, cross x arm-width, ring x inner-radius) instead of "
           "depth. Fabricable in one lithography step; smaller GD span than fill x "
-          "height (taller pillars accumulate more delay -> use ~AR-4 thickness).");
+          "height (taller pillars accumulate more delay -> use ~AR-4 thickness). "
+          "Applies the same group-delay hygiene filters as build_dispersive_library.");
 
     py::class_<AchromaticDesign>(m, "AchromaticDesign",
         "A broadband focusing metalens: per site, the atom matching both the base "

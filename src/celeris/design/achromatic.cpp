@@ -34,9 +34,12 @@ void unwrap(std::vector<double>& p) {
     }
 }
 
-// Least-squares slope of y vs x.
-double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y) {
+// Least-squares line y ~ slope*x + b; returns the slope and writes the RMS of the
+// residuals to `rms` (0 for fewer than 3 points, where a line fits exactly).
+double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y,
+                   double& rms) {
     const std::size_t n = x.size();
+    rms = 0.0;
     if (n < 2) return 0.0;
     double mx = 0, my = 0;
     for (std::size_t i = 0; i < n; ++i) { mx += x[i]; my += y[i]; }
@@ -46,7 +49,14 @@ double lstsq_slope(const std::vector<double>& x, const std::vector<double>& y) {
         num += (x[i] - mx) * (y[i] - my);
         den += (x[i] - mx) * (x[i] - mx);
     }
-    return den != 0.0 ? num / den : 0.0;
+    const double slope = den != 0.0 ? num / den : 0.0;
+    double ss = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double r = y[i] - (my + slope * (x[i] - mx));
+        ss += r * r;
+    }
+    rms = std::sqrt(ss / n);
+    return slope;
 }
 
 } // namespace
@@ -55,7 +65,8 @@ DispersiveLibrary build_dispersive_library_from_specs(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
-    const std::vector<MetaAtomSpec>& specs, int M) {
+    const std::vector<MetaAtomSpec>& specs, int M, double min_band_amplitude,
+    double max_phase_fit_rms_rad) {
     DispersiveLibrary lib;
     lib.wavelengths_um = band_wavelengths_um;
     lib.center_wavelength_um = center_wavelength_um;
@@ -94,7 +105,7 @@ DispersiveLibrary build_dispersive_library_from_specs(
         a.shape_param = s.shape_param;
         a.phase_rad.resize(nb);
         a.amplitude.resize(nb);
-        double amp_sum = 0.0;
+        double amp_sum = 0.0, amp_min = 1e300;
         for (int j = 0; j < nb; ++j) {
             RectCell2D cell{pillar, background, s.fill_x, s.fill_y, s.thickness_um,
                             s.shape, s.shape_param};
@@ -104,13 +115,15 @@ DispersiveLibrary build_dispersive_library_from_specs(
             a.phase_rad[j] = std::arg(r.tx0);
             a.amplitude[j] = std::abs(r.tx0);
             amp_sum += a.amplitude[j];
+            amp_min = std::min(amp_min, a.amplitude[j]);
         }
         a.phase0_rad = a.phase_rad[lib.center_index];
         a.mean_amplitude = amp_sum / nb;
+        a.min_band_amplitude = nb > 0 ? amp_min : 0.0;
         // Group delay = slope of unwrapped phase vs omega (the dispersion lever).
         std::vector<double> ph = a.phase_rad;
         unwrap(ph);
-        a.group_delay_fs = lstsq_slope(omega, ph);
+        a.group_delay_fs = lstsq_slope(omega, ph, a.phase_fit_rms_rad);
         lib.atoms[idx] = std::move(a);
     };
 
@@ -122,6 +135,20 @@ DispersiveLibrary build_dispersive_library_from_specs(
             for (int i = w; i < n_atoms; i += workers) solve_one(i);
         }));
     for (auto& j : jobs) j.get();
+
+    // Drop atoms whose group delay cannot be trusted. Where the phase is far from
+    // linear in omega (a resonance the band sampling cannot follow, or a zero of |t|
+    // inside the band) the unwrap can slip by 2*pi and the fitted group delay is off
+    // by several fs (issue #27; the PB library had the same bug, #20). Filter on the
+    // band-minimum |t| and on the residual of the linear phase fit, but never empty
+    // the library.
+    std::vector<DispersiveAtom> kept;
+    kept.reserve(lib.atoms.size());
+    for (auto& a : lib.atoms)
+        if (a.min_band_amplitude >= min_band_amplitude &&
+            a.phase_fit_rms_rad <= max_phase_fit_rms_rad)
+            kept.push_back(std::move(a));
+    if (!kept.empty()) lib.atoms = std::move(kept);
 
     lib.gd_min_fs = lib.gd_max_fs = lib.atoms.empty() ? 0.0 : lib.atoms[0].group_delay_fs;
     for (const auto& a : lib.atoms) {
@@ -136,7 +163,7 @@ DispersiveLibrary build_dispersive_library(
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
     double fill_min, double fill_max, int n_fills, double thick_lo, double thick_hi,
-    int n_heights, int M) {
+    int n_heights, int M, double min_band_amplitude, double max_phase_fit_rms_rad) {
     // Generate a square-pillar fill x height grid of specs, then characterize them.
     const int nh = std::max(1, n_heights);
     std::vector<MetaAtomSpec> specs;
@@ -151,7 +178,7 @@ DispersiveLibrary build_dispersive_library(
     }
     DispersiveLibrary lib = build_dispersive_library_from_specs(
         pillar, background, incident, substrate, period_um, band_wavelengths_um,
-        center_wavelength_um, specs, M);
+        center_wavelength_um, specs, M, min_band_amplitude, max_phase_fit_rms_rad);
     lib.n_fill = n_fills;
     lib.n_height = nh;
     return lib;
@@ -161,7 +188,8 @@ DispersiveLibrary build_single_etch_library(
     const Material& pillar, const Material& background, const Material& incident,
     const Material& substrate, double period_um,
     const std::vector<double>& band_wavelengths_um, double center_wavelength_um,
-    double fill_min, double fill_max, int n_fills, double thickness_um, int M) {
+    double fill_min, double fill_max, int n_fills, double thickness_um, int M,
+    double min_band_amplitude, double max_phase_fit_rms_rad) {
     // One height; the (phase, group-delay) plane is spanned by SHAPE variety.
     // Four families, each at the same etch depth:
     //   * square  fill sweep                  (the analytic baseline shape)
@@ -185,7 +213,7 @@ DispersiveLibrary build_single_etch_library(
     }
     DispersiveLibrary lib = build_dispersive_library_from_specs(
         pillar, background, incident, substrate, period_um, band_wavelengths_um,
-        center_wavelength_um, specs, M);
+        center_wavelength_um, specs, M, min_band_amplitude, max_phase_fit_rms_rad);
     lib.n_fill = n_fills;
     lib.n_height = 1;
     return lib;
