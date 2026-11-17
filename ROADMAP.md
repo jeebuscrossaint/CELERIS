@@ -296,6 +296,9 @@ publishing.** Placeholders until scoped with a PI:
 - [ ] **R1 — Achromatic limit-pusher.** A single-etch achromat that extends the group-
       delay/aperture trade-off past Chen 2018, using the existing achromatic + PB
       machinery. Target: Optics Express / Nanophotonics.
+      - [x] Metric fixed (#23): η_PM = Δτ_lib / Presutti–Monticone (Tucker) bound, η_DL vs the
+            delay line, D_lib via Buisine Eq. 15 (= Eq. 7). See `research/r1/metric.md`.
+      - [x] Library filter for slipped/aliased group delays (#20); 3-pt aliasing open (#21).
 - [ ] **R2 — Wide-FOV doublet / aplanatic.** The parked §P2 work: 2-surface corrector +
       lens, off-axis aberration correction. Classic design-paper format. Target: Optics
       Express / Optica.
