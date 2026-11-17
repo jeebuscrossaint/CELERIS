@@ -43,7 +43,19 @@
   9. *Scoop check:* Buisine (2610.08047) verified: ONE library (GaN, h=1 µm, sapphire, FDTD, pixelated
      C4), no PB, no height/material sweep, no %-of-bound. Gap still open as of 2026-11-16.
   10. Full-lens check is locally-periodic (no full-wave) — state as limitation.
-- **Next (R1 study, realistic 12–15 sessions):** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
+- **PR #24 merged (closes #23): R1 metric fixed** — `research/r1/metric.md` + `metric.py`
+  (stdlib, self-checks). Buisine Eq. 7 ≡ Eq. 15 (h(Δn−Δn0)=cΔτ); bound = Presutti–Monticone
+  Tucker κ → Δτ_PM = (hΔn/c)/(Δω/ω_c); ω_c = frequency centre (470–670: λ_c 552.5 nm, Δω/ω_c
+  0.3509). Existing libs η_PM 0.28–0.38, η_DL 0.8–1.1; Chen-2018 published lens needs η_PM≈0.54.
+  Risk #1 RESOLVED (except Buisine's exact Δn def, supplement unread — not needed).
+- **PR #26 merged (closes #25; part of #1):** Python `materials.sapphire/gallium_nitride/by_name/
+  catalog/find_data_file`; materials/ Doxygen'd + in Doxyfile; CI runs
+  `tests/python/check_materials.py`. Risk #5 RESOLVED. #1 still needs io/ cuda/.
+- **Next (R1 study, realistic 12–15 sessions; NEXT SESSION = another day):** (a) risk #6
+  propagation-phase library filter (achromatic.cpp, same as #20); (b) #21 aliasing; (c) choose
+  period per risk #3 (P < λ_min/n_sub); (d) sweep driver in research/r1/ using metric.py.
+  Today shipped 3 PRs (#22, #24, #26) + merged #19 → keep the next sessions to one PR each.
+- **Old next list:** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
   × heights × PB vs propagation-phase, using the new filters; then convergence, full-lens
   check, figures, full-read Presutti–Monticone + Buisine, Zenodo report. Interleave #21,
   audit (4)/(5), API docs #1/#2. Realistic JOSS submit: late Dec / early Jan.

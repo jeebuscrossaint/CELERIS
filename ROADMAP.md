@@ -299,6 +299,7 @@ publishing.** Placeholders until scoped with a PI:
       - [x] Metric fixed (#23): η_PM = Δτ_lib / Presutti–Monticone (Tucker) bound, η_DL vs the
             delay line, D_lib via Buisine Eq. 15 (= Eq. 7). See `research/r1/metric.md`.
       - [x] Library filter for slipped/aliased group delays (#20); 3-pt aliasing open (#21).
+      - [x] Python access to GaN / sapphire / tabulated TiO₂, a-Si (#25).
 - [ ] **R2 — Wide-FOV doublet / aplanatic.** The parked §P2 work: 2-surface corrector +
       lens, off-axis aberration correction. Classic design-paper format. Target: Optics
       Express / Optica.
