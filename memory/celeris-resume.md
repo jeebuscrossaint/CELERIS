@@ -1,6 +1,24 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-16. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-17. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-17 — #27 propagation-phase library filter (PR #28 merged) = R1 risk #6 DONE
+- **Measured first:** n=2.4 / air / BK7, P=0.30, M=6, 72 atoms (square/cross/ring × 12 fills ×
+  H 0.6, 1.2), 7 vs 21 band pts over 470–670 nm: 7 atoms (all H=1.2) off by 3.4–6.9 fs. Fit RMS
+  splits them cleanly (bad ≥1.07 rad, good ≤0.63). Band-min |t| does NOT separate them (bad reach
+  0.69): resonant swings, not zeros. Default cut therefore **0.8 rad** (PB stays at 1.0; its gap
+  is 0.59–1.36, so 0.8 would also work there — unchanged to keep the paper numbers fixed).
+- `DispersiveAtom` +`min_band_amplitude`, +`phase_fit_rms_rad`; the three builders take trailing
+  `min_band_amplitude=0.05`, `max_phase_fit_rms_rad=0.8` (never empty). Python exposed + rebuilt
+  in `~/.venvs/celeris`. New selftest **[15d]** (heavy): kept 4/6, worst kept |GD7−GD21| 0.38 fs.
+  Full selftest exit 0 (2m19, Eigen). Doxygen clean. CI 3/3 green.
+- Knock-on (3-pt selftest libs): [15] keeps 50/60 (9 of 10 dropped were 8.7–9.8 fs off), [15b]
+  27/35 (all dropped were 8.5–18.6 fs off; span 9.57→8.24). Gates pass. BUT kept 3-pt atoms
+  are still up to **27 fs** off vs 21-pt → #21 is real and severe for 3-pt bands. R1 must use
+  ≥7 pts. Paper numbers untouched (PB path).
+- **Next (one PR per session, another day):** (b) #21 aliasing (flag ≥5 band samples / max
+  unwrapped step near π); (c) period per risk #3 (P < λ_min/n_sub); (d) sweep driver in
+  research/r1/ using metric.py.
 
 ## SESSION 2026-11-16 — #20 PB library filter (PR #22 merged); R1 slice 1
 - **PR #19 MERGED 2026-11-16 (author read it; closes #18).** Pushed 83bef0f to it first: longform
@@ -51,8 +69,8 @@
 - **PR #26 merged (closes #25; part of #1):** Python `materials.sapphire/gallium_nitride/by_name/
   catalog/find_data_file`; materials/ Doxygen'd + in Doxyfile; CI runs
   `tests/python/check_materials.py`. Risk #5 RESOLVED. #1 still needs io/ cuda/.
-- **Next (R1 study, realistic 12–15 sessions; NEXT SESSION = another day):** (a) risk #6
-  propagation-phase library filter (achromatic.cpp, same as #20); (b) #21 aliasing; (c) choose
+- **Next (R1 study, realistic 12–15 sessions; NEXT SESSION = another day):** ~~(a) risk #6~~
+  DONE 2026-11-17 (#27/#28); (b) #21 aliasing; (c) choose
   period per risk #3 (P < λ_min/n_sub); (d) sweep driver in research/r1/ using metric.py.
   Today shipped 3 PRs (#22, #24, #26) + merged #19 → keep the next sessions to one PR each.
 - **Old next list:** sweep driver with real dispersion (SiN/TiO₂/GaN/a-Si)
