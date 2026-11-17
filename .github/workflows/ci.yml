@@ -75,6 +75,11 @@ jobs:
       - name: Check the material registry bindings
         run: python tests/python/check_materials.py
 
+      - name: R1 sweep driver smoke run (plumbing only, seconds)
+        run: |
+          python research/r1/sweep.py run --config smoke --out "$RUNNER_TEMP/r1"
+          python research/r1/sweep.py report --config smoke --out "$RUNNER_TEMP/r1"
+
   api-docs:
     name: C++ API docs (Doxygen, warnings are errors)
     runs-on: ubuntu-latest

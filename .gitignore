@@ -88,3 +88,6 @@ celeris_session.celeris
 
 # Doxygen output (doxygen docs/Doxyfile)
 docs/api/
+
+# R1 sweep outputs (regenerate with research/r1/sweep.py)
+research/r1/out/
