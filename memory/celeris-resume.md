@@ -16,8 +16,16 @@
   27/35 (all dropped were 8.5–18.6 fs off; span 9.57→8.24). Gates pass. BUT kept 3-pt atoms
   are still up to **27 fs** off vs 21-pt → #21 is real and severe for 3-pt bands. R1 must use
   ≥7 pts. Paper numbers untouched (PB path).
-- **Next (one PR per session, another day):** (b) #21 aliasing (flag ≥5 band samples / max
-  unwrapped step near π); (c) period per risk #3 (P < λ_min/n_sub); (d) sweep driver in
+- **#21 measured + designed (comment on #21, no code yet; PR budget for 11-17 already used):**
+  [15] lib at N=3,5,9,17,33,65 (nested): GD converges only by N≈33 (resonant atoms reach 22.5 fs
+  ≈ 2·nH/c). Kept-but->1fs-wrong: N=3 12, N=5 2, N=9 2, N=17 1, N=33 0. Max wrapped step is NOT a
+  filter (good atoms reach 3.1 rad) but IS a refinement trigger: midpoint refinement where
+  |step|>π/2, refined pts used only to unwrap + min|t| → N=3 false keeps 12→3 (+2.3 solves/atom).
+  Leftovers = band zeros / sharp resonances BETWEEN samples (only denser sampling finds them).
+  Sim scripts were in the session scratchpad (gone); numbers are in the #21 comment.
+- **Next (one PR per session, another day):** (b) IMPLEMENT #21 per the comment: midpoint
+  refinement (thr π/2, depth-limited) in achromatic.cpp + pb_achromatic.cpp, record refined
+  count per atom; R1 must run an N-convergence check (N vs 2N−1) per library; (c) period per risk #3 (P < λ_min/n_sub); (d) sweep driver in
   research/r1/ using metric.py.
 
 ## SESSION 2026-11-16 — #20 PB library filter (PR #22 merged); R1 slice 1
