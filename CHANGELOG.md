@@ -23,8 +23,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Selftest [6](c): a y-invariant 2D cell must reproduce the 1D solver for both TE and
   TM to 1e-10 (high-contrast n=3.5 grating). Restores the 2D = 1D invariant, now
   asserted and covering TM.
+- Python: `celeris.materials.sapphire()`, `gallium_nitride()`, `by_name()`, `catalog()`
+  (+ `MaterialInfo`) and `find_data_file()`, so tabulated TiO₂/a-Si/c-Si/metals load
+  from Python (#25). Doxygen docs for `materials/`; CI checks the registry
+  (`tests/python/check_materials.py`).
+- `DispersivePbAtom.min_band_amplitude` and `.phase_fit_rms_rad`, with matching
+  `build_dispersive_pb_library` filters (#20).
+- `research/r1/`: the R1 study's metric (fraction of the Presutti–Monticone achromatic
+  bound) with its derivation and self-checking implementation (#23).
 
 ### Fixed
+- **PB dispersive library kept atoms with slipped group delays (#20).** Atoms whose
+  phase is not linear in ω over the band (an in-band zero of a_cross, or a resonant
+  swing) slipped the unwrap by 2π and reported group delays off by 3–10 fs. They are
+  now dropped by default (`min_band_amplitude=0.05`, `max_phase_fit_rms_rad=1.0`).
+  Published Chen-2018 numbers are unchanged; a 3-point-band aliasing case remains (#21).
 - **TM Fourier factorization now follows Li's rules (#8).** The 1D solvers
   (`rcwa1d.cpp`, `rcwa_stack1d.cpp`) had ⟦ε⟧ and ⟦1/ε⟧ swapped in the TM operator and
   its companion field, and the 2D plain-rectangle path used ⟦1/ε⟧ instead of ⟦ε⟧⁻¹ for

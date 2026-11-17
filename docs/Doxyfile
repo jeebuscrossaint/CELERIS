@@ -16,7 +16,8 @@ INPUT                  = docs/api-overview.md \
                          src/celeris/rcwa \
                          src/celeris/optics \
                          src/celeris/design \
-                         src/celeris/analysis
+                         src/celeris/analysis \
+                         src/celeris/materials
 FILE_PATTERNS          = *.hpp
 RECURSIVE              = YES
 EXCLUDE                = src/celeris/rcwa/smatrix.hpp
