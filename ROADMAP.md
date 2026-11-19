@@ -298,7 +298,7 @@ publishing.** Placeholders until scoped with a PI:
       machinery. Target: Optics Express / Nanophotonics.
       - [x] Metric fixed (#23): η_PM = Δτ_lib / Presutti–Monticone (Tucker) bound, η_DL vs the
             delay line, D_lib via Buisine Eq. 15 (= Eq. 7). See `research/r1/metric.md`.
-      - [x] Library filter for slipped/aliased group delays (#20); 3-pt aliasing open (#21).
+      - [x] Library filter for slipped/aliased group delays (#20); 3-pt aliasing fixed by adaptive unwrap refinement (#21, PR #29).
       - [x] Same filter for the propagation-phase library (#27, selftest [15d]).
       - [x] Python access to GaN / sapphire / tabulated TiO₂, a-Si (#25).
 - [ ] **R2 — Wide-FOV doublet / aplanatic.** The parked §P2 work: 2-surface corrector +

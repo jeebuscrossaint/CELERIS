@@ -1,6 +1,23 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-17. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-19. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-19 — #21 merged (PR #29); sweep-driver PR #32 opened
+- PR #29 merged (d19a9b0), closes #21. `research/r1-sweep-driver` rebased on main (baa9af0);
+  selftest exit 0, smoke config exit 0 (prop 4.18 / PB 2.58 fs at H 0.6). `*.log` was already
+  ignored (.gitignore:57), no change needed. **PR #32 OPEN (closes #31) — merge next session
+  after CI green** (one merge per day).
+- **Full sweep: 11/36 libs done, STOPPED 11-17** (author needed the machine). Done: all TiO₂/SiO₂
+  except PB H1.5. Resume with (repo root, branch checkout, overnight, ~3.5 h):
+  `nice -n 10 ~/.venvs/celeris/bin/python research/r1/sweep.py run --config full > research/r1/full.log 2>&1`
+  TiO₂/SiO₂ @thr 0.30 (span fs / η_PM): prop H0.4 3.68/.67, 0.6 4.69/.57, 0.8 6.01/.55,
+  1.0 6.75/.50, 1.2 8.96/.55, 1.5 10.78/.53; PB 0.4 2.33/.43, 0.6 3.21/.39, 0.8 5.97/.55,
+  1.0 6.28/.46, 1.2 7.83/.48. η_PM flat ~0.4–0.55 vs H (candidate headline). η_DL 1.1–1.9 (the
+  waveguide estimate is not a ceiling). No η_PM>1. Worst Δspan(2N−1) −0.88 fs (PB H0.8 thr 0.30)
+  → recheck. PB spans collapse above thr ~0.6–0.7. Pilot vs full differ slightly (PB H0.6
+  3.46 vs 3.21) — cause not checked.
+- **Next:** merge #32 → #30 paper caveat (paper.md + longform) → prop coverage metric in
+  sweep.py → finish full sweep → R1 write-up (disclose AI assistance in acknowledgments).
 
 ## SESSION 2026-11-17 — #27 propagation-phase library filter (PR #28 merged) = R1 risk #6 DONE
 - **Measured first:** n=2.4 / air / BK7, P=0.30, M=6, 72 atoms (square/cross/ring × 12 fills ×
