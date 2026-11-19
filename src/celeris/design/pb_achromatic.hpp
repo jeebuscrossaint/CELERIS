@@ -60,6 +60,7 @@ struct DispersivePbAtom {
     double mean_conversion = 0;        ///< Mean |a_cross|² over the band (spin-flip efficiency).
     double min_band_amplitude = 0;     ///< Smallest |a_cross| over the band samples (band-zero check).
     double phase_fit_rms_rad = 0;      ///< RMS of the unwrapped phase about its linear fit vs omega (rad).
+    int n_refined_samples = 0;         ///< Extra wavelengths solved to unwrap the phase (issue #21).
     double retardance_center_deg = 0;  ///< wrap(arg t_x − arg t_y) at center (deg); ideal 180.
     std::vector<cdouble> cross;        ///< a_cross at each band wavelength (amplitude + phase).
 };
@@ -100,6 +101,13 @@ struct DispersivePbLibrary {
 /// over the band is below it, and `max_phase_fit_rms_rad` drops atoms whose
 /// unwrapped phase is not close to linear in omega (the RMS fit residual is
 /// large after a slip). The filters never empty the library.
+///
+/// The unwrap is refined adaptively, as in `build_dispersive_library`: wherever
+/// the wrapped step of arg a_cross between adjacent band samples exceeds π/2,
+/// extra wavelengths are solved at the angular-frequency midpoint (up to 4
+/// levels), so a uniform 2π alias across a coarse band is resolved. The extra
+/// samples count in `DispersivePbAtom::n_refined_samples` and feed
+/// `min_band_amplitude`; the fit uses the band samples.
 /// @param pillar,background    Pillar and surrounding materials.
 /// @param incident,substrate   Half-spaces above and below.
 /// @param period_um            Lattice period (µm).

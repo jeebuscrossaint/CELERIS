@@ -1,9 +1,12 @@
 #include "celeris/design/pb_achromatic.hpp"
 
+#include "celeris/design/band_unwrap.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <future>
 #include <thread>
+#include <utility>
 
 namespace celeris {
 namespace {
@@ -18,14 +21,6 @@ double angle_diff(double a, double b) {
     while (d > pi) d -= 2.0 * pi;
     while (d <= -pi) d += 2.0 * pi;
     return d;
-}
-
-void unwrap(std::vector<double>& p) {
-    for (std::size_t i = 1; i < p.size(); ++i) {
-        double d = p[i] - p[i - 1];
-        while (d > pi) { p[i] -= 2.0 * pi; d -= 2.0 * pi; }
-        while (d < -pi) { p[i] += 2.0 * pi; d += 2.0 * pi; }
-    }
 }
 
 // Least-squares line y ~ slope*x + b; returns the slope and writes the RMS of the
@@ -108,34 +103,41 @@ DispersivePbLibrary build_dispersive_pb_library(
         a.fill_y = s.fy;
         a.thickness_um = thickness_um;
         a.cross.resize(nb);
-        std::vector<double> ph(nb);
-        double amp_sum = 0.0, conv_sum = 0.0, amp_min = 1e300;
-        for (int j = 0; j < nb; ++j) {
+        // (t_x, t_y) at one wavelength.
+        auto jones = [&](double lambda_um) {
             RectCell2D cell{pillar, background, s.fx, s.fy, thickness_um,
                             MetaShape::Rectangle, 0.5};
             Rcwa2DStack stack{period_um, period_um, {cell}};
-            auto rx = solve_rcwa_2d(incident, stack, substrate, band_wavelengths_um[j],
-                                    0.0, 0.0, /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
-            auto ry = solve_rcwa_2d(incident, stack, substrate, band_wavelengths_um[j],
-                                    0.0, 0.0, /*Ex0=*/0.0, /*Ey0=*/1.0, M, M);
-            cdouble tx = rx.tx0, ty = ry.ty0;
+            auto rx = solve_rcwa_2d(incident, stack, substrate, lambda_um, 0.0, 0.0,
+                                    /*Ex0=*/1.0, /*Ey0=*/0.0, M, M);
+            auto ry = solve_rcwa_2d(incident, stack, substrate, lambda_um, 0.0, 0.0,
+                                    /*Ex0=*/0.0, /*Ey0=*/1.0, M, M);
+            return std::pair<cdouble, cdouble>{rx.tx0, ry.ty0};
+        };
+        auto sample = [&](double lambda_um) {
+            auto [tx, ty] = jones(lambda_um);
+            return (tx - ty) / 2.0;
+        };
+        double amp_sum = 0.0, conv_sum = 0.0;
+        for (int j = 0; j < nb; ++j) {
+            auto [tx, ty] = jones(band_wavelengths_um[j]);
             cdouble acr = (tx - ty) / 2.0;
             a.cross[j] = acr;
-            ph[j] = std::arg(acr);
             amp_sum += std::abs(acr);
-            amp_min = std::min(amp_min, std::abs(acr));
             conv_sum += std::norm(acr);
             if (j == lib.center_index)
                 a.retardance_center_deg =
                     angle_diff(std::arg(tx), std::arg(ty)) * 180.0 / pi;
         }
-        a.phase0_rad = ph[lib.center_index];
+        a.phase0_rad = std::arg(a.cross[lib.center_index]);
         a.mean_amplitude = amp_sum / nb;
         a.mean_conversion = conv_sum / nb;
-        a.min_band_amplitude = nb > 0 ? amp_min : 0.0;
-        std::vector<double> u = ph;
-        unwrap(u);
-        a.group_delay_fs = lstsq_slope(omega, u, a.phase_fit_rms_rad);
+        // Unwrap on an adaptively refined grid so a step larger than pi between
+        // band samples is not aliased by 2*pi (issue #21).
+        auto bp = detail::unwrap_band_refined(band_wavelengths_um, a.cross, sample);
+        a.min_band_amplitude = nb > 0 ? bp.min_amplitude : 0.0;
+        a.n_refined_samples = bp.n_refined;
+        a.group_delay_fs = lstsq_slope(omega, bp.unwrapped, a.phase_fit_rms_rad);
         lib.atoms[idx] = std::move(a);
     };
 

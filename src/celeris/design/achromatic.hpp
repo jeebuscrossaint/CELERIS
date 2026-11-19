@@ -51,6 +51,7 @@ struct DispersiveAtom {
     double mean_amplitude = 0;       ///< Mean |t| over the band (efficiency proxy).
     double min_band_amplitude = 0;   ///< Smallest |t| over the band samples (band-zero check).
     double phase_fit_rms_rad = 0;    ///< RMS of the unwrapped phase about its linear fit vs omega (rad).
+    int n_refined_samples = 0;       ///< Extra wavelengths solved to unwrap the phase (issue #21).
     std::vector<double> phase_rad;   ///< phi at each band sample (rad).
     std::vector<double> amplitude;   ///< |t| at each band sample.
 };
@@ -92,6 +93,13 @@ struct DispersiveLibrary {
 /// waveguide dispersion. The group delay is the least-squares slope of the
 /// band-unwrapped phase vs angular frequency. `n_heights == 1` gives a
 /// single-etch (one-degree-of-freedom) library.
+///
+/// The unwrap is refined adaptively: wherever the wrapped phase step between two
+/// adjacent band samples exceeds π/2, extra wavelengths are solved at the
+/// angular-frequency midpoint (up to 4 bisection levels), so a step larger than
+/// π is not aliased by 2π. The extra samples are counted in
+/// `DispersiveAtom::n_refined_samples` and are used only to unwrap and for
+/// `min_band_amplitude`; the fit uses the band samples.
 ///
 /// Atoms whose group delay cannot be trusted are dropped. Where the phase is not
 /// close to linear in omega (a resonance the band sampling cannot follow, or a
