@@ -96,6 +96,8 @@ def main() -> int:
     ap.add_argument("substrate")
     ap.add_argument("height_um", type=float)
     ap.add_argument("--config", default="full", choices=sorted(sweep.CONFIGS))
+    ap.add_argument("--n-fill", type=int, default=None,
+                    help="override the config's fill samples (sampling-density control)")
     args = ap.parse_args()
 
     import celeris as cel
@@ -109,7 +111,7 @@ def main() -> int:
     fmin, fmax = sweep.fill_range(P, cfg["min_feature_um"], cfg["min_gap_um"])
     band = sweep.wavelengths(lam_min, lam_max, cfg["n_band"])
     lib, _ = sweep.build(cel, "prop", pillar, substrate, P, band, lam_c, fmin, fmax,
-                         cfg["n_fill"], args.height_um, cfg["M"])
+                         args.n_fill or cfg["n_fill"], args.height_um, cfg["M"])
     L = PropLibrary(lib, P)
     F = sweep.FOCAL_UM
 
