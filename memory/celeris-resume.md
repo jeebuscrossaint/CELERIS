@@ -1,6 +1,27 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-19. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-20. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-19 (late) / 11-20 — prop coverage metric (#33); full sweep done; PR #32 merged
+- **PR #32 merged 11-20 (d07d439), closes #31.** Full sweep 36/36 done overnight (results in
+  research/r1/out/full/, gitignored; full table in the #31 comment 7035129484). No η_PM>1. Worst
+  |Δspan(13pt)| 0.88 fs (TiO₂ PB H0.8), then 0.50/0.47 (TiO₂ PB H1.0/1.5), all others ≤0.46.
+  η_PM plateaus for H ≥ 0.8 by material: PB TiO₂ ~0.45–0.55, GaN ~0.31–0.38, Si₃N₄ ~0.29–0.31;
+  prop TiO₂ ~0.50–0.55, GaN ~0.40–0.45, Si₃N₄ ~0.36–0.42. Thin PB (H0.4) 0.13–0.43.
+  **GaN (n 2.41) ≈ TiO₂ (2.43) index but lower PB plateau → not index alone**; GaN also differs in
+  substrate (sapphire), P (250 vs 300) and fill range (0.24–0.76 vs 0.20–0.80). NEXT CONTROL:
+  TiO₂ on Al₂O₃ P=250 and GaN on SiO₂ P=300.
+- **Issue #33 + branch `research/r1-coverage` (pushed, rebased on main, NO PR):**
+  `research/r1/coverage.py` (prop only). D_S = largest D with band-min on-axis Strehl
+  S(λ)=|Σ t_s(λ)e^{ik sag}|²/(Σ|t_s|)² ≥ 0.8, picker = numpy copy of C++ (verified identical
+  atom_index), φ/GD offsets scanned. **CORRECTED the 11-17 "prop can't use span" claim** (artifact
+  of GD RMS vs fixed gd_ref) — comment on #31. TiO₂ prop achromat D_S = 12–16 µm at EVERY H
+  0.4–1.5 (span 3.7→10.8, D_lib 24→41); standard design 4–8 µm. Not sampling (36 fills, 62 atoms:
+  same) nor picker weights (±0.03). Linear atom model off by ±0.15 in S → must use true band data.
+- Laptop overheats on long sweeps (author touched hot metal); run sweeps on a desk / unattended.
+- **Next:** bind `DispersivePbAtom::cross` to Python (small PR, #33) → PB D_S in coverage.py →
+  coverage PR → material/substrate control runs → #30 paper caveat → R1 write-up (disclose AI
+  assistance). Audit (5) cmd_reproduce.cpp:109 still open.
 
 ## SESSION 2026-11-19 — #21 merged (PR #29); sweep-driver PR #32 opened
 - PR #29 merged (d19a9b0), closes #21. `research/r1-sweep-driver` rebased on main (baa9af0);
