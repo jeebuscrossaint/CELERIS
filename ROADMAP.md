@@ -300,6 +300,8 @@ publishing.** Placeholders until scoped with a PI:
             delay line, D_lib via Buisine Eq. 15 (= Eq. 7). See `research/r1/metric.md`.
       - [x] Library filter for slipped/aliased group delays (#20); 3-pt aliasing fixed by adaptive unwrap refinement (#21, PR #29).
       - [x] Same filter for the propagation-phase library (#27, selftest [15d]).
+      - [x] Sweep driver `research/r1/sweep.py` (#31): period rule (#30), fab fill limits,
+            span-vs-efficiency curve, 2N−1 band convergence. Pilot TiO₂/SiO₂ run.
       - [x] Python access to GaN / sapphire / tabulated TiO₂, a-Si (#25).
 - [ ] **R2 — Wide-FOV doublet / aplanatic.** The parked §P2 work: 2-surface corrector +
       lens, off-axis aberration correction. Classic design-paper format. Target: Optics
