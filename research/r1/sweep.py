@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -229,6 +230,8 @@ def cmd_run(args) -> int:
     cfg, out = config_of(args)
     out.mkdir(parents=True, exist_ok=True)
     for entry in cfg["libraries"]:
+        if args.only and not re.search(args.only, key_of(entry)):
+            continue
         path = out / (key_of(entry) + ".json")
         if path.exists() and not args.force:
             print(f"skip {path.name} (exists)")
@@ -298,6 +301,8 @@ def main() -> int:
                        help="override the config's Fourier order (results go to <config>-M<M>)")
         if name == "run":
             p.add_argument("--force", action="store_true", help="recompute existing results")
+            p.add_argument("--only", default=None,
+                           help="regex on the library key, e.g. '^prop-|pb-tio2-on-sio2-H1.00'")
             p.add_argument("--no-converge", action="store_true",
                            help="skip the 2N-1 band-point rebuild")
     p = sub.add_parser("compare", help="span change between two result directories")

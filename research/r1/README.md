@@ -43,6 +43,7 @@ A re-run skips libraries that already have a result, so a long sweep can be resu
   to `out/<config>-M<M>/`. The `mcheck` config holds the libraries for this check (#34):
   ```sh
   python research/r1/sweep.py run --config mcheck --M 8 --no-converge
+  python research/r1/sweep.py run --config mcheck --M 10 --no-converge --only "^prop-|pb-tio2-on-sio2-H1.00"
   python research/r1/sweep.py compare full mcheck-M8
   ```
 - **Red flag.** η_PM > 1 is marked in the report. It means a numerical problem or a
