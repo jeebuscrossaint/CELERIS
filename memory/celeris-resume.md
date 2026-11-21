@@ -2,6 +2,17 @@
 
 **Last updated:** 2026-11-20. **HEAD:** run `git log --oneline -25`.
 
+## ⚑ SCOPE DECISION 2026-11-20 (author) — JOSS MINIMUM ONLY
+The author wants **only the JOSS paper (P1)**. No second physics paper: **P2 (adjoint), R2,
+R3 and the surrogate (SURROGATE.md) are dropped.** R1 survives only as research-impact
+evidence for JOSS, not as its own paper: finish the stopped full sweep (one overnight run),
+then fold its results into the long-form report (`paper/longform/`) and post that report on
+Zenodo (DOI, no endorser needed) and/or arXiv. Remaining work is just the §J gates in
+ROADMAP.md: API docs for `materials/`, `io/`, `cuda/`; the long-form report with the R1
+section on Zenodo; research-impact links + AI model versions in `paper.md`; a release that
+matches the paper; small real commits weekly; **submit on/after 2026-12-17**. After that,
+only reviewer responses. Do not start anything else.
+
 ## SESSION 2026-11-19 (late) / 11-20 — prop coverage metric (#33); full sweep done; PR #32 merged
 - **PR #32 merged 11-20 (d07d439), closes #31.** Full sweep 36/36 done overnight (results in
   research/r1/out/full/, gitignored; full table in the #31 comment 7035129484). No η_PM>1. Worst
