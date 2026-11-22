@@ -39,6 +39,13 @@ A re-run skips libraries that already have a result, so a long sweep can be resu
 - **Band-sampling convergence.** Each library is rebuilt with 2N − 1 band points, and
   the change in span is reported. Coarse bands alias resonant atoms (#21). Treat a large
   change the way an unconverged M would be treated.
+- **Fourier-order convergence.** `--M` overrides the config's Fourier order and writes
+  to `out/<config>-M<M>/`. The `mcheck` config holds the libraries for this check (#34):
+  ```sh
+  python research/r1/sweep.py run --config mcheck --M 8 --no-converge
+  python research/r1/sweep.py run --config mcheck --M 10 --no-converge --only "^prop-|pb-tio2-on-sio2-H1.00"
+  python research/r1/sweep.py compare full mcheck-M8
+  ```
 - **Red flag.** η_PM > 1 is marked in the report. It means a numerical problem or a
   resonator outside Tucker's model, never a result to quote as is.
 

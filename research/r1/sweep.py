@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -70,6 +71,16 @@ CONFIGS = {
                    for (m, s) in [("tio2", "sio2"), ("si3n4", "sio2"), ("gan", "al2o3")]
                    for h in (0.4, 0.6, 0.8, 1.0, 1.2, 1.5)
                    for k in ("prop", "pb")],
+    ),
+    # Fourier-order (M) convergence check (#34): run with --M 8 / --M 10 and compare
+    # against "full" (M = 6). H = 1.0 per material and kind, plus the worst
+    # band-convergence case (TiO2 PB H = 0.8).
+    "mcheck": dict(
+        band=(0.470, 0.670), n_band=7, M=6, n_fill=12, min_feature_um=0.06,
+        min_gap_um=0.06, period_margin=0.95,
+        libraries=[(m, s, 1.0, k)
+                   for (m, s) in [("tio2", "sio2"), ("si3n4", "sio2"), ("gan", "al2o3")]
+                   for k in ("prop", "pb")] + [("tio2", "sio2", 0.8, "pb")],
     ),
 }
 
@@ -200,16 +211,27 @@ def key_of(entry: tuple) -> str:
     return f"{kind}-{mat}-on-{sub}-H{h:.2f}"
 
 
+def config_of(args) -> tuple[dict, Path]:
+    """The config (with any --M override) and its result directory."""
+    cfg = dict(CONFIGS[args.config])
+    name = args.config
+    if getattr(args, "M", None):
+        cfg["M"] = args.M
+        name = f"{args.config}-M{args.M}"
+    return cfg, Path(args.out) / name
+
+
 def cmd_run(args) -> int:
     import celeris as cel
     if not hasattr(cel.DispersiveAtom, "n_refined_samples"):
         print("this celeris build has no refined band unwrap (#21); rebuild from main",
               file=sys.stderr)
         return 2
-    cfg = CONFIGS[args.config]
-    out = Path(args.out) / args.config
+    cfg, out = config_of(args)
     out.mkdir(parents=True, exist_ok=True)
     for entry in cfg["libraries"]:
+        if args.only and not re.search(args.only, key_of(entry)):
+            continue
         path = out / (key_of(entry) + ".json")
         if path.exists() and not args.force:
             print(f"skip {path.name} (exists)")
@@ -225,7 +247,7 @@ def cmd_run(args) -> int:
 
 
 def cmd_report(args) -> int:
-    out = Path(args.out) / args.config
+    _, out = config_of(args)
     rows = [json.loads(p.read_text()) for p in sorted(out.glob("*.json"))]
     if not rows:
         print(f"no results in {out}")
@@ -247,6 +269,27 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_compare(args) -> int:
+    """Span change of each library in result dir B against the same library in A."""
+    a_dir, b_dir = Path(args.out) / args.a, Path(args.out) / args.b
+    rows = 0
+    print(f"{'library':32s} {'thr':>4s} {args.a + ' fs':>12s} {args.b + ' fs':>14s} {'change':>7s}")
+    for pb in sorted(b_dir.glob("*.json")):
+        pa = a_dir / pb.name
+        if not pa.exists():
+            print(f"{pb.stem:32s} (not in {args.a})")
+            continue
+        ra, rb = json.loads(pa.read_text()), json.loads(pb.read_text())
+        for i, (ca, cb) in enumerate(zip(ra["curve"], rb["curve"])):
+            if ca["span_fs"] is None or cb["span_fs"] is None:
+                continue
+            print(f"{pb.stem if i == 0 else '':32s} {ca['threshold']:4.2f} "
+                  f"{ca['span_fs']:12.2f} {cb['span_fs']:14.2f} "
+                  f"{cb['span_fs'] - ca['span_fs']:+7.2f}")
+            rows += 1
+    return 0 if rows else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -254,12 +297,20 @@ def main() -> int:
         p = sub.add_parser(name)
         p.add_argument("--config", choices=sorted(CONFIGS), default="smoke")
         p.add_argument("--out", default=str(HERE / "out"))
+        p.add_argument("--M", type=int, default=None,
+                       help="override the config's Fourier order (results go to <config>-M<M>)")
         if name == "run":
             p.add_argument("--force", action="store_true", help="recompute existing results")
+            p.add_argument("--only", default=None,
+                           help="regex on the library key, e.g. '^prop-|pb-tio2-on-sio2-H1.00'")
             p.add_argument("--no-converge", action="store_true",
                            help="skip the 2N-1 band-point rebuild")
+    p = sub.add_parser("compare", help="span change between two result directories")
+    p.add_argument("a", help="reference result directory name, e.g. full")
+    p.add_argument("b", help="result directory to compare, e.g. mcheck-M8")
+    p.add_argument("--out", default=str(HERE / "out"))
     args = ap.parse_args()
-    return cmd_run(args) if args.cmd == "run" else cmd_report(args)
+    return {"run": cmd_run, "report": cmd_report, "compare": cmd_compare}[args.cmd](args)
 
 
 if __name__ == "__main__":
