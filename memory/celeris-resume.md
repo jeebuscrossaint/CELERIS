@@ -1,6 +1,22 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-21. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-22. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-22 — M check done (#34), control config (#36, PR #37 merged)
+- **M = 8 (all mcheck) + M = 10 (prop + PB TiO₂ H1.0) done**; results on #34 (comments
+  7074898460, 7082811855). PB converged by M8 (M8→M10 ≤ 0.01 fs); prop Si₃N₄/GaN converged
+  by M8 (M6 off ≤ 0.08). **prop TiO₂ NOT converged at M6:** 6.75 → 6.94 → 7.05 fs (M6/8/10),
+  M∞ ≈ 7.2, M6 ≈ 0.45 fs low (bias, all up) → rerun prop TiO₂ rows at M = 10.
+  M10 costs: prop ~9 min/lib build-only, PB TiO₂ 7044 s.
+- PR #35 (#34 tooling) and **PR #37 merged** (`control` config: TiO₂/Al₂O₃ P250 + GaN/SiO₂
+  P300 at H1.0, both kinds; issue #36 explains the GaN-vs-TiO₂ η_PM gap test).
+- Lost the night of 11-21: a `while pgrep -f "<pattern>"` waiter matched its own command line
+  and never exited. **Chain overnight jobs with `&&` in ONE command; never pgrep-wait.**
+- **NEXT (tonight, one chained command, ~3.5 h):**
+  `P=~/.venvs/celeris/bin/python && $P research/r1/sweep.py run --config full --M 10 --only "^prop-tio2" > research/r1/fullM10.log 2>&1 && $P research/r1/sweep.py run --config control > research/r1/control.log 2>&1`
+  Then: compare full vs full-M10 → post on #34, close it; control vs full rows → post on #36,
+  close it. Then #33 → #30 → R1 section in longform → Zenodo; API docs; v1.1.0; submit ≥ 12-17.
+  Remaining ≈ 12–14 sessions; this night is the last planned compute.
 
 ## SESSION 2026-11-20 (late) / 11-21 — M-convergence tooling (#34), PR #35 open
 - Issue #34 (M convergence; the full sweep ran at M = 6 only). Branch `research/r1-mcheck`:
