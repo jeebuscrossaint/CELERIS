@@ -1,6 +1,20 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-20. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-21. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-20 (late) / 11-21 — M-convergence tooling (#34), PR #35 open
+- Issue #34 (M convergence; the full sweep ran at M = 6 only). Branch `research/r1-mcheck`:
+  `mcheck` config (H 1.0 per material × kind + TiO₂ PB H0.8), `run --M` (writes
+  `out/<config>-M<M>/`), `run --only <regex>`, `compare <a> <b>`. `compare full full` → +0.00.
+- **PR #35 OPEN (Part of #34, NOT Closes)** — merge after CI green. #34 closes only once the
+  results are posted.
+- **NEXT (compute, laptop on a desk, unattended):**
+  `nice -n 10 ~/.venvs/celeris/bin/python research/r1/sweep.py run --config mcheck --M 8 --no-converge > research/r1/mcheck8.log 2>&1`
+  then `... run --config mcheck --M 10 --no-converge --only "^prop-|pb-tio2-on-sio2-H1.00"`,
+  then `sweep.py compare full mcheck-M8` / `compare full mcheck-M10` → post on #34. Any library
+  moving > ~0.5 fs (or more than its band-convergence change) → rerun the sweep at higher M.
+- After #34: #33 (bind `DispersivePbAtom::cross`, PB D_S) → control runs → #30 caveat → R1
+  section in longform → Zenodo; API docs materials/io/cuda; v1.1.0; submit ≥ 12-17.
 
 ## ⚑ SCOPE DECISION 2026-11-20 (author) — JOSS MINIMUM ONLY
 The author wants **only the JOSS paper (P1)**. No second physics paper: **P2 (adjoint), R2,
