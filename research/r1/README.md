@@ -46,6 +46,13 @@ A re-run skips libraries that already have a result, so a long sweep can be resu
   python research/r1/sweep.py run --config mcheck --M 10 --no-converge --only "^prop-|pb-tio2-on-sio2-H1.00"
   python research/r1/sweep.py compare full mcheck-M8
   ```
+- **Substrate control.** GaN and TiO₂ have nearly the same index but different η_PM
+  plateaus in `full`. The `control` config swaps their substrates at H = 1.0 µm (#36):
+  TiO₂ on Al₂O₃ gets GaN's period and fill range, GaN on SiO₂ gets TiO₂'s.
+  ```sh
+  python research/r1/sweep.py run --config control
+  python research/r1/sweep.py report --config control
+  ```
 - **Red flag.** η_PM > 1 is marked in the report. It means a numerical problem or a
   resonator outside Tucker's model, never a result to quote as is.
 

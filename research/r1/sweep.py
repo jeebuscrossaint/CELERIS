@@ -82,6 +82,17 @@ CONFIGS = {
                    for (m, s) in [("tio2", "sio2"), ("si3n4", "sio2"), ("gan", "al2o3")]
                    for k in ("prop", "pb")] + [("tio2", "sio2", 0.8, "pb")],
     ),
+    # Substrate/period control (#36): GaN and TiO2 have nearly the same index but
+    # different eta_PM plateaus in "full". Swap their substrates; the period and fill
+    # range follow the substrate, so TiO2 on Al2O3 gets GaN's P = 250 nm and GaN on
+    # SiO2 gets TiO2's P = 300 nm. Same settings as "full" for a like-for-like compare.
+    "control": dict(
+        band=(0.470, 0.670), n_band=7, M=6, n_fill=12, min_feature_um=0.06,
+        min_gap_um=0.06, period_margin=0.95,
+        libraries=[(m, s, 1.0, k)
+                   for (m, s) in [("tio2", "al2o3"), ("gan", "sio2")]
+                   for k in ("prop", "pb")],
+    ),
 }
 
 
