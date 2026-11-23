@@ -20,9 +20,12 @@
   plain PB lens 20 µm everywhere (beats most prop achromats; identical curve across libs =
   built-in check). TiO₂ PB H1.5 unreliable (resonant, atom GD moves 3.3 fs) — do NOT quote.
   D_S grid coarse (lower bound to next grid point).
-- Stale remote branch `research/r1-coverage` (superseded by merged r1-coverage-pb) — delete
-  with author OK (force-push/delete was blocked by the permission classifier).
-- **NEXT (no compute left):** #30 paper caveat → R1 section in `paper/longform/` (tables from
+- Stale remote branch `research/r1-coverage` deleted (author OK, 11-23).
+- **#30 caveat DONE LOCALLY, not pushed:** branch `docs/substrate-order-caveat`, commit 7f2876f
+  (paper.md + longform fig caption). NEXT SESSION (11-24, one PR/day): push, open PR
+  `Closes #30` (label documentation), CI green, merge. Longform not compiled locally
+  (`elsarticle.cls` missing on Linux); edit is a plain caption sentence.
+- **NEXT (no compute left):** #30 PR (above) → R1 section in `paper/longform/` (tables from
   #31/#33/#34/#36 comments; disclose AI assistance) → Zenodo DOI → `paper.md` impact links + AI
   model versions → API docs materials/io/cuda (#1/#2) → v1.1.0 (#3) → submit ≥ 12-17.
   One PR per day.
