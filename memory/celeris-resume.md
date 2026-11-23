@@ -12,10 +12,19 @@
   P300 at H1.0, both kinds; issue #36 explains the GaN-vs-TiO₂ η_PM gap test).
 - Lost the night of 11-21: a `while pgrep -f "<pattern>"` waiter matched its own command line
   and never exited. **Chain overnight jobs with `&&` in ONE command; never pgrep-wait.**
-- **NEXT (tonight, one chained command, ~3.5 h):**
-  `P=~/.venvs/celeris/bin/python && $P research/r1/sweep.py run --config full --M 10 --only "^prop-tio2" > research/r1/fullM10.log 2>&1 && $P research/r1/sweep.py run --config control > research/r1/control.log 2>&1`
-  Then: compare full vs full-M10 → post on #34, close it; control vs full rows → post on #36,
-  close it. Then #33 → #30 → R1 section in longform → Zenodo; API docs; v1.1.0; submit ≥ 12-17.
+- **#33 code done (11-22), branch `research/r1-coverage-pb` (pushed, NO PR yet — open it next
+  session; old remote branch `research/r1-coverage` is stale, delete with author OK):**
+  `DispersivePbAtom.cross` bound to Python (venv rebuilt with `pip install .`); coverage.py
+  handles PB (site field a_cross·e^{iφ_geo}, picker = numpy copy of
+  design_pb_achromatic_metalens, checked every library), subcommands one/run/report, `--M`,
+  `--only`, JSON per lib in `out/coverage-<config>[-M<M>]/`. Smoke: prop identical to the
+  prototype; PB standard D_S 20 µm matches a hand estimate (S≈0.83 at 20, ≈0.55 at 26.4).
+  Local C++ selftest NOT run (bindings-only change; CI runs it on the PR).
+- **NEXT — overnight compute (~6 h), from branch `research/r1-coverage-pb`, ONE chained command:**
+  `P=~/.venvs/celeris/bin/python && $P research/r1/sweep.py run --config full --M 10 --only "^prop-tio2" > research/r1/fullM10.log 2>&1 && $P research/r1/sweep.py run --config control > research/r1/control.log 2>&1 && $P research/r1/coverage.py run --config full > research/r1/cov-full.log 2>&1 && $P research/r1/coverage.py run --config full --M 10 --only "^prop-tio2" > research/r1/cov-fullM10.log 2>&1 && $P research/r1/coverage.py run --config control > research/r1/cov-control.log 2>&1`
+  Then: compare full vs full-M10 → #34 (close); control vs full → #36 (close); coverage table
+  → #33 + open the coverage PR (Closes #33). Then #30 → R1 section in longform → Zenodo;
+  API docs; v1.1.0; submit ≥ 12-17. This night is the last planned compute.
   Remaining ≈ 12–14 sessions; this night is the last planned compute.
 
 ## SESSION 2026-11-20 (late) / 11-21 — M-convergence tooling (#34), PR #35 open
