@@ -53,6 +53,17 @@ A re-run skips libraries that already have a result, so a long sweep can be resu
   python research/r1/sweep.py run --config control
   python research/r1/sweep.py report --config control
   ```
+- **Achievable aperture.** The span-based D_lib assumes any delay in the span is usable
+  at any phase. `coverage.py` measures what a design reaches instead: D_S, the largest
+  aperture whose band-minimum on-axis Strehl stays ≥ 0.8, for a standard
+  (dispersion-blind) and an achromatic pick from the same library, prop and PB (#33).
+  It rebuilds each library and checks its atom picker against the CELERIS design.
+  ```sh
+  python research/r1/coverage.py one tio2 sio2 1.0 --kind pb
+  python research/r1/coverage.py run --config full
+  python research/r1/coverage.py run --config full --M 10 --only "^prop-tio2"
+  python research/r1/coverage.py report --config full
+  ```
 - **Red flag.** η_PM > 1 is marked in the report. It means a numerical problem or a
   resonator outside Tucker's model, never a result to quote as is.
 
