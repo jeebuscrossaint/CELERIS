@@ -5,7 +5,9 @@
 ## SESSION 2026-11-23 (overnight 11-22→23) — ALL R1 COMPUTE DONE; #33 #34 #36 closed
 - Overnight script `research/r1/out/overnight.sh` (gitignored; setsid+nohup+systemd-inhibit,
   per-step exit codes in `research/r1/out/STATUS`) — 5/5 steps exit 0, 21:46→03:23. **This
-  pattern works; reuse it for any future long run.**
+  pattern works; reuse it for any future long run.** (Night of 11-21 was lost: a
+  `while pgrep -f "<pattern>"` waiter matched its own command line. Never pgrep-wait; wait
+  on a PID with `kill -0`.) M check details: #34 comments 7074898460 / 7082811855.
 - **#34 closed** (comment 7095434100): prop TiO₂ M10 at all H: |Δ| ≤ 0.34 fs, MIXED sign (H1.0
   +0.30, H1.5 −0.26, others ≤ 0.15) → not a systematic bias. Write-up: prop TiO₂ uses M10
   values (out/full-M10/) ±0.15 fs; everything else M6 (PB ±0.11, prop Si₃N₄/GaN ±0.08).
