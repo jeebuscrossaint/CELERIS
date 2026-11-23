@@ -1,31 +1,29 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-22. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-23. **HEAD:** run `git log --oneline -25`.
 
-## SESSION 2026-11-22 — M check done (#34), control config (#36, PR #37 merged)
-- **M = 8 (all mcheck) + M = 10 (prop + PB TiO₂ H1.0) done**; results on #34 (comments
-  7074898460, 7082811855). PB converged by M8 (M8→M10 ≤ 0.01 fs); prop Si₃N₄/GaN converged
-  by M8 (M6 off ≤ 0.08). **prop TiO₂ NOT converged at M6:** 6.75 → 6.94 → 7.05 fs (M6/8/10),
-  M∞ ≈ 7.2, M6 ≈ 0.45 fs low (bias, all up) → rerun prop TiO₂ rows at M = 10.
-  M10 costs: prop ~9 min/lib build-only, PB TiO₂ 7044 s.
-- PR #35 (#34 tooling) and **PR #37 merged** (`control` config: TiO₂/Al₂O₃ P250 + GaN/SiO₂
-  P300 at H1.0, both kinds; issue #36 explains the GaN-vs-TiO₂ η_PM gap test).
-- Lost the night of 11-21: a `while pgrep -f "<pattern>"` waiter matched its own command line
-  and never exited. **Chain overnight jobs with `&&` in ONE command; never pgrep-wait.**
-- **#33 code done (11-22), branch `research/r1-coverage-pb` (pushed, NO PR yet — open it next
-  session; old remote branch `research/r1-coverage` is stale, delete with author OK):**
-  `DispersivePbAtom.cross` bound to Python (venv rebuilt with `pip install .`); coverage.py
-  handles PB (site field a_cross·e^{iφ_geo}, picker = numpy copy of
-  design_pb_achromatic_metalens, checked every library), subcommands one/run/report, `--M`,
-  `--only`, JSON per lib in `out/coverage-<config>[-M<M>]/`. Smoke: prop identical to the
-  prototype; PB standard D_S 20 µm matches a hand estimate (S≈0.83 at 20, ≈0.55 at 26.4).
-  Local C++ selftest NOT run (bindings-only change; CI runs it on the PR).
-- **NEXT — overnight compute (~6 h), from branch `research/r1-coverage-pb`, ONE chained command:**
-  `P=~/.venvs/celeris/bin/python && $P research/r1/sweep.py run --config full --M 10 --only "^prop-tio2" > research/r1/fullM10.log 2>&1 && $P research/r1/sweep.py run --config control > research/r1/control.log 2>&1 && $P research/r1/coverage.py run --config full > research/r1/cov-full.log 2>&1 && $P research/r1/coverage.py run --config full --M 10 --only "^prop-tio2" > research/r1/cov-fullM10.log 2>&1 && $P research/r1/coverage.py run --config control > research/r1/cov-control.log 2>&1`
-  Then: compare full vs full-M10 → #34 (close); control vs full → #36 (close); coverage table
-  → #33 + open the coverage PR (Closes #33). Then #30 → R1 section in longform → Zenodo;
-  API docs; v1.1.0; submit ≥ 12-17. This night is the last planned compute.
-  Remaining ≈ 12–14 sessions; this night is the last planned compute.
+## SESSION 2026-11-23 (overnight 11-22→23) — ALL R1 COMPUTE DONE; #33 #34 #36 closed
+- Overnight script `research/r1/out/overnight.sh` (gitignored; setsid+nohup+systemd-inhibit,
+  per-step exit codes in `research/r1/out/STATUS`) — 5/5 steps exit 0, 21:46→03:23. **This
+  pattern works; reuse it for any future long run.**
+- **#34 closed** (comment 7095434100): prop TiO₂ M10 at all H: |Δ| ≤ 0.34 fs, MIXED sign (H1.0
+  +0.30, H1.5 −0.26, others ≤ 0.15) → not a systematic bias. Write-up: prop TiO₂ uses M10
+  values (out/full-M10/) ±0.15 fs; everything else M6 (PB ±0.11, prop Si₃N₄/GaN ±0.08).
+- **#36 closed** (comment 7095434949): GaN-vs-TiO₂ PB gap is SUBSTRATE-side (substrate + P +
+  fill range, not separated), not material: TiO₂ on Al₂O₃ 0.461→0.370, GaN on SiO₂
+  0.345→0.440 (η_PM, H1.0, thr 0.30). Same-substrate material Δ ≤ 0.025. Prop same direction,
+  smaller. Hypothesis (untested): shorter P narrows usable fill → less birefringence.
+- **#33 closed via PR #38** (comment 7095447669 has the full D_S table): PB achromat D_S
+  26.4–32 µm (H ≥ 0.6) ≥ D_lib; prop achromat only 12–20 µm vs D_lib 24–41 (~2× overestimate);
+  plain PB lens 20 µm everywhere (beats most prop achromats; identical curve across libs =
+  built-in check). TiO₂ PB H1.5 unreliable (resonant, atom GD moves 3.3 fs) — do NOT quote.
+  D_S grid coarse (lower bound to next grid point).
+- Stale remote branch `research/r1-coverage` (superseded by merged r1-coverage-pb) — delete
+  with author OK (force-push/delete was blocked by the permission classifier).
+- **NEXT (no compute left):** #30 paper caveat → R1 section in `paper/longform/` (tables from
+  #31/#33/#34/#36 comments; disclose AI assistance) → Zenodo DOI → `paper.md` impact links + AI
+  model versions → API docs materials/io/cuda (#1/#2) → v1.1.0 (#3) → submit ≥ 12-17.
+  One PR per day.
 
 ## SESSION 2026-11-20 (late) / 11-21 — M-convergence tooling (#34), PR #35 open
 - Issue #34 (M convergence; the full sweep ran at M = 6 only). Branch `research/r1-mcheck`:
