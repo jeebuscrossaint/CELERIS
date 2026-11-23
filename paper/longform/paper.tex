@@ -574,7 +574,13 @@ of mean circular-conversion efficiency ($0.52\to0.31$), because the atoms that
 supply the needed group delay convert less. The residual drift is the group-delay
 design limit in action: at this aperture the required group-delay span
 ($\sim$$4.4$~fs) exceeds what one $600$~nm nanofin library spans ($\sim$$2.6$~fs), so
-the achromat corrects only as far as the single-etch ceiling allows.}
+the achromat corrects only as far as the single-etch ceiling allows.
+The library and the focal model keep only the zeroth diffraction order. The
+$400$~nm cell is not subwavelength in the BK7 substrate below $\lambda\approx608$~nm
+($\lambda < P\,n_\mathrm{sub}$): at $470$~nm the atoms send on average $25\%$ of the
+incident power into substrate orders that leave at an angle and miss the focus, falling
+to $6\%$ at $603$~nm and zero above $608$~nm. The drift figures are results within
+the zeroth-order model; the R1 study uses $P<\lambda_\mathrm{min}/n_\mathrm{sub}$.}
 \label{fig:achromatic}
 \end{figure}
 

@@ -174,7 +174,10 @@ engineering with a single-etch library cuts the chromatic focal drift from
 (\autoref{fig:achromatic}). The cost is mean conversion efficiency, which falls
 from 0.52 to 0.31. The remaining drift is the group-delay limit: the aperture
 needs a span of about 4.4 fs, while a single 600 nm nanofin library spans about
-2.6 fs. Version 1.0.0 is archived on Zenodo [@celeris_v1].
+2.6 fs. These numbers hold within a zeroth-order model: the 400 nm cell is
+not subwavelength in the BK7 substrate below about 608 nm, and at 470 nm about a
+quarter of the incident power goes into substrate diffraction orders that miss the
+focus. Version 1.0.0 is archived on Zenodo [@celeris_v1].
 
 ![Chen-2018 achromat at full device scale: rigorous focal length against
 wavelength for a standard Pancharatnam–Berry lens and a group-delay-engineered
