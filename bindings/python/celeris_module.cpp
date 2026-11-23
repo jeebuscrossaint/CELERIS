@@ -746,7 +746,10 @@ PYBIND11_MODULE(_celeris, m) {
         .def_readonly("n_refined_samples", &DispersivePbAtom::n_refined_samples,
                       "extra wavelengths solved to unwrap the phase across coarse band steps")
         .def_readonly("retardance_center_deg", &DispersivePbAtom::retardance_center_deg,
-                      "wrap(arg t_x - arg t_y) at center (ideal 180 = half-wave plate)");
+                      "wrap(arg t_x - arg t_y) at center (ideal 180 = half-wave plate)")
+        .def_readonly("cross", &DispersivePbAtom::cross,
+                      "a_cross(lambda) at each band sample (complex: amplitude and phase), "
+                      "aligned with DispersivePbLibrary.wavelengths_um");
 
     py::class_<DispersivePbLibrary>(m, "DispersivePbLibrary",
         "A dispersive BIREFRINGENT library at ONE etch depth (atoms span a "
