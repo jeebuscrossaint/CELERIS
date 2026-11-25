@@ -9,7 +9,7 @@
   Table 4 = D_lib vs D_S at H1.0 and range H0.6–1.5, caveats). Abstract/conclusions/limitations/
   AI declaration updated. Bib: `presutti2020`, `buisine2026`, `siefke2016` (Crossref/arXiv-checked;
   P&M page given as 624 only — Crossref had no end page). `paper.md` untouched.
-- **PR #41 OPEN (Closes #40)** — merge after CI green + author read-through.
+- **#40 CLOSED 11-25** via PR #41 (CI 4/4 green). Author still to read Sec. 8 before Zenodo.
 - Local LaTeX build: system TeX lacks `elsarticle.cls`/`elsarticle-num.bst`. Worked by copying
   `paper/` to a scratch dir with `elsarticle.cls` (from `celeris_arxiv.tar.gz`) + the CTAN bst;
   `latexmk -pdf` → 0 warnings. NOTE `celeris_arxiv.tar.gz` (untracked) is now stale vs the new section.
