@@ -1,6 +1,21 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-23. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-25. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-25 — R1 section in the long-form report (#40, PR #41)
+- Issue #40 + branch `docs/r1-longform`: new Sec. 8 "Application: the single-etch achromatic
+  limit" in `paper/longform/paper.tex` (metric, Table 3 = 36-library span/η_PM at thr 0.30 with
+  TiO₂ prop at M10, 4 observations incl. substrate control + PB efficiency collapse at thr 0.70,
+  Table 4 = D_lib vs D_S at H1.0 and range H0.6–1.5, caveats). Abstract/conclusions/limitations/
+  AI declaration updated. Bib: `presutti2020`, `buisine2026`, `siefke2016` (Crossref/arXiv-checked;
+  P&M page given as 624 only — Crossref had no end page). `paper.md` untouched.
+- **PR #41 OPEN (Closes #40)** — merge after CI green + author read-through.
+- Local LaTeX build: system TeX lacks `elsarticle.cls`/`elsarticle-num.bst`. Worked by copying
+  `paper/` to a scratch dir with `elsarticle.cls` (from `celeris_arxiv.tar.gz`) + the CTAN bst;
+  `latexmk -pdf` → 0 warnings. NOTE `celeris_arxiv.tar.gz` (untracked) is now stale vs the new section.
+- **NEXT:** merge #41 → Zenodo upload of the long-form PDF (author uploads; Claude prepares
+  metadata) → `paper.md` impact links + AI model versions → API docs materials/io/cuda (#1/#2)
+  → v1.1.0 (#3) → submit ≥ 12-17. One PR per day.
 
 ## SESSION 2026-11-23 (overnight 11-22→23) — ALL R1 COMPUTE DONE; #33 #34 #36 closed
 - Overnight script `research/r1/out/overnight.sh` (gitignored; setsid+nohup+systemd-inhibit,
