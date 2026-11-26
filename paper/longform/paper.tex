@@ -67,7 +67,8 @@ achromats---an aperture--bandwidth ceiling that emerges only from the coupled li
 design, and analysis stages, not from any solver kernel alone---and recovering it for a
 published broadband achromat. A sweep of 36 single-etch libraries (three materials, two
 phase mechanisms, six heights) then maps how much of the Presutti--Monticone
-delay--bandwidth bound such libraries reach (about 30--55\%), and shows that span-based
+delay--bandwidth bound such libraries reach (13--68\%, levelling off at about 30--55\%
+for etch depths of $0.8~\mu$m and more), and shows that span-based
 aperture estimates overstate propagation-phase achromats by about a factor of two.
 \end{abstract}
 
@@ -907,8 +908,13 @@ commercial, or not-for-profit sectors.
 \section*{Data availability}
 CELERIS is open source under the Apache License 2.0. The source code, the locked
 self-test suite, and the scripts that regenerate every figure and table in this paper
-are available on GitHub (\url{https://github.com/jeebuscrossaint/CELERIS}) and archived
-at Zenodo (\url{https://doi.org/10.5281/zenodo.21891346}).
+are available on GitHub (\url{https://github.com/jeebuscrossaint/CELERIS}). Release
+v1.0.0 is archived at Zenodo (\url{https://doi.org/10.5281/zenodo.21891346}); it predates
+the study of Sec.~\ref{sec:r1}. The numbers of that section were computed between
+commits \texttt{baa9af0} (2026-11-19) and \texttt{474fd82} (2026-11-25). Across that
+range the solver is unchanged: the commits add only the scripts in \texttt{research/r1/}
+and one Python accessor for the PB band response. Running those scripts at commit
+\texttt{474fd82} regenerates them.
 
 %% ---------------------------------------------------------------------------
 \section*{Declaration of generative AI in the writing process}
