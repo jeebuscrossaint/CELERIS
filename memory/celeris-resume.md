@@ -1,6 +1,16 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-25. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-26. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-26 — long-form ready for Zenodo (#42, PR #43 merged)
+- Abstract range fixed (13–68 %, ~30–55 % plateau for H ≥ 0.8 µm). Data availability names the
+  R1 commit range baa9af0–474fd82 (solver unchanged; only 70bbd74 binding added).
+- `paper/longform/ZENODO.md` = upload fields (Report, CC BY 4.0, ORCID, related ids).
+- elsarticle.cls + elsarticle-num.bst now in ~/texmf → `latexmk -pdf paper.tex` works in place.
+- Author read Sec. 8 on 11-25 ("good enough").
+- **NEXT:** author uploads `paper/longform/paper.pdf` to Zenodo per ZENODO.md → record DOI →
+  `paper.md` research-impact link + AI model versions + trim ~100 words (1,671 now, JOSS max
+  1,750) → API docs io/ + cuda/ (#1) → Python docstrings (#2) → v1.1.0 (#3) → submit ≥ 12-17.
 
 ## SESSION 2026-11-25 — R1 section in the long-form report (#40, PR #41)
 - Issue #40 + branch `docs/r1-longform`: new Sec. 8 "Application: the single-etch achromatic
