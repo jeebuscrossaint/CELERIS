@@ -98,7 +98,7 @@ PYBIND11_MODULE(_celeris, m) {
              "Complex refractive index n+ik at the given wavelength (microns).")
         .def("permittivity", &Material::permittivity, py::arg("wavelength_um"),
              "Relative permittivity eps = n^2 at the given wavelength (microns).")
-        .def_property_readonly("name", &Material::name)
+        .def_property_readonly("name", &Material::name, "Label used in reports and repr().")
         .def("__repr__", [](const Material& mat) {
             return "<celeris.Material '" + mat.name() + "'>";
         });
@@ -159,12 +159,14 @@ PYBIND11_MODULE(_celeris, m) {
                                         period_um, fill, thickness_um};
              }),
              py::arg("ridge"), py::arg("groove"), py::arg("period_um"),
-             py::arg("fill"), py::arg("thickness_um"))
-        .def_readwrite("ridge", &BinaryGrating1D::ridge)
-        .def_readwrite("groove", &BinaryGrating1D::groove)
-        .def_readwrite("period_um", &BinaryGrating1D::period_um)
-        .def_readwrite("fill", &BinaryGrating1D::fill)
-        .def_readwrite("thickness_um", &BinaryGrating1D::thickness_um);
+             py::arg("fill"), py::arg("thickness_um"),
+             "Ridge and groove materials, period (microns), ridge fill fraction "
+             "and thickness (microns).")
+        .def_readwrite("ridge", &BinaryGrating1D::ridge, "Ridge (high-index) material.")
+        .def_readwrite("groove", &BinaryGrating1D::groove, "Material filling the rest of the period.")
+        .def_readwrite("period_um", &BinaryGrating1D::period_um, "Grating period (microns).")
+        .def_readwrite("fill", &BinaryGrating1D::fill, "Ridge width as a fraction of the period, 0..1.")
+        .def_readwrite("thickness_um", &BinaryGrating1D::thickness_um, "Layer thickness along z (microns).");
 
     py::class_<GratingLayer1D>(m, "GratingLayer1D",
         "One layer of a 1D multilayer stack (shares the stack's period).")
@@ -174,13 +176,15 @@ PYBIND11_MODULE(_celeris, m) {
                                        thickness_um};
              }),
              py::arg("ridge"), py::arg("groove"), py::arg("fill"),
-             py::arg("thickness_um"))
+             py::arg("thickness_um"),
+             "Ridge and groove materials, ridge fill fraction and thickness "
+             "(microns). The period comes from the stack.")
         .def_static("homogeneous", &GratingLayer1D::homogeneous, py::arg("material"),
                     py::arg("thickness_um"), "A uniform (unpatterned) layer.")
-        .def_readwrite("ridge", &GratingLayer1D::ridge)
-        .def_readwrite("groove", &GratingLayer1D::groove)
-        .def_readwrite("fill", &GratingLayer1D::fill)
-        .def_readwrite("thickness_um", &GratingLayer1D::thickness_um);
+        .def_readwrite("ridge", &GratingLayer1D::ridge, "Ridge (high-index) material.")
+        .def_readwrite("groove", &GratingLayer1D::groove, "Material filling the rest of the period.")
+        .def_readwrite("fill", &GratingLayer1D::fill, "Ridge width as a fraction of the period, 0..1.")
+        .def_readwrite("thickness_um", &GratingLayer1D::thickness_um, "Layer thickness (microns).");
 
     py::class_<Rcwa1DStack>(m, "Rcwa1DStack",
         "A 1D multilayer stack: a shared period and an ordered list of layers "
@@ -188,13 +192,14 @@ PYBIND11_MODULE(_celeris, m) {
         .def(py::init([](double period_um, std::vector<GratingLayer1D> layers) {
                  return Rcwa1DStack{period_um, std::move(layers)};
              }),
-             py::arg("period_um"), py::arg("layers"))
-        .def_readwrite("period_um", &Rcwa1DStack::period_um)
-        .def_readwrite("layers", &Rcwa1DStack::layers);
+             py::arg("period_um"), py::arg("layers"),
+             "Shared period (microns) and a list of GratingLayer1D, top first.")
+        .def_readwrite("period_um", &Rcwa1DStack::period_um, "Period shared by every layer (microns).")
+        .def_readwrite("layers", &Rcwa1DStack::layers, "List of GratingLayer1D, top (incident side) to bottom.");
 
     py::class_<Rcwa1DResult>(m, "Rcwa1DResult",
         "Per-order 1D diffraction efficiencies.")
-        .def_readonly("orders", &Rcwa1DResult::orders)
+        .def_readonly("orders", &Rcwa1DResult::orders, "Diffraction order index m of each entry in de_r and de_t.")
         .def_readonly("de_r", &Rcwa1DResult::de_r, "reflected DE per order")
         .def_readonly("de_t", &Rcwa1DResult::de_t, "transmitted DE per order")
         .def_readonly("sum_de", &Rcwa1DResult::sum_de, "R+T (==1 if lossless)");
@@ -224,16 +229,19 @@ PYBIND11_MODULE(_celeris, m) {
              }),
              py::arg("pillar"), py::arg("background"), py::arg("fill_x"),
              py::arg("fill_y"), py::arg("thickness_um"),
-             py::arg("shape") = MetaShape::Rectangle, py::arg("shape_param") = 0.5)
+             py::arg("shape") = MetaShape::Rectangle, py::arg("shape_param") = 0.5,
+             "Pillar and background materials, fills in x and y (fractions of "
+             "the periods), thickness (microns), and the cross-section shape.")
         .def_static("homogeneous", &RectCell2D::homogeneous, py::arg("material"),
-                    py::arg("thickness_um"))
-        .def_readwrite("pillar", &RectCell2D::pillar)
-        .def_readwrite("background", &RectCell2D::background)
-        .def_readwrite("fill_x", &RectCell2D::fill_x)
-        .def_readwrite("fill_y", &RectCell2D::fill_y)
-        .def_readwrite("thickness_um", &RectCell2D::thickness_um)
-        .def_readwrite("shape", &RectCell2D::shape)
-        .def_readwrite("shape_param", &RectCell2D::shape_param);
+                    py::arg("thickness_um"),
+                    "A uniform (unpatterned) layer of one material.")
+        .def_readwrite("pillar", &RectCell2D::pillar, "Pillar (meta-atom) material.")
+        .def_readwrite("background", &RectCell2D::background, "Surrounding material.")
+        .def_readwrite("fill_x", &RectCell2D::fill_x, "Pillar extent in x as a fraction of period_x, 0..1.")
+        .def_readwrite("fill_y", &RectCell2D::fill_y, "Pillar extent in y as a fraction of period_y, 0..1.")
+        .def_readwrite("thickness_um", &RectCell2D::thickness_um, "Layer thickness (microns).")
+        .def_readwrite("shape", &RectCell2D::shape, "Cross-section shape (MetaShape).")
+        .def_readwrite("shape_param", &RectCell2D::shape_param, "Shape parameter: Cross = arm width / fill; Ring = inner / outer radius.");
 
     py::class_<Rcwa2DStack>(m, "Rcwa2DStack",
         "A biperiodic stack: periods in x and y, plus an ordered list of layers.")
@@ -241,17 +249,18 @@ PYBIND11_MODULE(_celeris, m) {
                          std::vector<RectCell2D> layers) {
                  return Rcwa2DStack{period_x_um, period_y_um, std::move(layers)};
              }),
-             py::arg("period_x_um"), py::arg("period_y_um"), py::arg("layers"))
-        .def_readwrite("period_x_um", &Rcwa2DStack::period_x_um)
-        .def_readwrite("period_y_um", &Rcwa2DStack::period_y_um)
-        .def_readwrite("layers", &Rcwa2DStack::layers);
+             py::arg("period_x_um"), py::arg("period_y_um"), py::arg("layers"),
+             "Periods in x and y (microns) and a list of RectCell2D, top first.")
+        .def_readwrite("period_x_um", &Rcwa2DStack::period_x_um, "Period in x (microns).")
+        .def_readwrite("period_y_um", &Rcwa2DStack::period_y_um, "Period in y (microns).")
+        .def_readwrite("layers", &Rcwa2DStack::layers, "List of RectCell2D, top (incident side) to bottom.");
 
     py::class_<Rcwa2DResult>(m, "Rcwa2DResult", "2D RCWA efficiencies + order-0 amplitudes.")
-        .def_readonly("R", &Rcwa2DResult::R)
-        .def_readonly("T", &Rcwa2DResult::T)
-        .def_readonly("sum_de", &Rcwa2DResult::sum_de)
+        .def_readonly("R", &Rcwa2DResult::R, "Total reflected efficiency, all orders.")
+        .def_readonly("T", &Rcwa2DResult::T, "Total transmitted efficiency, all orders.")
+        .def_readonly("sum_de", &Rcwa2DResult::sum_de, "R + T (equals 1 for a lossless stack).")
         .def_readonly("de_t0", &Rcwa2DResult::de_t0, "zeroth-order transmitted DE")
-        .def_readonly("de_r0", &Rcwa2DResult::de_r0)
+        .def_readonly("de_r0", &Rcwa2DResult::de_r0, "Zeroth-order reflected efficiency.")
         .def_readonly("tx0", &Rcwa2DResult::tx0, "complex order-0 transmitted Ex")
         .def_readonly("ty0", &Rcwa2DResult::ty0, "complex order-0 transmitted Ey");
 
@@ -277,20 +286,27 @@ PYBIND11_MODULE(_celeris, m) {
     py::class_<UnitCellLibrary>(m, "UnitCellLibrary",
         "Phase library: the complex transmission (phase + |t|) vs pillar fill for "
         "one fab process (period/wavelength/height).")
-        .def_readonly("period_um", &UnitCellLibrary::period_um)
-        .def_readonly("wavelength_um", &UnitCellLibrary::wavelength_um)
-        .def_readonly("thickness_um", &UnitCellLibrary::thickness_um)
-        .def_readonly("fill", &UnitCellLibrary::fill)
+        .def_readonly("period_um", &UnitCellLibrary::period_um, "Lattice period (microns).")
+        .def_readonly("wavelength_um", &UnitCellLibrary::wavelength_um, "Design wavelength (microns).")
+        .def_readonly("thickness_um", &UnitCellLibrary::thickness_um, "Pillar height (microns).")
+        .def_readonly("fill", &UnitCellLibrary::fill, "Sampled pillar size fractions.")
         .def_readonly("phase", &UnitCellLibrary::phase, "transmission phase (rad)")
         .def_readonly("amplitude", &UnitCellLibrary::amplitude, "|t| of order 0")
-        .def("phase_span", &UnitCellLibrary::phase_span)
+        .def("phase_span", &UnitCellLibrary::phase_span,
+             "Max minus min of the wrapped phases (rad). Only meaningful when the "
+             "phase does not wrap across +/-pi; use coverage() otherwise.")
         .def("coverage", &UnitCellLibrary::coverage,
              "Effective phase coverage (rad) = 2*pi minus the largest gap on the circle.")
-        .def("lookup", &UnitCellLibrary::lookup, py::arg("target_phase_rad"))
+        .def("lookup", &UnitCellLibrary::lookup, py::arg("target_phase_rad"),
+             "Index of the sample whose phase best matches the target (rad), "
+             "compared on the circle.")
         .def("lookup_weighted", &UnitCellLibrary::lookup_weighted,
-             py::arg("target_phase_rad"), py::arg("amplitude_weight"))
+             py::arg("target_phase_rad"), py::arg("amplitude_weight"),
+             "Like lookup(), but minimizes phase_error^2 + "
+             "amplitude_weight * (1 - |t|)^2. Weight 0 gives lookup().")
         .def("transmission_for_fill", &UnitCellLibrary::transmission_for_fill,
-             py::arg("fill"));
+             py::arg("fill"),
+             "Complex transmission |t| exp(i phi) of the sampled pillar nearest `fill`.");
 
     m.def("build_unit_cell_library", &build_unit_cell_library, py::arg("pillar"),
           py::arg("background"), py::arg("incident"), py::arg("substrate"),
@@ -301,20 +317,21 @@ PYBIND11_MODULE(_celeris, m) {
           "Sweep a pillar's fill and tabulate complex transmission (one 2D RCWA "
           "solve per sample, normal incidence, x-polarized).");
 
-    py::class_<HeightSweepEntry>(m, "HeightSweepEntry")
-        .def_readonly("thickness_um", &HeightSweepEntry::thickness_um)
-        .def_readonly("coverage_deg", &HeightSweepEntry::coverage_deg)
-        .def_readonly("mean_transmittance", &HeightSweepEntry::mean_transmittance);
+    py::class_<HeightSweepEntry>(m, "HeightSweepEntry",
+        "One pillar height tried by optimize_height_for_2pi: coverage and transmittance.")
+        .def_readonly("thickness_um", &HeightSweepEntry::thickness_um, "Pillar height (microns).")
+        .def_readonly("coverage_deg", &HeightSweepEntry::coverage_deg, "Effective phase coverage: 360 deg minus the largest gap.")
+        .def_readonly("mean_transmittance", &HeightSweepEntry::mean_transmittance, "Mean |t|^2 across the fill sweep.");
 
     py::class_<HeightOptResult>(m, "HeightOptResult",
         "Result of the full-2pi pillar-height search.")
-        .def_readonly("best_thickness_um", &HeightOptResult::best_thickness_um)
-        .def_readonly("coverage_deg", &HeightOptResult::coverage_deg)
-        .def_readonly("mean_transmittance", &HeightOptResult::mean_transmittance)
-        .def_readonly("reached_target", &HeightOptResult::reached_target)
-        .def_readonly("coverage_target_deg", &HeightOptResult::coverage_target_deg)
-        .def_readonly("sweep", &HeightOptResult::sweep)
-        .def_readonly("best_library", &HeightOptResult::best_library);
+        .def_readonly("best_thickness_um", &HeightOptResult::best_thickness_um, "Winning pillar height (microns).")
+        .def_readonly("coverage_deg", &HeightOptResult::coverage_deg, "Phase coverage at the winning height (deg).")
+        .def_readonly("mean_transmittance", &HeightOptResult::mean_transmittance, "Mean |t|^2 at the winning height.")
+        .def_readonly("reached_target", &HeightOptResult::reached_target, "True if the winning height cleared coverage_target_deg.")
+        .def_readonly("coverage_target_deg", &HeightOptResult::coverage_target_deg, "The requested coverage target (deg).")
+        .def_readonly("sweep", &HeightOptResult::sweep, "List of HeightSweepEntry, one per height tried.")
+        .def_readonly("best_library", &HeightOptResult::best_library, "UnitCellLibrary at the winning height, ready for design_metalens().");
 
     m.def("optimize_height_for_2pi", &optimize_height_for_2pi, py::arg("pillar"),
           py::arg("background"), py::arg("incident"), py::arg("substrate"),
@@ -327,10 +344,10 @@ PYBIND11_MODULE(_celeris, m) {
           "coverage target at the highest transmittance. Returns the winning library too.");
 
     py::class_<MetalensDesign>(m, "MetalensDesign", "A fabricable pillar map + fidelity.")
-        .def_readonly("n_cells", &MetalensDesign::n_cells)
-        .def_readonly("period_um", &MetalensDesign::period_um)
-        .def_readonly("rms_phase_error_deg", &MetalensDesign::rms_phase_error_deg)
-        .def_readonly("mean_amplitude", &MetalensDesign::mean_amplitude)
+        .def_readonly("n_cells", &MetalensDesign::n_cells, "Cells across the square aperture, round(D / period).")
+        .def_readonly("period_um", &MetalensDesign::period_um, "Lattice period (microns).")
+        .def_readonly("rms_phase_error_deg", &MetalensDesign::rms_phase_error_deg, "RMS realized-vs-target phase error (deg).")
+        .def_readonly("mean_amplitude", &MetalensDesign::mean_amplitude, "Mean |t| of the chosen pillars (efficiency proxy).")
         .def_property_readonly("fill_map",
             [](const MetalensDesign& d) {
                 return to_2d_array(d.fill_map, d.n_cells, d.n_cells);
@@ -350,8 +367,9 @@ PYBIND11_MODULE(_celeris, m) {
         "Target phase profile phi(x,y) a metasurface imprints. The SAME profile "
         "drives both the propagation-phase (design_metalens) and geometric-phase "
         "(design_pb_metalens) paths. Use the static factories or set fields directly.")
-        .def(py::init<>())
-        .def_readwrite("kind", &PhaseProfile::kind)
+        .def(py::init<>(), "A focusing profile with default parameters; set the "
+             "fields or use a static factory.")
+        .def_readwrite("kind", &PhaseProfile::kind, "Profile type (PhaseProfileKind).")
         .def_readwrite("focal_length_um", &PhaseProfile::focal_length_um,
                        "Focusing/Vortex: focal length (<=0 => pure OAM for Vortex).")
         .def_readwrite("topological_charge", &PhaseProfile::topological_charge,
@@ -362,7 +380,7 @@ PYBIND11_MODULE(_celeris, m) {
                        "Deflector: in-plane direction of the deflection.")
         .def_readwrite("axicon_deg", &PhaseProfile::axicon_deg,
                        "Axicon: cone half-angle.")
-        .def_readwrite("freeform_n", &PhaseProfile::freeform_n)
+        .def_readwrite("freeform_n", &PhaseProfile::freeform_n, "Freeform: grid size n of the n x n phase map.")
         .def_readwrite("freeform_extent_um", &PhaseProfile::freeform_extent_um,
                        "Freeform: full physical width the map spans (centered).")
         .def_property("freeform_phase",
@@ -453,9 +471,9 @@ PYBIND11_MODULE(_celeris, m) {
                       "transmission-weighted Strehl (conservative; 1.0=perfect)")
         .def_readonly("phase_strehl", &FocalAnalysis::phase_strehl,
                       "phase-only Strehl (1.0=diffraction-limited wavefront)")
-        .def_readonly("fwhm_um", &FocalAnalysis::fwhm_um)
-        .def_readonly("diffraction_limit_um", &FocalAnalysis::diffraction_limit_um)
-        .def_readonly("encircled_energy", &FocalAnalysis::encircled_energy);
+        .def_readonly("fwhm_um", &FocalAnalysis::fwhm_um, "Focal-spot full width at half maximum along the central row (microns).")
+        .def_readonly("diffraction_limit_um", &FocalAnalysis::diffraction_limit_um, "lambda * f / D, for reference (microns).")
+        .def_readonly("encircled_energy", &FocalAnalysis::encircled_energy, "Fraction of focal-window power inside the first Airy null (1.22 lambda f / D).");
 
     m.def("analyze_focus", &analyze_focus, py::arg("lens"), py::arg("lib"),
           py::arg("focal_length_um"), py::arg("wavelength_um"), py::arg("diameter_um"),
@@ -463,8 +481,8 @@ PYBIND11_MODULE(_celeris, m) {
 
     py::class_<PsfMap>(m, "PsfMap",
         "Focal-plane intensity map (the PSF), n x n over +/- half_window_um.")
-        .def_readonly("n", &PsfMap::n)
-        .def_readonly("half_window_um", &PsfMap::half_window_um)
+        .def_readonly("n", &PsfMap::n, "Samples per side.")
+        .def_readonly("half_window_um", &PsfMap::half_window_um, "Half-width of the sampled window (microns).")
         .def_property_readonly("intensity",
             [](const PsfMap& p) { return to_2d_array(p.intensity, p.n, p.n); },
             "n x n numpy array of |E|^2 (row-major).");
