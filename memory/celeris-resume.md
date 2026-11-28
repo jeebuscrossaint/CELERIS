@@ -1,6 +1,17 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-27. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-28. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-28 — Python docstrings part 1 (#2, PR #45 merged)
+- Audit (walk `celeris._celeris`: funcs, classes, methods, properties; flag empty/signature-only
+  `__doc__`) found 122 gaps, all fields/ctors/4 methods; module functions were all documented.
+  PR #45 fixed 63 (RCWA types, UnitCellLibrary, height search, MetalensDesign, PhaseProfile,
+  FocalAnalysis, PsfMap). Audit script was in the session scratchpad (gone); rewrite it.
+- **NEXT (part 2, closes #2):** the remaining 53 fields: JonesMatrix, HwpAtom, PbVerifyPoint,
+  PbMetalensDesign, DispersiveAtom, MetaAtomSpec (+ctor), DispersiveLibrary, AchromaticDesign,
+  AchromaticFocalPoint, DispersivePbAtom, DispersivePbLibrary, PbAchromaticDesign. Add the audit
+  as `tests/python/check_docstrings.py` in CI (skip pybind enum `__init__`/`value`).
+  Then: Zenodo DOI (author) → paper.md → v1.1.0 (#3) → submit ≥ 12-17.
 
 ## SESSION 2026-11-27 — C++ API reference complete (#1 closed, PR #44)
 - io/ + cuda/ Doxygen'd (@file/@brief/@param/@return), celeris::cuda namespace page, Doxyfile
