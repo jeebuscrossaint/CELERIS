@@ -1,6 +1,16 @@
 # CELERIS — session resume (handoff)
 
-**Last updated:** 2026-11-26. **HEAD:** run `git log --oneline -25`.
+**Last updated:** 2026-11-27. **HEAD:** run `git log --oneline -25`.
+
+## SESSION 2026-11-27 — C++ API reference complete (#1 closed, PR #44)
+- io/ + cuda/ Doxygen'd (@file/@brief/@param/@return), celeris::cuda namespace page, Doxyfile
+  INPUT covers all of src/celeris/ (smatrix.hpp still excluded). Overview table gained materials/
+  io/ cuda rows. doxygen 1.18 exit 0. CI 3/3 (no paper job: paper paths untouched).
+- Closed as not planned 11-26: #4 (arXiv, no endorser) and #13 (fill×height achromat).
+- Zenodo DOI for the long-form report: NOT yet received from the author.
+- **NEXT:** Python docstrings #2 (~78 bindings, ~6 documented; split in 2 PRs) → once DOI
+  arrives: `paper.md` impact link + AI model versions + trim ~100 words → v1.1.0 (#3) →
+  submit ≥ 12-17.
 
 ## SESSION 2026-11-26 — long-form ready for Zenodo (#42, PR #43 merged)
 - Abstract range fixed (13–68 %, ~30–55 % plateau for H ≥ 0.8 µm). Data availability names the
