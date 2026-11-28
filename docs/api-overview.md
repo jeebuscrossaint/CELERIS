@@ -41,10 +41,13 @@ CLI, the Python module, and the GUI all call the same functions.
 | `celeris/analysis/tolerance.hpp` | Monte-Carlo Strehl under Gaussian pillar-size (CD) error. |
 | `celeris/analysis/efficiency.hpp` | Per-order power budget of one meta-atom: zeroth order, stray light, absorption. |
 | `celeris/analysis/polarization.hpp` | Form birefringence of rectangular pillars: co-polarized phases and retardance. |
-
-The materials and I/O modules are being added to this
-reference (issue #1). Until then, their headers under `src/celeris/` carry
-plain-comment documentation.
+| `celeris/materials/material.hpp` | `Material`: complex index n(λ) + ik(λ), constant, Sellmeier or tabulated. |
+| `celeris/materials/database.hpp` | Built-in materials (air, fused silica, Si₃N₄, sapphire, GaN, ALD TiO₂, …) and the data-file lookup. |
+| `celeris/io/gds.hpp` | GDSII export of lens layouts (square, rectangular and rotated PB pillars) and a reader for checking them. |
+| `celeris/io/material_csv.hpp` | Tabulated materials from a wavelength, n, k CSV. |
+| `celeris/io/image.hpp` | Grayscale PGM output for PSF and field maps. |
+| `celeris/cuda/propagate.hpp` | GPU far-field propagation (focal-plane PSF, x-z caustic). Built only with `CELERIS_USE_CUDA`. |
+| `celeris/cuda/eigensolve.hpp` | Experimental cuSOLVER eigensolver, single and batched. Opt-in; the CPU path is the default. |
 
 ## A minimal 2D solve
 
